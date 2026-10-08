@@ -317,18 +317,20 @@ public final class MainActivity extends Activity {
         String request=attachmentPickRequest,owner=attachmentPickOwner;attachmentPickRequest=null;attachmentPickOwner=null;
         if(resultCode!=RESULT_OK||data==null){try{reply(request,new JSONObject().put("cancelled",true));}catch(Exception ignored){}return;}
         java.util.ArrayList<Uri> selected=new java.util.ArrayList<>();if(data.getClipData()!=null){for(int i=0;i<data.getClipData().getItemCount();i++)selected.add(data.getClipData().getItemAt(i).getUri());}else if(data.getData()!=null)selected.add(data.getData());
+        final SavedAccounts.Login importOwner=sessionLogin;if(importOwner==null||!importOwner.identity().equals(owner))return;
         worker.execute(()->{
             java.util.ArrayList<java.io.File> created=new java.util.ArrayList<>();
             try{
-                SavedAccounts.Login login=sessionLogin;if(login==null||!login.identity().equals(owner)||selected.size()>10)throw new IllegalArgumentException();
+                SavedAccounts.Login login=importOwner;if(sessionLogin!=login||selected.size()>10)throw new IllegalArgumentException();
                 org.json.JSONArray files=new org.json.JSONArray();java.io.File directory=uploads(login);
                 for(Uri uri:selected){
-                    String name="Вложение";try(android.database.Cursor cursor=getContentResolver().query(uri,new String[]{android.provider.OpenableColumns.DISPLAY_NAME},null,null,null)){if(cursor!=null&&cursor.moveToFirst())name=cursor.getString(0);}
-                    java.io.File file;try(java.io.InputStream input=getContentResolver().openInputStream(uri)){if(input==null)throw new java.io.IOException();file=AttachmentFiles.copy(input,directory,name,AttachmentFiles.MAX_BYTES);}
+                    String name="Вложение";long total=-1;try(android.database.Cursor cursor=getContentResolver().query(uri,new String[]{android.provider.OpenableColumns.DISPLAY_NAME,android.provider.OpenableColumns.SIZE},null,null,null)){if(cursor!=null&&cursor.moveToFirst()){name=cursor.getString(0);if(!cursor.isNull(1))total=cursor.getLong(1);}}catch(Exception ignored){}
+                    final String display=AttachmentFiles.safeName(name);final long expected=total;final int index=files.length()+1;final long[] tick={0};
+                    java.io.File file;try(java.io.InputStream input=getContentResolver().openInputStream(uri)){if(input==null)throw new java.io.IOException();file=AttachmentFiles.copy(input,directory,name,AttachmentFiles.MAX_BYTES,bytes->{if(sessionLogin!=login||closing)throw new IllegalStateException("Account changed");long now=System.nanoTime();if(now-tick[0]<100000000&&bytes!=expected)return;tick[0]=now;try{JSONObject progress=new JSONObject().put("bytes",bytes).put("total",expected).put("name",display).put("index",index).put("count",selected.size());runOnUiThread(()->{if(sessionLogin==login&&!closing&&web!=null)web.evaluateJavascript("window.onAttachmentProgress&&window.onAttachmentProgress("+JSONObject.quote(request)+","+progress.toString()+")",null);});}catch(Exception ignored){}});}
                     created.add(file);files.put(new JSONObject().put("token",file.getName()).put("name",AttachmentFiles.safeName(name)).put("size",file.length()));
                 }
-                reply(request,new JSONObject().put("files",files));
-            }catch(Exception error){for(java.io.File file:created)file.delete();failure(request,"Не удалось прикрепить файлы. Выберите до 10 файлов размером до 100 МБ каждый.");}
+                if(sessionLogin!=login||closing)throw new IllegalStateException();JSONObject imported=new JSONObject().put("files",files);runOnUiThread(()->{if(sessionLogin==login&&!closing)reply(request,imported);});
+            }catch(Exception error){for(java.io.File file:created)file.delete();if(sessionLogin!=importOwner||closing)return;failure(request,"Не удалось прикрепить файлы. Выберите до 10 файлов размером до 100 МБ каждый.");}
         });
     }
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){super.onRequestPermissionsResult(requestCode,permissions,results);if(requestCode==61){if(pendingTestNotice&&NoticeCenter.allowed(this))NoticeCenter.test(this);pendingTestNotice=false;worker.execute(()->{try{NoticeCenter.schedule(this);}catch(Exception ignored){}});}}
@@ -418,6 +420,9 @@ public final class MainActivity extends Activity {
     private static final class JSONObjectSafe extends JSONObject { JSONObjectSafe putValue(String key,String value){try{put(key,value);}catch(Exception ignored){}return this;} }
     private boolean aiEnabled(){SharedPreferences state=local;return state!=null&&AiPolicy.enabled(state.getString("state","{}"));}
     public final class Bridge {
+        @JavascriptInterface public String launcherIcon(){return getSharedPreferences("launcher",MODE_PRIVATE).getString("icon","spbu");}
+        @JavascriptInterface public void setLauncherIcon(String mode,String request){runOnUiThread(()->{if(!"spbu".equals(mode)&&!"classic".equals(mode)){failure(request,"Неизвестная иконка.");return;}try{android.content.pm.PackageManager pm=getPackageManager();String selected="spbu".equals(mode)?"SpbuLauncher":"ClassicLauncher",other="spbu".equals(mode)?"ClassicLauncher":"SpbuLauncher";pm.setComponentEnabledSetting(new android.content.ComponentName(MainActivity.this,getPackageName()+"."+selected),1,android.content.pm.PackageManager.DONT_KILL_APP);pm.setComponentEnabledSetting(new android.content.ComponentName(MainActivity.this,getPackageName()+"."+other),2,android.content.pm.PackageManager.DONT_KILL_APP);getSharedPreferences("launcher",MODE_PRIVATE).edit().putString("icon",mode).apply();reply(request,new JSONObject().put("icon",mode));}catch(Exception error){failure(request,"Не удалось изменить иконку.");}});}
+
         @JavascriptInterface public void shareMailText(String text,String request){
             if(text==null||text.trim().isEmpty()||text.length()>140000){failure(request,"Текст пустой или слишком большой.");return;}
             SavedAccounts.Login owner=sessionLogin;if(owner==null)return;

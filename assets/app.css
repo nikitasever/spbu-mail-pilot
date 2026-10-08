@@ -266,3 +266,5 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .digest-subtitle {font-size:15px;color:var(--muted);margin:0 0 12px;}
 
 .smart-overview{padding:18px;border-radius:18px;background:var(--surface);margin:16px 0}.smart-overview small,.smart-point>small{color:var(--brand);font-weight:600;letter-spacing:.04em}.smart-overview p{font-size:17px;line-height:1.55;margin:10px 0 0}.smart-deadline{font-weight:600}.smart-loading{text-align:center;padding:32px 12px}.smart-loading svg{width:32px;height:32px;color:var(--brand)}.smart-loading p{color:var(--muted);line-height:1.5}.smart-point p{line-height:1.55}
+
+#recipient-suggestions:empty,#upload-progress:empty{display:none}.recipient-choice{display:flex!important;flex-direction:column;align-items:flex-start;width:100%;text-align:left}.recipient-choice small{color:var(--muted);overflow-wrap:anywhere}#upload-progress progress{width:100%;accent-color:var(--brand)}
