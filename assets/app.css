@@ -214,3 +214,10 @@ html,body { width:100%; max-width:100%; overflow-x:clip; overscroll-behavior-x:n
 #mail-v2 .settings-row > span { min-width:0; }
 #mail-v2 [hidden] { display:none !important; }
 @supports not (overflow:clip) { html { overflow-x:hidden; } }
+
+#mail-v2 .month-navigation { display:grid; grid-template-columns:44px minmax(0,1fr) 44px; gap:8px; align-items:center; }
+#mail-v2 .month-navigation button { min-width:0; min-height:44px; padding:10px; display:flex; justify-content:center; align-items:center; }
+#mail-v2 .month-navigation strong { text-align:center; font-size:16px; }
+#mail-v2 .month-today { display:flex; justify-content:center; margin:8px 0 12px; }
+#mail-v2 .month-today button { border:0; background:transparent; color:var(--brand); padding:6px 14px; }
+#mail-v2 #account-label.account-switch { max-width:100%; text-align:left; border:0; background:transparent; color:var(--muted); padding:8px 0; min-height:44px; }

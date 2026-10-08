@@ -54,7 +54,7 @@ public final class CalDavTest {
             }
             check(exchange.getRequestHeaders().getFirst("Depth").equals("1"));
             byte[] body;try(InputStream in=exchange.getRequestBody();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] b=new byte[8192];int n;while((n=in.read(b))!=-1)out.write(b,0,n);body=out.toByteArray();}check(new String(body,StandardCharsets.UTF_8).contains("calendar-query"));
-            if(path.equals("/same")){exchange.getResponseHeaders().add("Location","/calendar/");exchange.sendResponseHeaders(307,-1);}else if(path.equals("/other")){exchange.getResponseHeaders().add("Location","https://evil.invalid/steal");exchange.sendResponseHeaders(307,-1);}else if(path.equals("/denied")){exchange.sendResponseHeaders(401,-1);}else{byte[] xml=wrap(ICS).getBytes(StandardCharsets.UTF_8);exchange.getResponseHeaders().add("Content-Type","application/xml; charset=utf-8");exchange.sendResponseHeaders(207,xml.length);exchange.getResponseBody().write(xml);}
+            if(path.equals("/same")){exchange.getResponseHeaders().add("Location","/calendar/");exchange.sendResponseHeaders(307,-1);}else if(path.equals("/other")){exchange.getResponseHeaders().add("Location","https://evil.invalid/steal");exchange.sendResponseHeaders(307,-1);}else if(path.equals("/denied")){exchange.sendResponseHeaders(401,-1);}else{byte[] xml=wrap(path.equals("/recurring")?"BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:raw-series\nDTSTART:20261001T090000Z\nRRULE:FREQ=DAILY;COUNT=3\nEND:VEVENT\nEND:VCALENDAR":ICS).getBytes(StandardCharsets.UTF_8);exchange.getResponseHeaders().add("Content-Type","application/xml; charset=utf-8");exchange.sendResponseHeaders(207,xml.length);exchange.getResponseBody().write(xml);}
         }catch(Throwable failure){failure.printStackTrace();}finally{exchange.close();}});server.start();
         String base="https://localhost:"+server.getAddress().getPort();
         try{
@@ -64,6 +64,7 @@ public final class CalDavTest {
             rejected(()->CalDav.sync(base+"/denied","calendar@example.invalid","fake-secret","2026-10",client(trust,ssl)));
             try{CalDav.sync(base+"/calendar/","calendar@example.invalid","fake-secret","2026-10");throw new AssertionError("Untrusted certificate accepted");}catch(SSLException expected){}
             check(seen.size()==5);for(String method:seen)check(method.endsWith(":REPORT"));
+            check(CalDav.sync(base+"/recurring","calendar@example.invalid","fake-secret","2026-10",client(trust,ssl)).length()==3);
             List<CalendarDiscovery.Calendar> found=CalendarDiscovery.discover(base,"calendar@example.invalid","fake-secret",client(trust,ssl));
             check(found.size()==2&&found.get(0).url.equals(base+"/home/primary/")&&found.get(0).title.equals("Personal & work")&&found.get(1).title.equals("Shared"));
             check(CalendarDiscovery.discover(base+"/discovery-redirect","calendar@example.invalid","fake-secret",client(trust,ssl)).size()==2);

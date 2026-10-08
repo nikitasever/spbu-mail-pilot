@@ -39,43 +39,33 @@ final class CalDav {
                     if(code==401||code==403)throw new Failure("Календарь отклонил вход. Проверьте пароль внешнего приложения и доступ к календарю.");
                     if(code!=207)throw new Failure("Календарь вернул HTTP "+code+". Нужна CalDAV-ссылка на конкретный календарь, а не адрес веб-страницы.");
                     if(response.body()==null)throw new Failure("Пустой ответ календаря.");
-                    try(InputStream in=response.body().byteStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>LIMIT)throw new Failure("Ответ календаря слишком большой.");out.write(buffer,0,n);}return parse(out.toString("UTF-8"));}
+                    try(InputStream in=response.body().byteStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>LIMIT)throw new Failure("Ответ календаря слишком большой.");out.write(buffer,0,n);}return parse(out.toString("UTF-8"),month);}
                 }
             }
             throw new Failure("Слишком много перенаправлений календаря.");
         }finally{client.connectionPool().evictAll();client.dispatcher().executorService().shutdown();}
     }
-    static JSONArray parse(String xml)throws Exception{
+    static JSONArray parse(String xml)throws Exception{return parse(xml,null);}
+    static JSONArray parse(String xml,String month)throws Exception{
         if(xml.length()>LIMIT||java.util.regex.Pattern.compile("(?is)<\\s*!\\s*(DOCTYPE|ENTITY)\\b").matcher(xml).find())throw new Failure("Небезопасный ответ календаря.");
         DocumentBuilderFactory factory=DocumentBuilderFactory.newInstance();factory.setNamespaceAware(true);factory.setExpandEntityReferences(false);
         DocumentBuilder builder=factory.newDocumentBuilder();builder.setEntityResolver((publicId,systemId)->{throw new org.xml.sax.SAXException("External XML refused");});
         Document document=builder.parse(new org.xml.sax.InputSource(new StringReader(xml)));Element root=document.getDocumentElement();
         if(!"multistatus".equals(root.getLocalName())||!"DAV:".equals(root.getNamespaceURI()))throw new Failure("Сервер вернул не CalDAV-ответ.");
-        JSONArray result=new JSONArray();Set<String> ids=new HashSet<>();NodeList responses=root.getElementsByTagNameNS("DAV:","response");
+        List<String> calendars=new ArrayList<>();NodeList responses=root.getElementsByTagNameNS("DAV:","response");
         for(int i=0;i<responses.getLength();i++){
             Element response=(Element)responses.item(i);NodeList statuses=response.getElementsByTagNameNS("DAV:","status");for(int h=0;h<statuses.getLength();h++)if(statuses.item(h).getTextContent().matches(".* (401|403)(?: .*)?"))throw new Failure("Нет доступа к событиям рабочего календаря.");NodeList properties=response.getElementsByTagNameNS("DAV:","propstat");
             for(int j=0;j<properties.getLength();j++){
                 Element prop=(Element)properties.item(j);NodeList status=prop.getElementsByTagNameNS("DAV:","status");if(status.getLength()!=1||!status.item(0).getTextContent().matches(".* 200(?: .*)?"))continue;
                 NodeList data=prop.getElementsByTagNameNS("urn:ietf:params:xml:ns:caldav","calendar-data");
-                for(int k=0;k<data.getLength();k++)for(JSONObject event:events(data.item(k).getTextContent())){if(ids.add(event.getString("id")))result.put(event);if(result.length()>5000)throw new Failure("В месяце слишком много событий.");}
+                for(int k=0;k<data.getLength();k++)calendars.add(data.item(k).getTextContent());
             }
         }
-        return result;
+        return new JSONArray(CalendarRecurrence.expand(calendars,month));
     }
     static final class Property {final String params,value;Property(String p,String v){params=p;value=v;}}
     static int delimiter(String line){boolean quoted=false;for(int i=0;i<line.length();i++){char c=line.charAt(i);if(c=='"')quoted=!quoted;else if(c==':'&&!quoted)return i;}return -1;}
-    static List<JSONObject> events(String ics)throws Exception{
-        List<JSONObject> result=new ArrayList<>();Map<String,Property> event=null;int depth=0;
-        String unfolded=ics.replace("\r\n","\n").replace("\r","\n").replaceAll("\n[ \\t]","");
-        for(String line:unfolded.split("\n")){
-            if(line.equalsIgnoreCase("BEGIN:VEVENT")){event=new HashMap<>();depth=1;continue;}if(event==null)continue;
-            if(line.regionMatches(true,0,"BEGIN:",0,6)){depth++;continue;}
-            if(line.equalsIgnoreCase("END:VEVENT")){if(depth!=1)throw new Failure("Некорректное событие календаря.");if(!"CANCELLED".equalsIgnoreCase(value(event,"STATUS","")))result.add(event(event));event=null;continue;}
-            if(line.regionMatches(true,0,"END:",0,4)){depth--;continue;}if(depth!=1)continue;
-            int colon=delimiter(line);if(colon<0)continue;String head=line.substring(0,colon),name=head.split(";",2)[0].toUpperCase(Locale.ROOT);event.put(name,new Property(head,line.substring(colon+1)));
-        }
-        if(event!=null)throw new Failure("Оборванное событие календаря.");return result;
-    }
+    static List<JSONObject> events(String ics)throws Exception{return CalendarRecurrence.expand(Collections.singletonList(ics),null);}
     static String value(Map<String,Property> event,String key,String fallback){return event.containsKey(key)?text(event.get(key).value):fallback;}
     static String text(String value){StringBuilder out=new StringBuilder();for(int i=0;i<value.length();i++){char c=value.charAt(i);if(c=='\\'&&i+1<value.length()){char next=value.charAt(++i);out.append(next=='n'||next=='N'?'\n':next);}else out.append(c);}return out.toString();}
     static ZonedDateTime instant(Property property)throws Exception{
@@ -87,8 +77,7 @@ final class CalDav {
         return LocalDateTime.parse(value,DateTimeFormatter.ofPattern("uuuuMMdd'T'HHmmss").withResolverStyle(java.time.format.ResolverStyle.STRICT)).atZone(zone).withZoneSameInstant(DISPLAY_ZONE);
     }
     static JSONObject event(Map<String,Property> event)throws Exception{
-        if(event.containsKey("RRULE")||event.containsKey("RDATE")||event.containsKey("EXDATE"))throw new Failure("Сервер не раскрыл повторяющиеся события. Этот календарь пока нельзя синхронизировать корректно.");
-        Property start=event.get("DTSTART");ZonedDateTime time=instant(start),end=event.containsKey("DTEND")?instant(event.get("DTEND")):time;
+        Property start=event.get("DTSTART");ZonedDateTime time=instant(start),end=time.plus(CalendarRecurrence.duration(event));
         boolean allDay=start.value.matches("[0-9]{8}");String uid=value(event,"UID","");if(uid.isEmpty())throw new Failure("У события нет UID.");
         return new JSONObject().put("id",uid+"|"+time.toInstant()).put("title",value(event,"SUMMARY","Без названия")).put("date",time.toLocalDate().toString()).put("time",allDay?"":time.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm"))).put("endDate",end.toLocalDate().toString()).put("endTime",allDay?"":end.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm"))).put("allDay",allDay).put("location",value(event,"LOCATION","")).put("description",value(event,"DESCRIPTION","")).put("kind","remote");
     }

@@ -57,7 +57,11 @@ public final class MainActivity extends Activity {
         box.addView(text(label, 14, 0xff726d7c));
         EditText v = new EditText(this); v.setSingleLine(true); v.setText(value); v.setTextSize(16); v.setInputType(type); v.setPadding(dp(12),dp(12),dp(12),dp(12));
         GradientDrawable shape = new GradientDrawable();shape.setColor(Color.WHITE);shape.setCornerRadius(dp(12));shape.setStroke(dp(1),0xffded6e8);v.setBackground(shape);
-        v.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);box.addView(v,new LinearLayout.LayoutParams(-1,dp(52)));return v;
+        v.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);box.addView(v,new LinearLayout.LayoutParams(-1,dp(52)));
+        if((type&InputType.TYPE_MASK_VARIATION)==InputType.TYPE_TEXT_VARIATION_PASSWORD){
+            CheckBox show=new CheckBox(this);show.setText("Показать пароль");show.setOnCheckedChangeListener((button,checked)->{int position=v.getSelectionStart();v.setTransformationMethod(checked?null:android.text.method.PasswordTransformationMethod.getInstance());v.setSelection(Math.max(0,position));});box.addView(show);
+        }
+        return v;
     }
     private void showLogin() {
         if (isFinishing() || closing) return;
@@ -67,7 +71,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xfffaf8fe);
         LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(28),dp(24),dp(24));scroll.addView(box);setContentView(scroll);
         TextView heading=text("Рабочая почта",29,0xff29262e);heading.setTypeface(null,Typeface.BOLD);box.addView(heading);
-        box.addView(text("Тестовая версия 0.13 · реальный ящик",14,0xff8051b1));
+        box.addView(text("Тестовая версия 0.14 · реальный ящик",14,0xff8051b1));
         box.addView(text("Данные аккаунтов сохраняются на телефоне в зашифрованном виде. Можно переключать ящики без повторного ввода пароля. «Выйти» закрывает ящик, сохраняя его данные; удалить их можно в списке аккаунтов.",15,0xff726d7c));
         box.addView(text("Почтовый сервис",14,0xff726d7c));
         Spinner provider=new Spinner(this);provider.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"СПбГУ","Mail.ru","Другая почта"}));box.addView(provider);
@@ -180,11 +184,35 @@ public final class MainActivity extends Activity {
     }
     private void connectSaved(SavedAccounts.Login login){
         showReconnect("Подключение к "+login.user+"…",true);
+        ++calendarSerial;
+        if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}
         worker.execute(()->{
+            if(reader!=null)reader.close();reader=null;sessionLogin=null;local=null;account="";
             MailReader next=new MailReader();
             try{next.connect(login.host,login.port,login.user,login.password);if(closing){next.close();return;}vault.save(login);attachLogin(next,login);runOnUiThread(this::showMail);}
             catch(Exception error){next.close();runOnUiThread(()->showAccounts());runOnUiThread(()->Toast.makeText(this,error instanceof AuthenticationFailedException?"Сервер отклонил вход. Добавьте этот ящик заново с новым паролем.":"Не удалось подключиться. Проверьте сеть/VPN и повторите выбор аккаунта.",Toast.LENGTH_LONG).show());}
         });
+    }
+    private void quickAccounts(){
+        if(closing||sessionLogin==null)return;
+        final SavedAccounts.Login owner=sessionLogin;
+        worker.execute(()->{try{
+            java.util.ArrayList<SavedAccounts.Login> saved=vault.list();
+            runOnUiThread(()->{if(closing||sessionLogin==null||!sessionLogin.identity().equals(owner.identity()))return;
+                String[] labels=new String[saved.size()+2];for(int i=0;i<saved.size();i++)labels[i]=(saved.get(i).identity().equals(owner.identity())?"✓ ":"")+saved.get(i).user+"\n"+saved.get(i).host;
+                labels[saved.size()]="Добавить аккаунт · Mail.ru / СПбГУ";labels[saved.size()+1]="Управление аккаунтами";
+                new android.app.AlertDialog.Builder(this).setTitle("Сменить ящик").setItems(labels,(dialog,index)->{
+                    if(index<saved.size()){SavedAccounts.Login target=saved.get(index);if(!target.identity().equals(owner.identity()))connectSaved(target);}
+                    else if(index==saved.size())leaveForNewAccount();else leaveAccount();
+                }).setNegativeButton("Отмена",null).show();
+            });
+        }catch(Exception error){runOnUiThread(()->Toast.makeText(this,"Не удалось открыть аккаунты.",Toast.LENGTH_LONG).show());}});
+    }
+    private void leaveForNewAccount(){
+        ++calendarSerial;
+        worker.execute(()->{try{vault.deactivate();if(reader!=null)reader.close();reader=null;sessionLogin=null;local=null;account="";NoticeCenter.schedule(this);
+            runOnUiThread(()->{if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}showLogin();});
+        }catch(Exception error){runOnUiThread(()->Toast.makeText(this,"Не удалось открыть добавление аккаунта.",Toast.LENGTH_LONG).show());}});
     }
     private interface ReadOperation {JSONObject run() throws Exception;}
     private JSONObject readWithReconnect(ReadOperation operation) throws Exception {
@@ -400,7 +428,7 @@ public final class MainActivity extends Activity {
         }
         @JavascriptInterface public void logout(){leaveAccount();}
         @JavascriptInterface public void removeUpload(String token){worker.execute(()->{try{if(sessionLogin!=null)MailSender.file(uploads(sessionLogin),token).delete();}catch(Exception ignored){}});}
-        @JavascriptInterface public void switchAccount(){leaveAccount();}
+        @JavascriptInterface public void switchAccount(){runOnUiThread(()->quickAccounts());}
     }
     @Override public void onBackPressed(){if(web!=null){web.evaluateJavascript("window.appBack&&window.appBack()",null);}else if(loginScreen&&hasSavedAccounts){showAccounts();}else super.onBackPressed();}
     @Override protected void onDestroy(){closing=true;calendarWorker.shutdownNow();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();super.onDestroy();}

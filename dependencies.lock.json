@@ -34,5 +34,17 @@
   "kotlin-stdlib-jdk8-1.9.10.jar": {
     "path": "org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.9.10/kotlin-stdlib-jdk8-1.9.10.jar",
     "sha256": "a4c74d94d64ce1abe53760fe0389dd941f6fc558d0dab35e47c085a11ec80f28"
+  },
+  "rfc5545-datetime-0.3.jar": {
+    "path": "org/dmfs/rfc5545-datetime/0.3/rfc5545-datetime-0.3.jar",
+    "sha256": "e56018f200b51eb900679e2ccb175a698f4a83686c99617ccd84065d415dd3db"
+  },
+  "jems2-2.23.1.jar": {
+    "path": "org/dmfs/jems2/2.23.1/jems2-2.23.1.jar",
+    "sha256": "9dc0a13964e80f1429e0f698542e2717d0795130ccfbbf33edae4a6a3050cbc9"
+  },
+  "lib-recur-0.17.1.jar": {
+    "path": "org/dmfs/lib-recur/0.17.1/lib-recur-0.17.1.jar",
+    "sha256": "358a34cdbe565db1c9dabf51049a2b46c4dc082fde968d8ae951d90e001ed231"
   }
 }
