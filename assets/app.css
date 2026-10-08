@@ -101,7 +101,7 @@
 #mail-v2 .home-bar{background:var(--line);opacity:1;}
 @media(max-width:360px){#mail-v2 .mail-row{padding:17px 14px;gap:10px;}#mail-v2 .avatar{flex-basis:39px;width:39px;height:39px;border-radius:12px;font-size:18px;}#mail-v2 .detail{padding:17px 16px;}#mail-v2 .sender-name{font-size:13px;}#mail-v2 .row-title{font-size:15px;}}
 #mail-v2 .folder-list{width:270px;padding:10px 6px;border-radius:17px;}
-#mail-v2 .mobile:has(.folder-menu[open]) main{min-height:700px;}
+
 #mail-v2 .folder-list button{display:flex;align-items:center;gap:13px;border-radius:10px;font-size:15px;min-height:47px;}
 #mail-v2 .folder-list button[aria-current="page"]{background:var(--tint);color:var(--brand);}
 #mail-v2 .folder-list hr{border:0;border-top:1px solid var(--line);margin:8px;}
@@ -194,3 +194,23 @@ body { margin:0; background:#fff; font-family:system-ui,sans-serif; }
 #mail-v2 .folder-picker { display:flex; align-items:center; gap:12px; padding:12px 20px; border-bottom:1px solid var(--line); }
 #mail-v2 .folder-picker select { flex:1; min-width:0; min-height:44px; padding:8px 12px; border:1px solid var(--line); border-radius:12px; background:#fff; color:var(--ink); font:inherit; }
 #mail-v2 .folder-picker .inline-hint { font-size:13px; white-space:nowrap; color:#746b7d; }
+/* Keep the application within the viewport; wrap content rather than widening flex rows. */
+html,body { width:100%; max-width:100%; overflow-x:clip; overscroll-behavior-x:none; }
+#mail-v2,#mail-v2 .mobile { width:100%; max-width:100%; min-width:0; }
+#mail-v2 .mobile { overflow-wrap:anywhere; }
+#mail-v2 main,#mail-v2 .page,#mail-v2 .detail { min-width:0; max-width:100%; }
+#mail-v2 .row-meta { align-items:flex-start; }
+#mail-v2 .sender-name { min-width:0; overflow-wrap:anywhere; }
+#mail-v2 .row-meta .sender-name { flex:1; }
+#mail-v2 .row-meta > span:last-child { flex-shrink:0; white-space:nowrap; }
+#mail-v2 .row-title,#mail-v2 .row-summary,#mail-v2 .detail h3 { overflow-wrap:anywhere; }
+#mail-v2 .titlebar h2 { flex:1; }
+#mail-v2 .folder-menu,#mail-v2 .header-actions { flex-shrink:0; }
+#mail-v2 .folder-list { width:min(270px,calc(100vw - 40px)); max-height:calc(100dvh - 150px); overflow-y:auto; overscroll-behavior:contain; }
+#mail-v2 .folder-list button { overflow-wrap:anywhere; }
+#mail-v2 .file-chip { min-width:0; max-width:100%; }
+#mail-v2 .file-chip > span { min-width:0; flex:1; overflow-wrap:anywhere; }
+#mail-v2 svg { flex-shrink:0; }
+#mail-v2 .settings-row > span { min-width:0; }
+#mail-v2 [hidden] { display:none !important; }
+@supports not (overflow:clip) { html { overflow-x:hidden; } }
