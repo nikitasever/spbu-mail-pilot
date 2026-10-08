@@ -416,6 +416,7 @@ public final class MainActivity extends Activity {
         });
     }
     private static final class JSONObjectSafe extends JSONObject { JSONObjectSafe putValue(String key,String value){try{put(key,value);}catch(Exception ignored){}return this;} }
+    private boolean aiEnabled(){SharedPreferences state=local;return state!=null&&AiPolicy.enabled(state.getString("state","{}"));}
     public final class Bridge {
         @JavascriptInterface public void shareMailText(String text,String request){
             if(text==null||text.trim().isEmpty()||text.length()>140000){failure(request,"Текст пустой или слишком большой.");return;}
@@ -430,6 +431,7 @@ public final class MainActivity extends Activity {
             }catch(Exception error){if(sessionLogin==owner)readFailure(request,error,"Не удалось скачать вложение для передачи.");}});
         }
         @JavascriptInterface public void shareAi(String text,boolean copy,String request){
+            if(!aiEnabled()){failure(request,"Нейроанализ отключён в настройках этого ящика.");return;}
             if(text==null||text.trim().isEmpty()||text.length()>120000){failure(request,"Текст для ИИ пустой или слишком большой.");return;}
             SavedAccounts.Login owner=sessionLogin;if(owner==null)return;
             runOnUiThread(()->{if(sessionLogin!=owner||closing)return;try{
@@ -461,7 +463,7 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public boolean systemDark(){return (getResources().getConfiguration().uiMode&android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;}
         @JavascriptInterface public String account(){return account;}
         @JavascriptInterface public String loadState(){return local==null?"{}":local.getString("state","{}");}
-        @JavascriptInterface public boolean saveState(String json){SharedPreferences destination=local;if(destination==null||json==null||json.length()>2000000)return false;try{JSONObject next=new JSONObject(json),previous=new JSONObject(destination.getString("state","{}"));boolean reminders=!java.util.Objects.equals(String.valueOf(previous.opt("tasks")),String.valueOf(next.opt("tasks")))||!java.util.Objects.equals(String.valueOf(previous.opt("settings")),String.valueOf(next.opt("settings")));if(!destination.edit().putString("state",json).commit())return false;JSONObject style=next.optJSONObject("settings");appearanceMode=AppearancePolicy.mode(style==null?"system":style.optString("theme","system"));if(reminders)worker.execute(()->{try{NoticeCenter.schedule(MainActivity.this);}catch(Exception ignored){}});return true;}catch(Exception ignored){return false;}}
+        @JavascriptInterface public boolean saveState(String json){SharedPreferences destination=local;if(destination==null||json==null||json.length()>2000000)return false;try{JSONObject next=new JSONObject(json),previous=new JSONObject(destination.getString("state","{}"));boolean reminders=!java.util.Objects.equals(String.valueOf(previous.opt("tasks")),String.valueOf(next.opt("tasks")))||!java.util.Objects.equals(String.valueOf(previous.opt("settings")),String.valueOf(next.opt("settings")));if(!destination.edit().putString("state",json).commit())return false;if(!AiPolicy.enabled(json)){++digestSerial;gemini.cancel();}JSONObject style=next.optJSONObject("settings");appearanceMode=AppearancePolicy.mode(style==null?"system":style.optString("theme","system"));if(reminders)worker.execute(()->{try{NoticeCenter.schedule(MainActivity.this);}catch(Exception ignored){}});return true;}catch(Exception ignored){return false;}}
         @JavascriptInterface public boolean notificationsAllowed(){return NoticeCenter.allowed(MainActivity.this);}
         @JavascriptInterface public boolean openTasksRequested(){return getIntent().getBooleanExtra("openTasks",false);}
         @JavascriptInterface public void smtpSettings(){runOnUiThread(()->MainActivity.this.smtpSettings());}
@@ -527,7 +529,7 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public boolean geminiReady(){return new AiVault(MainActivity.this).configured();}
         @JavascriptInterface public void cancelDigest(){++digestSerial;gemini.cancel();}
         @JavascriptInterface public void digestBodies(String folder,String json,String request){digestBatch(folder,json,request,false);}
-        @JavascriptInterface public void smartDigest(String folder,String json,String request){digestBatch(folder,json,request,true);}
+        @JavascriptInterface public void smartDigest(String folder,String json,String request){if(!aiEnabled()){failure(request,"Нейроанализ отключён в настройках этого ящика.");return;}digestBatch(folder,json,request,true);}
         private void digestBatch(String folder,String json,String request,boolean smart){
             final org.json.JSONArray refs;
             try{if(folder==null||folder.length()>2048||folder.contains("\r")||folder.contains("\n"))throw new IllegalArgumentException();refs=DigestBatch.references(json);}catch(Exception invalid){failure(request,"Выберите от 1 до 20 писем.");return;}
@@ -541,7 +543,7 @@ public final class MainActivity extends Activity {
                     catch(AuthenticationFailedException rejected){runOnUiThread(()->{if(sessionLogin==owner&&generation==digestSerial)readFailure(request,rejected,"");});return;}
                     catch(Exception unavailable){failed++;}
                 }
-                if(generation==digestSerial&&sessionLogin==owner)try{JSONObject result=new JSONObject().put("items",items).put("failed",failed);if(smart){if(items.length()==0)throw new java.io.IOException("Не удалось загрузить тексты писем. Повторите попытку.");result.put("analysis",gemini.analyze(new AiVault(MainActivity.this).load(),items,owner.user,()->generation==digestSerial&&sessionLogin==owner&&!closing));}runOnUiThread(()->{if(generation==digestSerial&&sessionLogin==owner&&!closing&&web!=null)reply(request,result);});}catch(Exception error){String message=error instanceof java.io.IOException&&error.getMessage()!=null&&error.getMessage().matches("(?:Gemini|Доступ|Лимит|Модель|Добавьте|Не удалось загрузить|Некоррект|Сводка|Неизвестный|Слишком).*" )?error.getMessage():"Не удалось получить сводку Gemini. Проверьте сеть и ключ в настройках.";runOnUiThread(()->{if(generation==digestSerial&&sessionLogin==owner&&!closing)failure(request,message);});}
+                if(generation==digestSerial&&sessionLogin==owner)try{JSONObject result=new JSONObject().put("items",items).put("failed",failed);if(smart){if(!aiEnabled())return;if(items.length()==0)throw new java.io.IOException("Не удалось загрузить тексты писем. Повторите попытку.");result.put("analysis",gemini.analyze(new AiVault(MainActivity.this).load(),items,owner.user,()->generation==digestSerial&&sessionLogin==owner&&!closing&&aiEnabled()));}runOnUiThread(()->{if(generation==digestSerial&&sessionLogin==owner&&!closing&&web!=null)reply(request,result);});}catch(Exception error){String message=error instanceof java.io.IOException&&error.getMessage()!=null&&error.getMessage().matches("(?:Gemini|Доступ|Лимит|Модель|Добавьте|Не удалось загрузить|Некоррект|Сводка|Неизвестный|Слишком).*" )?error.getMessage():"Не удалось получить сводку Gemini. Проверьте сеть и ключ в настройках.";runOnUiThread(()->{if(generation==digestSerial&&sessionLogin==owner&&!closing)failure(request,message);});}
             });
         }
         @JavascriptInterface public void watchFolder(String folder){if(folder==null||folder.length()>2048||folder.contains("\r")||folder.contains("\n"))return;runOnUiThread(()->{watchFolder=folder;startWatch();});}
