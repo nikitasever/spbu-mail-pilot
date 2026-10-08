@@ -72,7 +72,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xfffaf8fe);
         LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(28),dp(24),dp(24));scroll.addView(box);setContentView(scroll);
         TextView heading=text("Рабочая почта",29,0xff29262e);heading.setTypeface(null,Typeface.BOLD);box.addView(heading);
-        box.addView(text("Тестовая версия 0.17 · реальный ящик",14,0xff8051b1));
+        box.addView(text("Тестовая версия 0.18 · реальный ящик",14,0xff8051b1));
         box.addView(text("Данные аккаунтов сохраняются на телефоне в зашифрованном виде. Можно переключать ящики без повторного ввода пароля. «Выйти» закрывает ящик, сохраняя его данные; удалить их можно в списке аккаунтов.",15,0xff726d7c));
         box.addView(text("Почтовый сервис",14,0xff726d7c));
         Spinner provider=new Spinner(this);provider.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"СПбГУ","Mail.ru","Другая почта"}));box.addView(provider);
@@ -387,11 +387,35 @@ public final class MainActivity extends Activity {
     }
     private static final class JSONObjectSafe extends JSONObject { JSONObjectSafe putValue(String key,String value){try{put(key,value);}catch(Exception ignored){}return this;} }
     public final class Bridge {
+        @JavascriptInterface public void shareAi(String text,boolean copy,String request){
+            if(text==null||text.trim().isEmpty()||text.length()>120000){failure(request,"Текст для ИИ пустой или слишком большой.");return;}
+            SavedAccounts.Login owner=sessionLogin;if(owner==null)return;
+            runOnUiThread(()->{if(sessionLogin!=owner||closing)return;try{
+                if(copy){android.content.ClipboardManager clipboard=(android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Текст для ИИ",text));reply(request,new JSONObject().put("copied",true));}
+                else{android.content.Intent share=new android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT,text);startActivity(android.content.Intent.createChooser(share,"Передать текст в приложение ИИ"));reply(request,new JSONObject().put("shared",true));}
+            }catch(Exception error){failure(request,"Не удалось передать текст. Попробуйте скопировать его.");}});
+        }
+        @JavascriptInterface public void quickDownload(String name,String uid,String validity,String path,String request){
+            if(android.os.Build.VERSION.SDK_INT<29){saveDocument(name,uid,validity,path,false,request);return;}
+            if(name==null||name.length()>2048||name.contains("\r")||name.contains("\n")||uid==null||validity==null||!uid.matches("[0-9]{1,20}")||!validity.matches("[0-9]{1,20}")||path==null||path.length()>160){failure(request,"Некорректные параметры файла.");return;}
+            SavedAccounts.Login owner=sessionLogin;if(owner==null)return;
+            worker.execute(()->{Uri target=null;try{
+                if(sessionLogin!=owner||closing)return;
+                JSONObject downloaded=readWithReconnect(()->reader.attachment(name,uid,validity,path,new java.io.File(getCacheDir(),"attachments")));
+                if(sessionLogin!=owner||closing)return;
+                android.content.ContentValues values=new android.content.ContentValues();values.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME,downloaded.getString("name"));values.put(android.provider.MediaStore.MediaColumns.MIME_TYPE,downloaded.getString("mime"));values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH,android.os.Environment.DIRECTORY_DOWNLOADS+"/Рабочая почта");values.put(android.provider.MediaStore.MediaColumns.IS_PENDING,1);
+                target=getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,values);if(target==null)throw new java.io.IOException("Cannot create download");
+                try(java.io.InputStream input=new java.io.FileInputStream(downloaded.getString("file"));java.io.OutputStream output=getContentResolver().openOutputStream(target,"w")){if(output==null)throw new java.io.IOException("Cannot open download");byte[] buffer=new byte[65536];int n;while((n=input.read(buffer))!=-1){if(sessionLogin!=owner||closing)throw new java.io.IOException("Session changed");output.write(buffer,0,n);}}
+                values.clear();values.put(android.provider.MediaStore.MediaColumns.IS_PENDING,0);if(getContentResolver().update(target,values,null,null)!=1)throw new java.io.IOException("Cannot finish download");target=null;
+                calendarReply(owner,request,new JSONObject().put("saved",true).put("downloads",true));
+            }catch(Exception error){if(target!=null)try{getContentResolver().delete(target,null,null);}catch(Exception ignored){}calendarReply(owner,request,new JSONObjectSafe().putValue("error","Не удалось сохранить файл в Загрузки. Проверьте сеть, свободное место и размер файла (до 100 МБ)."));}});
+        }
         @JavascriptInterface public void calendarSetup(String month,String request){runOnUiThread(()->MainActivity.this.calendarSetup(month,request));}
         @JavascriptInterface public void calendars(String month,boolean refresh,String request){SavedAccounts.Login owner=sessionLogin;if(owner==null){failure(request,"Войдите в аккаунт.");return;}long generation=++calendarSerial;calendarWorker.execute(()->{try{if(generation!=calendarSerial){calendarReply(owner,request,new JSONObject().put("cancelled",true));return;}JSONObject result=new CalendarBook(MainActivity.this,owner).list(month,refresh,()->generation==calendarSerial&&!closing&&sessionLogin!=null&&sessionLogin.identity().equals(owner.identity()));calendarReply(owner,request,result);}catch(Exception error){runOnUiThread(()->{if(!closing&&sessionLogin!=null&&sessionLogin.identity().equals(owner.identity()))failure(request,"Не удалось загрузить календарь. Проверьте подключение.");});}});}
         @JavascriptInterface public void removeCalendar(String id,String request){SavedAccounts.Login owner=sessionLogin;if(owner==null||id==null||!id.matches("[a-f0-9-]{36}")){failure(request,"Некорректный календарь.");return;}calendarWorker.execute(()->{try{new CalendarBook(MainActivity.this,owner).remove(id);calendarReply(owner,request,new JSONObject().put("removed",true));}catch(Exception error){failure(request,"Не удалось удалить подключение календаря.");}});}
 
         @JavascriptInterface public void checkUpdate(){runOnUiThread(()->AppUpdater.check(MainActivity.this));}
+        @JavascriptInterface public boolean systemDark(){return (getResources().getConfiguration().uiMode&android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;}
         @JavascriptInterface public String account(){return account;}
         @JavascriptInterface public String loadState(){return local==null?"{}":local.getString("state","{}");}
         @JavascriptInterface public boolean saveState(String json){SharedPreferences destination=local;if(destination==null||json==null||json.length()>2000000)return false;try{JSONObject next=new JSONObject(json),previous=new JSONObject(destination.getString("state","{}"));boolean reminders=!java.util.Objects.equals(String.valueOf(previous.opt("tasks")),String.valueOf(next.opt("tasks")))||!java.util.Objects.equals(String.valueOf(previous.opt("settings")),String.valueOf(next.opt("settings")));if(!destination.edit().putString("state",json).commit())return false;if(reminders)worker.execute(()->{try{NoticeCenter.schedule(MainActivity.this);}catch(Exception ignored){}});return true;}catch(Exception ignored){return false;}}
@@ -456,6 +480,7 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void removeUpload(String token){worker.execute(()->{try{if(sessionLogin!=null)MailSender.file(uploads(sessionLogin),token).delete();}catch(Exception ignored){}});}
         @JavascriptInterface public void switchAccount(){runOnUiThread(()->quickAccounts());}
     }
+    @Override protected void onResume(){super.onResume();if(web!=null)web.evaluateJavascript("window.systemThemeChanged&&window.systemThemeChanged()",null);}
     @Override public void onBackPressed(){if(web!=null){web.evaluateJavascript("window.appBack&&window.appBack()",null);}else if(loginScreen&&hasSavedAccounts){showAccounts();}else super.onBackPressed();}
     @Override protected void onDestroy(){closing=true;calendarWorker.shutdownNow();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();super.onDestroy();}
 }
