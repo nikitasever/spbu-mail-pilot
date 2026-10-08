@@ -23,9 +23,10 @@ import javax.mail.MessagingException;
 
 public final class MainActivity extends Activity {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private final ExecutorService calendarWorker=Executors.newSingleThreadExecutor();
     private MailReader reader;
     private CredentialVault vault;
-    private SavedAccounts.Login sessionLogin;
+    private volatile SavedAccounts.Login sessionLogin;
     private WebView web;
     private SharedPreferences local;
     private String account = "";
@@ -34,6 +35,7 @@ public final class MainActivity extends Activity {
     private boolean hasSavedAccounts;
     private boolean loginScreen;
     private boolean pendingTestNotice;
+    private volatile long calendarSerial;
     private final java.util.concurrent.atomic.AtomicBoolean sending=new java.util.concurrent.atomic.AtomicBoolean();
     private String attachmentPickRequest,attachmentPickOwner;
     private static final int PURPLE = 0xff8051b1;
@@ -65,7 +67,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xfffaf8fe);
         LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(28),dp(24),dp(24));scroll.addView(box);setContentView(scroll);
         TextView heading=text("Почта СПбГУ",29,0xff29262e);heading.setTypeface(null,Typeface.BOLD);box.addView(heading);
-        box.addView(text("Тестовая версия 0.9.1 · реальный ящик",14,0xff8051b1));
+        box.addView(text("Тестовая версия 0.10 · реальный ящик",14,0xff8051b1));
         box.addView(text("Данные аккаунтов сохраняются на телефоне в зашифрованном виде. Можно переключать ящики без повторного ввода пароля. «Выйти» закрывает ящик, сохраняя его данные; удалить их можно в списке аккаунтов.",15,0xff726d7c));
         EditText user=input(box,"Логин или полный адрес почты","",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
         EditText password=input(box,"Пароль","",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
@@ -128,6 +130,7 @@ public final class MainActivity extends Activity {
         setContentView(box);
     }
     private void leaveAccount() {
+        ++calendarSerial;
         worker.execute(()->{
             try{vault.deactivate();}catch(Exception storage){runOnUiThread(()->Toast.makeText(this,"Не удалось сохранить выход. Повторите попытку.",Toast.LENGTH_LONG).show());return;}
             if(reader!=null)reader.close();reader=null;sessionLogin=null;account="";local=null;
@@ -156,7 +159,7 @@ public final class MainActivity extends Activity {
                     box.addView(text("Ваши аккаунты",29,0xff29262e));box.addView(text("Выберите ящик. Пароли сохранены в зашифрованном виде. Задачи и заметки у каждого аккаунта свои.",15,0xff726d7c));
                     for(SavedAccounts.Login login:saved){
                         Button choose=new Button(this);choose.setAllCaps(false);choose.setText(login.user+"\n"+login.host+":"+login.port);choose.setOnClickListener(v->connectSaved(login));box.addView(choose,new LinearLayout.LayoutParams(-1,dp(76)));
-                        Button remove=new Button(this);remove.setText("Удалить сохранённый аккаунт");remove.setOnClickListener(v->new android.app.AlertDialog.Builder(this).setMessage("Удалить сохранённый вход для "+login.user+"? Задачи и заметки останутся.").setPositiveButton("Удалить",(dialog,which)->worker.execute(()->{try{vault.remove(login);runOnUiThread(this::showAccounts);}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"Не удалось удалить аккаунт.",Toast.LENGTH_LONG).show());}})).setNegativeButton("Отмена",null).show());box.addView(remove);
+                        Button remove=new Button(this);remove.setText("Удалить сохранённый аккаунт");remove.setOnClickListener(v->new android.app.AlertDialog.Builder(this).setMessage("Удалить сохранённый вход для "+login.user+"? Подключения календарей будут удалены с телефона; события сервера, задачи и заметки останутся.").setPositiveButton("Удалить",(dialog,which)->worker.execute(()->{try{new CalendarBook(this,login).clear();vault.remove(login);runOnUiThread(this::showAccounts);}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"Не удалось удалить аккаунт.",Toast.LENGTH_LONG).show());}})).setNegativeButton("Отмена",null).show());box.addView(remove);
                     }
                     Button add=new Button(this);add.setText("Добавить другой аккаунт");add.setOnClickListener(v->showLogin());box.addView(add,new LinearLayout.LayoutParams(-1,dp(56)));setContentView(scroll);
                 });
@@ -263,8 +266,37 @@ public final class MainActivity extends Activity {
             reply(request,new JSONObject().put("opened",true));
         }catch(Exception error){failure(request,"Не удалось открыть скачанный документ. Повторите попытку.");}
     }
+    private void calendarReply(SavedAccounts.Login owner,String request,JSONObject result){runOnUiThread(()->{if(!closing&&sessionLogin!=null&&sessionLogin.identity().equals(owner.identity()))reply(request,result);});}
+    private void calendarSetup(String month,String request) {
+        SavedAccounts.Login owner=sessionLogin;if(owner==null){failure(request,"Войдите в почтовый аккаунт.");return;}
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        ScrollView scroll=new ScrollView(this);LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(20),dp(12),dp(20),dp(12));scroll.addView(box);
+        box.addView(text("Для Mail.ru откройте меню нужного календаря → синхронизация CalDAV и скопируйте ссылку. Используйте пароль внешнего приложения. Для рабочего сервера нужны его CalDAV-ссылка и данные входа.",14,0xff726d7c));
+        EditText title=input(box,"Название календаря","Рабочий календарь",InputType.TYPE_CLASS_TEXT);
+        EditText url=input(box,"Полная HTTPS-ссылка CalDAV","",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
+        EditText user=input(box,"Логин календаря (полный адрес)",owner.user,InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        EditText password=input(box,"Пароль календаря / внешнего приложения","",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        box.addView(text("Подключение привязано к этому почтовому аккаунту. Пароль сохраняется зашифрованно. События сервера доступны для просмотра; локальные записи не отправляются в рабочий календарь.",13,0xff726d7c));
+        TextView status=text("",14,0xff9b422b);box.addView(status);
+        android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(this).setTitle("Подключить календарь").setView(scroll).setNegativeButton("Отмена",null).setPositiveButton("Подключить",null).create();
+        final boolean[] submitted={false};dialog.setOnDismissListener(d->{password.getText().clear();if(!loginScreen)getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);if(!submitted[0])try{reply(request,new JSONObject().put("cancelled",true));}catch(Exception ignored){}});dialog.show();
+        dialog.getButton(-1).setOnClickListener(v->{
+            final String label=title.getText().toString().trim(),address=url.getText().toString().trim(),login=user.getText().toString().trim(),secret=password.getText().toString();
+            try{CalDav.address(address);CalDav.query(month);if(label.isEmpty()||label.length()>120||login.isEmpty()||secret.isEmpty())throw new IllegalArgumentException();}catch(Exception error){status.setText("Укажите название, HTTPS-ссылку, логин и пароль календаря.");return;}
+            if(sessionLogin==null||!sessionLogin.identity().equals(owner.identity())){dialog.dismiss();return;}
+            submitted[0]=true;dialog.setCancelable(false);dialog.getButton(-1).setEnabled(false);dialog.getButton(-2).setEnabled(false);status.setText("Подключение и загрузка событий…");
+            calendarWorker.execute(()->{try{
+                CalendarBook book=new CalendarBook(MainActivity.this,owner);book.add(label,address,login,secret,month);
+                runOnUiThread(()->{dialog.dismiss();if(sessionLogin!=null&&sessionLogin.identity().equals(owner.identity()))try{reply(request,new JSONObject().put("added",true));}catch(Exception ignored){}});
+            }catch(Exception error){runOnUiThread(()->{dialog.dismiss();if(sessionLogin!=null&&sessionLogin.identity().equals(owner.identity()))failure(request,error instanceof CalDav.Failure?error.getMessage():"Не удалось подключить календарь. Проверьте CalDAV-ссылку, пароль внешнего приложения и доступ к серверу.");});}});
+        });
+    }
     private static final class JSONObjectSafe extends JSONObject { JSONObjectSafe putValue(String key,String value){try{put(key,value);}catch(Exception ignored){}return this;} }
     public final class Bridge {
+        @JavascriptInterface public void calendarSetup(String month,String request){runOnUiThread(()->MainActivity.this.calendarSetup(month,request));}
+        @JavascriptInterface public void calendars(String month,boolean refresh,String request){SavedAccounts.Login owner=sessionLogin;if(owner==null){failure(request,"Войдите в аккаунт.");return;}long generation=++calendarSerial;calendarWorker.execute(()->{try{if(generation!=calendarSerial){calendarReply(owner,request,new JSONObject().put("cancelled",true));return;}JSONObject result=new CalendarBook(MainActivity.this,owner).list(month,refresh,()->generation==calendarSerial&&!closing&&sessionLogin!=null&&sessionLogin.identity().equals(owner.identity()));calendarReply(owner,request,result);}catch(Exception error){runOnUiThread(()->{if(!closing&&sessionLogin!=null&&sessionLogin.identity().equals(owner.identity()))failure(request,"Не удалось загрузить календарь. Проверьте подключение.");});}});}
+        @JavascriptInterface public void removeCalendar(String id,String request){SavedAccounts.Login owner=sessionLogin;if(owner==null||id==null||!id.matches("[a-f0-9-]{36}")){failure(request,"Некорректный календарь.");return;}calendarWorker.execute(()->{try{new CalendarBook(MainActivity.this,owner).remove(id);calendarReply(owner,request,new JSONObject().put("removed",true));}catch(Exception error){failure(request,"Не удалось удалить подключение календаря.");}});}
+
         @JavascriptInterface public void checkUpdate(){runOnUiThread(()->AppUpdater.check(MainActivity.this));}
         @JavascriptInterface public String account(){return account;}
         @JavascriptInterface public String loadState(){return local==null?"{}":local.getString("state","{}");}
@@ -319,5 +351,5 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void switchAccount(){leaveAccount();}
     }
     @Override public void onBackPressed(){if(web!=null){web.evaluateJavascript("window.appBack&&window.appBack()",null);}else if(loginScreen&&hasSavedAccounts){showAccounts();}else super.onBackPressed();}
-    @Override protected void onDestroy(){closing=true;if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){closing=true;calendarWorker.shutdownNow();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();super.onDestroy();}
 }

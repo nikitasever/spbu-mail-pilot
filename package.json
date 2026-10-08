@@ -1,1 +1,10 @@
-{"name":"spbu-mail-pilot-tests","private":true,"scripts":{"test":"node test-ui.cjs && node test-pagination.cjs && node test-actions.cjs"},"devDependencies":{"linkedom":"0.18.12"}}
+{
+  "name": "spbu-mail-pilot-tests",
+  "private": true,
+  "scripts": {
+    "test": "node test-ui.cjs && node test-pagination.cjs && node test-actions.cjs && node test-calendar.cjs"
+  },
+  "devDependencies": {
+    "linkedom": "0.18.12"
+  }
+}
