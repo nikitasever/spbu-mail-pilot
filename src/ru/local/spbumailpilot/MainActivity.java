@@ -67,7 +67,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xfffaf8fe);
         LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(28),dp(24),dp(24));scroll.addView(box);setContentView(scroll);
         TextView heading=text("Рабочая почта",29,0xff29262e);heading.setTypeface(null,Typeface.BOLD);box.addView(heading);
-        box.addView(text("Тестовая версия 0.11 · реальный ящик",14,0xff8051b1));
+        box.addView(text("Тестовая версия 0.12 · реальный ящик",14,0xff8051b1));
         box.addView(text("Данные аккаунтов сохраняются на телефоне в зашифрованном виде. Можно переключать ящики без повторного ввода пароля. «Выйти» закрывает ящик, сохраняя его данные; удалить их можно в списке аккаунтов.",15,0xff726d7c));
         box.addView(text("Почтовый сервис",14,0xff726d7c));
         Spinner provider=new Spinner(this);provider.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"СПбГУ","Mail.ru","Другая почта"}));box.addView(provider);
@@ -289,24 +289,57 @@ public final class MainActivity extends Activity {
         SavedAccounts.Login owner=sessionLogin;if(owner==null){failure(request,"Войдите в почтовый аккаунт.");return;}
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         ScrollView scroll=new ScrollView(this);LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(20),dp(12),dp(20),dp(12));scroll.addView(box);
-        box.addView(text("Mail.ru: откройте calendar.mail.ru на компьютере. В списке слева наведите курсор на название календаря → ⋯ → пролистайте окно вниз до «Синхронизация через CalDAV» → скопируйте ссылку. На телефоне попробуйте режим браузера «Версия для ПК». Ссылка на страницу /month/today/ не подходит. Создайте пароль внешнего приложения с доступом к Календарю. Для другого сервера используйте его CalDAV-ссылку.",14,0xff726d7c));
-        EditText title=input(box,"Название календаря","Рабочий календарь",InputType.TYPE_CLASS_TEXT);
-        EditText url=input(box,"Полная HTTPS-ссылка CalDAV","",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
+        box.addView(text("Mail.ru: введите полный адрес ящика и пароль внешнего приложения с доступом к Календарю. Приложение найдёт доступные календари. Общие календари появятся, только если сервер предоставляет к ним доступ через CalDAV.",14,0xff726d7c));
+        Spinner mode=new Spinner(this);mode.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Mail.ru — найти календари","Другой сервер — найти календари","Полная CalDAV-ссылка вручную"}));box.addView(mode);
+        EditText title=input(box,"Название календаря (при ручном подключении)","Рабочий календарь",InputType.TYPE_CLASS_TEXT);
+        EditText url=input(box,"Сервер CalDAV или полная ссылка","calendar.mail.ru",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
+        mode.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+            public void onNothingSelected(android.widget.AdapterView<?> parent){}
+            public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){
+                url.setText(position==0?"calendar.mail.ru":"");url.setEnabled(position!=0);
+                title.setVisibility(position==2?View.VISIBLE:View.GONE);box.getChildAt(box.indexOfChild(title)-1).setVisibility(position==2?View.VISIBLE:View.GONE);
+            }
+        });
         EditText user=input(box,"Логин календаря (полный адрес)",owner.user,InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
         EditText password=input(box,"Пароль календаря / внешнего приложения","",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
         box.addView(text("Подключение привязано к этому почтовому аккаунту. Пароль сохраняется зашифрованно. События сервера доступны для просмотра; локальные записи не отправляются в рабочий календарь.",13,0xff726d7c));
         TextView status=text("",14,0xff9b422b);box.addView(status);
-        android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(this).setTitle("Подключить календарь").setView(scroll).setNegativeButton("Отмена",null).setPositiveButton("Подключить",null).create();
+        android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(this).setTitle("Подключить календарь").setView(scroll).setNegativeButton("Отмена",null).setPositiveButton("Продолжить",null).create();
         final boolean[] submitted={false};dialog.setOnDismissListener(d->{password.getText().clear();if(!loginScreen)getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);if(!submitted[0])try{reply(request,new JSONObject().put("cancelled",true));}catch(Exception ignored){}});dialog.show();
         dialog.getButton(-1).setOnClickListener(v->{
             final String label=title.getText().toString().trim(),address=url.getText().toString().trim(),login=user.getText().toString().trim(),secret=password.getText().toString();
-            try{CalDav.address(address);CalDav.query(month);if(label.isEmpty()||label.length()>120||login.isEmpty()||secret.isEmpty())throw new IllegalArgumentException();}catch(Exception error){status.setText("Укажите название, HTTPS-ссылку, логин и пароль календаря.");return;}
+            final boolean manual=mode.getSelectedItemPosition()==2;
+            try{CalDav.address(!manual&&!address.contains("://")?"https://"+address:address);CalDav.query(month);if((manual&&(label.isEmpty()||label.length()>120))||login.isEmpty()||secret.isEmpty())throw new IllegalArgumentException();}catch(Exception error){status.setText("Укажите сервер (для ручного подключения — HTTPS-ссылку), логин и пароль календаря.");return;}
             if(sessionLogin==null||!sessionLogin.identity().equals(owner.identity())){dialog.dismiss();return;}
             submitted[0]=true;dialog.setCancelable(false);dialog.getButton(-1).setEnabled(false);dialog.getButton(-2).setEnabled(false);status.setText("Подключение и загрузка событий…");
+            if(!manual){
+                status.setText("Поиск доступных календарей…");
+                calendarWorker.execute(()->{try{
+                    java.util.List<CalendarDiscovery.Calendar> found=CalendarDiscovery.discover(address,login,secret);
+                    runOnUiThread(()->{dialog.dismiss();if(!closing&&sessionLogin!=null&&sessionLogin.identity().equals(owner.identity()))chooseCalendar(owner,found,login,secret,month,request);});
+                }catch(Exception error){runOnUiThread(()->{if(closing||sessionLogin==null||!sessionLogin.identity().equals(owner.identity())){dialog.dismiss();return;}submitted[0]=false;dialog.setCancelable(true);dialog.getButton(-1).setEnabled(true);dialog.getButton(-2).setEnabled(true);status.setText(error instanceof CalDav.Failure?error.getMessage():"Не удалось найти календари. Проверьте сервер, сеть и пароль внешнего приложения.");});}});
+                return;
+            }
             calendarWorker.execute(()->{try{
                 CalendarBook book=new CalendarBook(MainActivity.this,owner);book.add(label,address,login,secret,month);
                 runOnUiThread(()->{dialog.dismiss();if(sessionLogin!=null&&sessionLogin.identity().equals(owner.identity()))try{reply(request,new JSONObject().put("added",true));}catch(Exception ignored){}});
             }catch(Exception error){runOnUiThread(()->{dialog.dismiss();if(sessionLogin!=null&&sessionLogin.identity().equals(owner.identity()))failure(request,error instanceof CalDav.Failure?error.getMessage():"Не удалось подключить календарь. Проверьте CalDAV-ссылку, пароль внешнего приложения и доступ к серверу.");});}});
+        });
+    }
+    private void chooseCalendar(SavedAccounts.Login owner,java.util.List<CalendarDiscovery.Calendar> found,String login,String secret,String month,String request){
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        String[] names=new String[found.size()];for(int i=0;i<names.length;i++)names[i]=found.get(i).title;
+        final int[] selected={0};final boolean[] submitted={false};
+        android.app.AlertDialog picker=new android.app.AlertDialog.Builder(this).setTitle("Выберите календарь").setSingleChoiceItems(names,0,(dialog,index)->selected[0]=index).setNegativeButton("Отмена",null).setPositiveButton("Подключить",null).create();
+        picker.setOnDismissListener(d->{if(!loginScreen)getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);if(!submitted[0])try{reply(request,new JSONObject().put("cancelled",true));}catch(Exception ignored){}});picker.show();
+        picker.getButton(-1).setOnClickListener(v->{
+            if(closing||sessionLogin==null||!sessionLogin.identity().equals(owner.identity())){picker.dismiss();return;}
+            CalendarDiscovery.Calendar calendar=found.get(selected[0]);submitted[0]=true;picker.setCancelable(false);picker.getButton(-1).setEnabled(false);picker.getButton(-2).setEnabled(false);picker.setTitle("Загрузка событий…");
+            calendarWorker.execute(()->{try{
+                new CalendarBook(MainActivity.this,owner).add(calendar.title,calendar.url,login,secret,month);
+                calendarReply(owner,request,new JSONObject().put("added",true));
+            }catch(Exception error){calendarReply(owner,request,new JSONObjectSafe().putValue("error",error instanceof CalDav.Failure?error.getMessage():"Не удалось подключить выбранный календарь. Проверьте сеть и доступ к событиям."));}
+            finally{runOnUiThread(picker::dismiss);}});
         });
     }
     private static final class JSONObjectSafe extends JSONObject { JSONObjectSafe putValue(String key,String value){try{put(key,value);}catch(Exception ignored){}return this;} }
