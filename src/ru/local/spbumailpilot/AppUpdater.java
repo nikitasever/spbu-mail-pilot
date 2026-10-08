@@ -43,7 +43,7 @@ public final class AppUpdater {
         PackageInfo installed=manager.getPackageInfo(activity.getPackageName(),flags),candidate=manager.getPackageArchiveInfo(apk.getPath(),flags);
         if(candidate==null||!activity.getPackageName().equals(candidate.packageName)||version(candidate)!=wanted||version(candidate)<=version(installed)||!certificate(candidate).equals(certificate(installed)))throw new IOException("APK identity or version mismatch");
     }
-    private static void alert(Activity a,String title,String message){if(!a.isFinishing()&&!a.isDestroyed())new AlertDialog.Builder(a).setTitle(title).setMessage(message).setPositiveButton("Хорошо",null).show();}
+    private static void alert(Activity a,String title,String message){if(!a.isFinishing()&&!a.isDestroyed())NativeUi.dialog(a).setTitle(title).setMessage(message).setPositiveButton("Хорошо",null).show();}
     public static void check(Activity activity){
         if(!busy.compareAndSet(false,true)){alert(activity,"Обновление","Проверка или загрузка уже выполняется.");return;}
         android.widget.Toast.makeText(activity,"Проверка обновления…",android.widget.Toast.LENGTH_SHORT).show();
@@ -54,7 +54,7 @@ public final class AppUpdater {
             JSONObject update=new JSONObject(json(metadata));int wanted=update.getInt("versionCode");String name=update.getString("versionName"),apk=update.getString("url"),sha=update.getString("sha256");
             if(!"ru.local.spbumailpilot".equals(update.getString("packageId"))||!apk.startsWith("https://github.com/"+REPO+"/releases/download/"))throw new IOException("Wrong release");
             if(wanted<=version(activity.getPackageManager().getPackageInfo(activity.getPackageName(),0))){activity.runOnUiThread(()->alert(activity,"Обновление","Установлена последняя версия."));return;}
-            activity.runOnUiThread(()->{if(activity.isFinishing()||activity.isDestroyed())return;new AlertDialog.Builder(activity).setTitle("Доступна версия "+name).setMessage("Скачать обновление? Аккаунты и задачи сохранятся. Android попросит подтвердить установку.").setNegativeButton("Позже",null).setPositiveButton("Скачать",(dialog,which)->fetch(activity,apk,sha,wanted)).show();});
+            activity.runOnUiThread(()->{if(activity.isFinishing()||activity.isDestroyed())return;NativeUi.dialog(activity).setTitle("Доступна версия "+name).setMessage("Скачать обновление? Аккаунты и задачи сохранятся. Android попросит подтвердить установку.").setNegativeButton("Позже",null).setPositiveButton("Скачать",(dialog,which)->fetch(activity,apk,sha,wanted)).show();});
         }catch(Exception error){activity.runOnUiThread(()->alert(activity,"Обновление","Не удалось проверить обновление. Проверьте интернет и попробуйте позже."));}finally{busy.set(false);}},"update-check").start();
     }
     private static void fetch(Activity activity,String url,String sha,int wanted){
@@ -64,7 +64,7 @@ public final class AppUpdater {
             if(!apk.getParentFile().isDirectory()&&!apk.getParentFile().mkdirs())throw new IOException("Cannot create update directory");download(url,sha,apk);validate(activity,apk,wanted);
             activity.runOnUiThread(()->{if(activity.isFinishing()||activity.isDestroyed())return;
                 if(!activity.getPackageManager().canRequestPackageInstalls()){
-                    new AlertDialog.Builder(activity).setTitle("Разрешение на обновления").setMessage("Разрешите установку из этого приложения в настройках Android. Затем снова нажмите «Проверить обновление».").setPositiveButton("Открыть настройки",(d,w)->{try{activity.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:"+activity.getPackageName())));}catch(Exception e){alert(activity,"Обновление","Откройте разрешение установки в настройках Android.");}}).setNegativeButton("Позже",null).show();return;
+                    NativeUi.dialog(activity).setTitle("Разрешение на обновления").setMessage("Разрешите установку из этого приложения в настройках Android. Затем снова нажмите «Проверить обновление».").setPositiveButton("Открыть настройки",(d,w)->{try{activity.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:"+activity.getPackageName())));}catch(Exception e){alert(activity,"Обновление","Откройте разрешение установки в настройках Android.");}}).setNegativeButton("Позже",null).show();return;
                 }
                 Intent install=new Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse("content://ru.local.spbumailpilot.updates/update.apk"),"application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 try{activity.startActivity(install);}catch(Exception e){alert(activity,"Обновление","Не удалось открыть установщик Android.");}

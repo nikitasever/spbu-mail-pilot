@@ -1,0 +1,16 @@
+<resources>
+ <style name="PilotNativeLight" parent="android:style/Theme.Material.Light.NoActionBar">
+  <item name="android:colorAccent">#7946AE</item><item name="android:colorControlActivated">#7946AE</item><item name="android:colorControlNormal">#70697B</item><item name="android:textColorPrimary">#292533</item><item name="android:textColorSecondary">#70697B</item><item name="android:colorBackground">#FFFFFF</item><item name="android:fontFamily">sans</item><item name="android:buttonStyle">@style/PilotButtonLight</item><item name="android:buttonBarButtonStyle">@style/PilotButtonLight</item>
+ </style>
+ <style name="PilotNativeDark" parent="android:style/Theme.Material.NoActionBar">
+  <item name="android:colorAccent">#CEACF3</item><item name="android:colorControlActivated">#CEACF3</item><item name="android:colorControlNormal">#BDB3CA</item><item name="android:textColorPrimary">#F3EFF8</item><item name="android:textColorSecondary">#BDB3CA</item><item name="android:colorBackground">#18171E</item><item name="android:fontFamily">sans</item><item name="android:buttonStyle">@style/PilotButtonDark</item><item name="android:buttonBarButtonStyle">@style/PilotButtonDark</item>
+ </style>
+ <style name="PilotDialogLight" parent="android:style/Theme.Material.Light.Dialog.Alert">
+  <item name="android:colorAccent">#7946AE</item><item name="android:textColorPrimary">#292533</item><item name="android:textColorSecondary">#70697B</item><item name="android:colorBackground">#FFFFFF</item><item name="android:windowBackground">@drawable/dialog_light</item><item name="android:buttonStyle">@style/PilotButtonLight</item><item name="android:buttonBarButtonStyle">@style/PilotButtonLight</item><item name="android:fontFamily">sans</item>
+ </style>
+ <style name="PilotDialogDark" parent="android:style/Theme.Material.Dialog.Alert">
+  <item name="android:colorAccent">#CEACF3</item><item name="android:textColorPrimary">#F3EFF8</item><item name="android:textColorSecondary">#BDB3CA</item><item name="android:colorBackground">#18171E</item><item name="android:windowBackground">@drawable/dialog_dark</item><item name="android:buttonStyle">@style/PilotButtonDark</item><item name="android:buttonBarButtonStyle">@style/PilotButtonDark</item><item name="android:fontFamily">sans</item>
+ </style>
+ <style name="PilotButtonLight" parent="android:style/Widget.Material.Light.Button.Borderless"><item name="android:textAllCaps">false</item><item name="android:textColor">#7946AE</item></style>
+ <style name="PilotButtonDark" parent="android:style/Widget.Material.Button.Borderless"><item name="android:textAllCaps">false</item><item name="android:textColor">#CEACF3</item></style>
+</resources>

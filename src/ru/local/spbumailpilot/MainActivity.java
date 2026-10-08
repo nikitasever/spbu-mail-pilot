@@ -30,6 +30,7 @@ public final class MainActivity extends Activity {
     private WebView web;
     private SharedPreferences local;
     private String account = "";
+    private volatile String appearanceMode="system";
     private volatile boolean closing;
     private boolean loginBusy;
     private boolean hasSavedAccounts;
@@ -39,43 +40,42 @@ public final class MainActivity extends Activity {
     private final java.util.concurrent.atomic.AtomicBoolean sending=new java.util.concurrent.atomic.AtomicBoolean();
     private String attachmentPickRequest,attachmentPickOwner;
     private String exportRequest,exportOwner;private java.io.File exportFile;
-    private static final int PURPLE = 0xff8051b1;
     private int dp(int v) { return (int)(v * getResources().getDisplayMetrics().density); }
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        getWindow().setStatusBarColor(0xfffaf8fe);
-        getWindow().setNavigationBarColor(0xfffaf8fe);
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        NativeUi.bars(this);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         vault = new CredentialVault(this);
         NoticeCenter.channels(this);
         restoreLogin();
     }
+    boolean nativeDark(){String mode=local!=null?appearanceMode:getSharedPreferences("appearance",MODE_PRIVATE).getString("theme","system");return AppearancePolicy.dark(AppearancePolicy.mode(mode),(getResources().getConfiguration().uiMode&android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES);}
+    private void loadAppearance(){try{JSONObject settings=new JSONObject(local.getString("state","{}")).optJSONObject("settings");appearanceMode=AppearancePolicy.mode(settings==null?"system":settings.optString("theme","system"));}catch(Exception ignored){appearanceMode="system";}}
     private TextView text(String value, int size, int color) {
-        TextView v = new TextView(this); v.setText(value); v.setTextSize(size); v.setTextColor(color); v.setPadding(0, dp(9), 0, dp(9)); return v;
+        TextView v = new TextView(NativeUi.context(this,false)); v.setText(value); v.setTextSize(size); v.setTextColor(NativeUi.color(this,color)); v.setPadding(0, dp(9), 0, dp(9)); return v;
     }
     private EditText input(LinearLayout box, String label, String value, int type) {
         box.addView(text(label, 14, 0xff726d7c));
-        EditText v = new EditText(this); v.setSingleLine(true); v.setText(value); v.setTextSize(16); v.setInputType(type); v.setPadding(dp(12),dp(12),dp(12),dp(12));
-        GradientDrawable shape = new GradientDrawable();shape.setColor(Color.WHITE);shape.setCornerRadius(dp(12));shape.setStroke(dp(1),0xffded6e8);v.setBackground(shape);
-        v.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);box.addView(v,new LinearLayout.LayoutParams(-1,dp(52)));
+        EditText v = new EditText(NativeUi.context(this,false)); v.setSingleLine(true); v.setTextColor(NativeUi.ink(this));v.setText(value); v.setTextSize(16); v.setInputType(type); v.setPadding(dp(12),dp(12),dp(12),dp(12));
+        GradientDrawable shape = new GradientDrawable();shape.setColor(NativeUi.surface(this));shape.setCornerRadius(dp(12));shape.setStroke(dp(1),nativeDark()?0xff37303f:0xffeeebf3);v.setBackground(shape);
+        v.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);v.setMinHeight(dp(52));box.addView(v,new LinearLayout.LayoutParams(-1,-2));
         if((type&InputType.TYPE_MASK_VARIATION)==InputType.TYPE_TEXT_VARIATION_PASSWORD){
-            CheckBox show=new CheckBox(this);show.setText("Показать пароль");show.setOnCheckedChangeListener((button,checked)->{int position=v.getSelectionStart();v.setTransformationMethod(checked?null:android.text.method.PasswordTransformationMethod.getInstance());v.setSelection(Math.max(0,position));});box.addView(show);
+            CheckBox show=new CheckBox(NativeUi.context(this,false));show.setText("Показать пароль");show.setOnCheckedChangeListener((button,checked)->{int position=v.getSelectionStart();v.setTransformationMethod(checked?null:android.text.method.PasswordTransformationMethod.getInstance());v.setSelection(Math.max(0,position));});box.addView(show);
         }
         return v;
     }
     private void showLogin() {
         if (isFinishing() || closing) return;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        loginScreen=true;
+        NativeUi.bars(this);loginScreen=true;
         loginBusy = false;
-        ScrollView scroll = new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xfffaf8fe);
-        LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(28),dp(24),dp(24));scroll.addView(box);setContentView(scroll);
+        ScrollView scroll = new ScrollView(NativeUi.context(this,false));scroll.setFillViewport(true);scroll.setBackgroundColor(NativeUi.paper(this));
+        LinearLayout box=new LinearLayout(NativeUi.context(this,false));box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(28),dp(24),dp(24));scroll.addView(box);setContentView(scroll);
         TextView heading=text("Рабочая почта",29,0xff29262e);heading.setTypeface(null,Typeface.BOLD);box.addView(heading);
-        box.addView(text("Тестовая версия 0.19 · реальный ящик",14,0xff8051b1));
-        box.addView(text("Данные аккаунтов сохраняются на телефоне в зашифрованном виде. Можно переключать ящики без повторного ввода пароля. «Выйти» закрывает ящик, сохраняя его данные; удалить их можно в списке аккаунтов.",15,0xff726d7c));
+        box.addView(text("Тестовая версия 0.20 · реальный ящик",14,0xff8051b1));
+        box.addView(text("Вход сохранится на этом телефоне в зашифрованном виде. Переключайте ящики без повторного ввода пароля.",15,0xff726d7c));
         box.addView(text("Почтовый сервис",14,0xff726d7c));
-        Spinner provider=new Spinner(this);provider.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"СПбГУ","Mail.ru","Другая почта"}));box.addView(provider);
+        Spinner provider=new Spinner(NativeUi.context(this,false));provider.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"СПбГУ","Mail.ru","Другая почта"}));box.addView(provider);
         EditText user=input(box,"Логин или полный адрес почты","",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
         EditText password=input(box,"Пароль","",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
         EditText host=input(box,"Сервер IMAP","mail.spbu.ru",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
@@ -85,14 +85,14 @@ public final class MainActivity extends Activity {
             public void onNothingSelected(android.widget.AdapterView<?> parent){}
             public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){
                 if(position<2){host.setText(position==1?"imap.mail.ru":"mail.spbu.ru");port.setText("993");}
-                host.setEnabled(position==2);port.setEnabled(position==2);
+                host.setEnabled(position==2);port.setEnabled(position==2);int advanced=position==2?View.VISIBLE:View.GONE;host.setVisibility(advanced);port.setVisibility(advanced);box.getChildAt(box.indexOfChild(host)-1).setVisibility(advanced);box.getChildAt(box.indexOfChild(port)-1).setVisibility(advanced);
                 help.setText(position==1?"Введите полный адрес ящика и пароль для внешнего приложения Mail.ru с доступом к Почте. Создайте его в Mail.ru: Настройки → Все настройки → Безопасность → Пароли для внешних приложений. Получение и отправка настроены автоматически.":"Используйте данные входа своего почтового сервера. Настройки отправки доступны в приложении.");
             }
         });
         TextView status=text("",14,0xff9b422b);box.addView(status);
-        Button connect=new Button(this);connect.setText("Подключить ящик");connect.setTextColor(Color.WHITE);connect.setBackgroundTintList(android.content.res.ColorStateList.valueOf(PURPLE));box.addView(connect,new LinearLayout.LayoutParams(-1,dp(56)));
-        box.addView(text("Для входа нужен IMAP. SMTP для отправки можно настроить в приложении. Звонки открываются в «Телефоне». Мессенджер СПбГУ пока не подключён.",13,0xff726d7c));
-        Button accounts=new Button(this);accounts.setText("Сохранённые аккаунты");accounts.setOnClickListener(v->{if(!loginBusy)showAccounts();});box.addView(accounts);
+        Button connect=NativeUi.button(this,true);connect.setText("Подключить ящик");box.addView(connect,new LinearLayout.LayoutParams(-1,dp(56)));
+        box.addView(text("После входа доступны письма, календарь и ваши задачи.",13,0xff726d7c));
+        Button accounts=NativeUi.button(this,false);accounts.setText("Сохранённые аккаунты");accounts.setOnClickListener(v->{if(!loginBusy)showAccounts();});box.addView(accounts);
         connect.setOnClickListener(v->{
             if (loginBusy) return;
             String u=user.getText().toString().trim(),h=host.getText().toString().trim(),pw=password.getText().toString();
@@ -119,7 +119,7 @@ public final class MainActivity extends Activity {
             SharedPreferences previous=getSharedPreferences(oldScope,MODE_PRIVATE);
             if(previous.contains("state"))local.edit().putString("state",previous.getString("state","{}")).apply();
         }
-        reader=next;account=login.user;sessionLogin=login;
+        loadAppearance();reader=next;account=login.user;sessionLogin=login;
         try{NoticeCenter.seed(this,login,next);NoticeCenter.schedule(this);}catch(Exception notices){}
     }
     private void restoreLogin() {
@@ -137,12 +137,12 @@ public final class MainActivity extends Activity {
     private void showReconnect(String message,boolean busy) {
         if(closing||isFinishing())return;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        loginScreen=false;
-        LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(40),dp(24),dp(24));box.setBackgroundColor(0xfffaf8fe);
+        NativeUi.bars(this);loginScreen=false;
+        LinearLayout box=new LinearLayout(NativeUi.context(this,false));box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(40),dp(24),dp(24));box.setBackgroundColor(NativeUi.paper(this));
         box.addView(text("Рабочая почта",29,0xff29262e));box.addView(text(message,16,0xff726d7c));
-        if(busy){box.addView(new ProgressBar(this));}else{
-            Button retry=new Button(this);retry.setText("Повторить подключение");retry.setOnClickListener(v->restoreLogin());box.addView(retry);
-            Button exit=new Button(this);exit.setText("Аккаунты / другой ящик");exit.setOnClickListener(v->leaveAccount());box.addView(exit);
+        if(busy){box.addView(new ProgressBar(NativeUi.context(this,false)));}else{
+            Button retry=NativeUi.button(this,false);retry.setText("Повторить подключение");retry.setOnClickListener(v->restoreLogin());box.addView(retry);
+            Button exit=NativeUi.button(this,false);exit.setText("Аккаунты / другой ящик");exit.setOnClickListener(v->leaveAccount());box.addView(exit);
         }
         setContentView(box);
     }
@@ -159,7 +159,7 @@ public final class MainActivity extends Activity {
         if(closing||isFinishing())return;
         showReconnect("Сохранённые аккаунты не удалось прочитать. Они не удалены. Можно повторить попытку или сбросить сохранённые входы и добавить ящики заново.",false);
         LinearLayout box=(LinearLayout)((android.view.ViewGroup)findViewById(android.R.id.content)).getChildAt(0);
-        Button reset=new Button(this);reset.setText("Сбросить сохранённые входы");reset.setOnClickListener(v->new android.app.AlertDialog.Builder(this).setMessage("Удалить сохранённые данные входа всех аккаунтов? Задачи и заметки останутся.").setPositiveButton("Удалить",(dialog,which)->worker.execute(()->{try{vault.clear();runOnUiThread(this::showLogin);}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"Не удалось удалить сохранённые входы.",Toast.LENGTH_LONG).show());}})).setNegativeButton("Отмена",null).show());box.addView(reset);
+        Button reset=NativeUi.button(this,false);reset.setText("Сбросить сохранённые входы");reset.setOnClickListener(v->NativeUi.dialog(this).setMessage("Удалить сохранённые данные входа всех аккаунтов? Задачи и заметки останутся.").setPositiveButton("Удалить",(dialog,which)->worker.execute(()->{try{vault.clear();runOnUiThread(this::showLogin);}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"Не удалось удалить сохранённые входы.",Toast.LENGTH_LONG).show());}})).setNegativeButton("Отмена",null).show());box.addView(reset);
     }
     private void showAccounts(){
         if(closing||isFinishing())return;
@@ -169,16 +169,16 @@ public final class MainActivity extends Activity {
                 java.util.ArrayList<SavedAccounts.Login> saved=vault.list();
                 runOnUiThread(()->{
                     if(closing||isFinishing())return;
-                    hasSavedAccounts=!saved.isEmpty();loginScreen=false;
+                    hasSavedAccounts=!saved.isEmpty();NativeUi.bars(this);loginScreen=false;
                     if(saved.isEmpty()){showLogin();return;}
-                    ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xfffaf8fe);
-                    LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(28),dp(24),dp(24));scroll.addView(box);
+                    ScrollView scroll=new ScrollView(NativeUi.context(this,false));scroll.setFillViewport(true);scroll.setBackgroundColor(NativeUi.paper(this));
+                    LinearLayout box=new LinearLayout(NativeUi.context(this,false));box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(28),dp(24),dp(24));scroll.addView(box);
                     box.addView(text("Ваши аккаунты",29,0xff29262e));box.addView(text("Выберите ящик. Пароли сохранены в зашифрованном виде. Задачи и заметки у каждого аккаунта свои.",15,0xff726d7c));
                     for(SavedAccounts.Login login:saved){
-                        Button choose=new Button(this);choose.setAllCaps(false);choose.setText(login.user+"\n"+login.host+":"+login.port);choose.setOnClickListener(v->connectSaved(login));box.addView(choose,new LinearLayout.LayoutParams(-1,dp(76)));
-                        Button remove=new Button(this);remove.setText("Удалить сохранённый аккаунт");remove.setOnClickListener(v->new android.app.AlertDialog.Builder(this).setMessage("Удалить сохранённый вход для "+login.user+"? Подключения календарей будут удалены с телефона; события сервера, задачи и заметки останутся.").setPositiveButton("Удалить",(dialog,which)->worker.execute(()->{try{new CalendarBook(this,login).clear();vault.remove(login);runOnUiThread(this::showAccounts);}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"Не удалось удалить аккаунт.",Toast.LENGTH_LONG).show());}})).setNegativeButton("Отмена",null).show());box.addView(remove);
+                        LinearLayout choose=NativeUi.accountRow(this,login,false);choose.setOnClickListener(v->connectSaved(login));box.addView(choose,new LinearLayout.LayoutParams(-1,-2));
+                        Button remove=NativeUi.button(this,false);remove.setText("Удалить сохранённый аккаунт");remove.setOnClickListener(v->NativeUi.dialog(this).setMessage("Удалить сохранённый вход для "+login.user+"? Подключения календарей будут удалены с телефона; события сервера, задачи и заметки останутся.").setPositiveButton("Удалить",(dialog,which)->worker.execute(()->{try{new CalendarBook(this,login).clear();vault.remove(login);runOnUiThread(this::showAccounts);}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"Не удалось удалить аккаунт.",Toast.LENGTH_LONG).show());}})).setNegativeButton("Отмена",null).show());box.addView(remove);
                     }
-                    Button add=new Button(this);add.setText("Добавить другой аккаунт");add.setOnClickListener(v->showLogin());box.addView(add,new LinearLayout.LayoutParams(-1,dp(56)));setContentView(scroll);
+                    Button add=NativeUi.button(this,false);add.setText("Добавить другой аккаунт");add.setOnClickListener(v->showLogin());box.addView(add,new LinearLayout.LayoutParams(-1,dp(56)));setContentView(scroll);
                 });
             }catch(Exception error){runOnUiThread(this::showStorageError);}
         });
@@ -191,7 +191,7 @@ public final class MainActivity extends Activity {
             if(reader!=null)reader.close();reader=null;sessionLogin=null;local=null;account="";
             MailReader next=new MailReader();
             try{next.connect(login.host,login.port,login.user,login.password);if(closing){next.close();return;}vault.save(login);attachLogin(next,login);runOnUiThread(this::showMail);}
-            catch(Exception error){next.close();runOnUiThread(()->{showAccounts();new android.app.AlertDialog.Builder(this).setTitle("Не удалось открыть ящик").setMessage(LoginFailure.describe(error,login.host,login.user,login.password)).setPositiveButton("Понятно",null).show();});}
+            catch(Exception error){next.close();runOnUiThread(()->{showAccounts();NativeUi.dialog(this).setTitle("Не удалось открыть ящик").setMessage(LoginFailure.describe(error,login.host,login.user,login.password)).setPositiveButton("Понятно",null).show();});}
         });
     }
     private void quickAccounts(){
@@ -200,12 +200,12 @@ public final class MainActivity extends Activity {
         worker.execute(()->{try{
             java.util.ArrayList<SavedAccounts.Login> saved=vault.list();
             runOnUiThread(()->{if(closing||sessionLogin==null||!sessionLogin.identity().equals(owner.identity()))return;
-                String[] labels=new String[saved.size()+2];for(int i=0;i<saved.size();i++)labels[i]=(saved.get(i).identity().equals(owner.identity())?"✓ ":"")+saved.get(i).user+"\n"+saved.get(i).host;
-                labels[saved.size()]="Добавить аккаунт · Mail.ru / СПбГУ";labels[saved.size()+1]="Управление аккаунтами";
-                new android.app.AlertDialog.Builder(this).setTitle("Сменить ящик").setItems(labels,(dialog,index)->{
-                    if(index<saved.size()){SavedAccounts.Login target=saved.get(index);if(!target.identity().equals(owner.identity()))connectSaved(target);}
-                    else if(index==saved.size())leaveForNewAccount();else leaveAccount();
-                }).setNegativeButton("Отмена",null).show();
+                ScrollView scroll=new ScrollView(NativeUi.context(this,false));LinearLayout box=new LinearLayout(NativeUi.context(this,false));box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(12),dp(8),dp(12),dp(8));scroll.addView(box);
+                android.app.AlertDialog dialog=NativeUi.dialog(this).setTitle("Ваши аккаунты").setView(scroll).setNegativeButton("Закрыть",null).create();
+                for(SavedAccounts.Login target:saved){boolean current=target.identity().equals(owner.identity());LinearLayout row=NativeUi.accountRow(this,target,current);row.setOnClickListener(v->{dialog.dismiss();if(!current)connectSaved(target);});box.addView(row,new LinearLayout.LayoutParams(-1,-2));}
+                Button add=NativeUi.button(this,false);add.setText("Добавить аккаунт");add.setOnClickListener(v->{dialog.dismiss();leaveForNewAccount();});box.addView(add);
+                Button manage=NativeUi.button(this,false);manage.setText("Управление аккаунтами");manage.setOnClickListener(v->{dialog.dismiss();leaveAccount();});box.addView(manage);
+                dialog.setOnDismissListener(d->{if(web!=null&&!closing)web.evaluateJavascript("window.accountPickerClosed&&window.accountPickerClosed()",null);});dialog.show();
             });
         }catch(Exception error){runOnUiThread(()->Toast.makeText(this,"Не удалось открыть аккаунты.",Toast.LENGTH_LONG).show());}});
     }
@@ -227,14 +227,14 @@ public final class MainActivity extends Activity {
     private static String digest(String value)throws Exception{byte[] bytes=MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));StringBuilder out=new StringBuilder();for(byte b:bytes)out.append(String.format("%02x",b));return out.toString();}
     private void showMail() {
         if (closing || isFinishing()) return;
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);NativeUi.bars(this);
         web=new WebView(this);WebSettings settings=web.getSettings();settings.setJavaScriptEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setDomStorageEnabled(false);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);settings.setBlockNetworkLoads(true);
         web.setHorizontalScrollBarEnabled(false);web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.addJavascriptInterface(new Bridge(),"Pilot");
         web.setWebChromeClient(new WebChromeClient(){
             @Override public boolean onJsConfirm(WebView view,String url,String message,JsResult result){
                 if(closing||isFinishing()){result.cancel();return true;}
-                new android.app.AlertDialog.Builder(MainActivity.this).setTitle("Подтверждение").setMessage(message).setPositiveButton("Отключить",(dialog,which)->result.confirm()).setNegativeButton("Отмена",(dialog,which)->result.cancel()).setOnCancelListener(dialog->result.cancel()).show();return true;
+                NativeUi.dialog(MainActivity.this).setTitle("Подтверждение").setMessage(message).setPositiveButton("Отключить",(dialog,which)->result.confirm()).setNegativeButton("Отмена",(dialog,which)->result.cancel()).setOnCancelListener(dialog->result.cancel()).show();return true;
             }
         });
         web.setWebViewClient(new WebViewClient(){
@@ -259,13 +259,13 @@ public final class MainActivity extends Activity {
     private void smtpSettings(){
         if(sessionLogin==null)return;
         SavedAccounts.Login login=sessionLogin;
-        LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(20),0,dp(20),0);
+        LinearLayout box=new LinearLayout(NativeUi.context(this,false));box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(20),0,dp(20),0);
         EditText host=input(box,"Сервер SMTP",login.smtpHost,InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
         EditText port=input(box,"Порт",Integer.toString(login.smtpPort),InputType.TYPE_CLASS_NUMBER);
         EditText from=input(box,"Адрес отправителя",login.from,InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        Spinner tls=new Spinner(this);tls.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"TLS с начала соединения (обычно 465)","Обязательный STARTTLS (обычно 587)"}));tls.setSelection(login.smtpSsl?0:1);box.addView(tls);
+        Spinner tls=new Spinner(NativeUi.context(this,false));tls.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"TLS с начала соединения (обычно 465)","Обязательный STARTTLS (обычно 587)"}));tls.setSelection(login.smtpSsl?0:1);box.addView(tls);
         box.addView(text("Для отправки используются логин и пароль этого аккаунта. Проверка TLS-сертификата включена.",13,0xff726d7c));
-        android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(this).setTitle("Отправка писем").setView(box).setPositiveButton("Сохранить",null).setNegativeButton("Отмена",null).create();dialog.show();
+        ScrollView smtpScroll=new ScrollView(NativeUi.context(this,false));smtpScroll.addView(box);android.app.AlertDialog dialog=NativeUi.dialog(this).setTitle("Отправка писем").setView(smtpScroll).setPositiveButton("Сохранить",null).setNegativeButton("Отмена",null).create();dialog.show();
         dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(view->{
             try{
                 String h=host.getText().toString().trim(),address=from.getText().toString().trim();int p=Integer.parseInt(port.getText().toString());
@@ -331,9 +331,9 @@ public final class MainActivity extends Activity {
     private void calendarSetup(String month,String request) {
         SavedAccounts.Login owner=sessionLogin;if(owner==null){failure(request,"Войдите в почтовый аккаунт.");return;}
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        ScrollView scroll=new ScrollView(this);LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(20),dp(12),dp(20),dp(12));scroll.addView(box);
+        ScrollView scroll=new ScrollView(NativeUi.context(this,false));LinearLayout box=new LinearLayout(NativeUi.context(this,false));box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(20),dp(12),dp(20),dp(12));scroll.addView(box);
         box.addView(text("Mail.ru: введите полный адрес ящика и пароль внешнего приложения с доступом к Календарю. Приложение найдёт доступные календари. Общие календари появятся, только если сервер предоставляет к ним доступ через CalDAV.",14,0xff726d7c));
-        Spinner mode=new Spinner(this);mode.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Mail.ru — найти календари","Другой сервер — найти календари","Полная CalDAV-ссылка вручную"}));box.addView(mode);
+        Spinner mode=new Spinner(NativeUi.context(this,false));mode.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Mail.ru — найти календари","Другой сервер — найти календари","Полная CalDAV-ссылка вручную"}));box.addView(mode);
         EditText title=input(box,"Название календаря (при ручном подключении)","Рабочий календарь",InputType.TYPE_CLASS_TEXT);
         EditText url=input(box,"Сервер CalDAV или полная ссылка","calendar.mail.ru",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
         mode.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
@@ -347,7 +347,7 @@ public final class MainActivity extends Activity {
         EditText password=input(box,"Пароль календаря / внешнего приложения","",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
         box.addView(text("Подключение привязано к этому почтовому аккаунту. Пароль сохраняется зашифрованно. События сервера доступны для просмотра; локальные записи не отправляются в рабочий календарь.",13,0xff726d7c));
         TextView status=text("",14,0xff9b422b);box.addView(status);
-        android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(this).setTitle("Подключить календарь").setView(scroll).setNegativeButton("Отмена",null).setPositiveButton("Продолжить",null).create();
+        android.app.AlertDialog dialog=NativeUi.dialog(this).setTitle("Подключить календарь").setView(scroll).setNegativeButton("Отмена",null).setPositiveButton("Продолжить",null).create();
         final boolean[] submitted={false};dialog.setOnDismissListener(d->{password.getText().clear();if(!loginScreen)getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);if(!submitted[0])try{reply(request,new JSONObject().put("cancelled",true));}catch(Exception ignored){}});dialog.show();
         dialog.getButton(-1).setOnClickListener(v->{
             final String label=title.getText().toString().trim(),address=url.getText().toString().trim(),login=user.getText().toString().trim(),secret=password.getText().toString();
@@ -373,7 +373,7 @@ public final class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         String[] names=new String[found.size()];for(int i=0;i<names.length;i++)names[i]=found.get(i).title;
         final int[] selected={0};final boolean[] submitted={false};
-        android.app.AlertDialog picker=new android.app.AlertDialog.Builder(this).setTitle("Выберите календарь").setSingleChoiceItems(names,0,(dialog,index)->selected[0]=index).setNegativeButton("Отмена",null).setPositiveButton("Подключить",null).create();
+        android.app.AlertDialog picker=NativeUi.dialog(this).setTitle("Выберите календарь").setSingleChoiceItems(names,0,(dialog,index)->selected[0]=index).setNegativeButton("Отмена",null).setPositiveButton("Подключить",null).create();
         picker.setOnDismissListener(d->{if(!loginScreen)getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);if(!submitted[0])try{reply(request,new JSONObject().put("cancelled",true));}catch(Exception ignored){}});picker.show();
         picker.getButton(-1).setOnClickListener(v->{
             if(closing||sessionLogin==null||!sessionLogin.identity().equals(owner.identity())){picker.dismiss();return;}
@@ -415,10 +415,11 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void removeCalendar(String id,String request){SavedAccounts.Login owner=sessionLogin;if(owner==null||id==null||!id.matches("[a-f0-9-]{36}")){failure(request,"Некорректный календарь.");return;}calendarWorker.execute(()->{try{new CalendarBook(MainActivity.this,owner).remove(id);calendarReply(owner,request,new JSONObject().put("removed",true));}catch(Exception error){failure(request,"Не удалось удалить подключение календаря.");}});}
 
         @JavascriptInterface public void checkUpdate(){runOnUiThread(()->AppUpdater.check(MainActivity.this));}
+        @JavascriptInterface public void appearanceChanged(String mode){SharedPreferences prefs=getSharedPreferences("appearance",MODE_PRIVATE);String next=AppearancePolicy.mode(mode);if(!next.equals(prefs.getString("theme","system")))prefs.edit().putString("theme",next).apply();runOnUiThread(()->NativeUi.bars(MainActivity.this));}
         @JavascriptInterface public boolean systemDark(){return (getResources().getConfiguration().uiMode&android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;}
         @JavascriptInterface public String account(){return account;}
         @JavascriptInterface public String loadState(){return local==null?"{}":local.getString("state","{}");}
-        @JavascriptInterface public boolean saveState(String json){SharedPreferences destination=local;if(destination==null||json==null||json.length()>2000000)return false;try{JSONObject next=new JSONObject(json),previous=new JSONObject(destination.getString("state","{}"));boolean reminders=!java.util.Objects.equals(String.valueOf(previous.opt("tasks")),String.valueOf(next.opt("tasks")))||!java.util.Objects.equals(String.valueOf(previous.opt("settings")),String.valueOf(next.opt("settings")));if(!destination.edit().putString("state",json).commit())return false;if(reminders)worker.execute(()->{try{NoticeCenter.schedule(MainActivity.this);}catch(Exception ignored){}});return true;}catch(Exception ignored){return false;}}
+        @JavascriptInterface public boolean saveState(String json){SharedPreferences destination=local;if(destination==null||json==null||json.length()>2000000)return false;try{JSONObject next=new JSONObject(json),previous=new JSONObject(destination.getString("state","{}"));boolean reminders=!java.util.Objects.equals(String.valueOf(previous.opt("tasks")),String.valueOf(next.opt("tasks")))||!java.util.Objects.equals(String.valueOf(previous.opt("settings")),String.valueOf(next.opt("settings")));if(!destination.edit().putString("state",json).commit())return false;JSONObject style=next.optJSONObject("settings");appearanceMode=AppearancePolicy.mode(style==null?"system":style.optString("theme","system"));if(reminders)worker.execute(()->{try{NoticeCenter.schedule(MainActivity.this);}catch(Exception ignored){}});return true;}catch(Exception ignored){return false;}}
         @JavascriptInterface public boolean notificationsAllowed(){return NoticeCenter.allowed(MainActivity.this);}
         @JavascriptInterface public boolean openTasksRequested(){return getIntent().getBooleanExtra("openTasks",false);}
         @JavascriptInterface public void smtpSettings(){runOnUiThread(()->MainActivity.this.smtpSettings());}
@@ -480,7 +481,7 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void removeUpload(String token){worker.execute(()->{try{if(sessionLogin!=null)MailSender.file(uploads(sessionLogin),token).delete();}catch(Exception ignored){}});}
         @JavascriptInterface public void switchAccount(){runOnUiThread(()->quickAccounts());}
     }
-    @Override protected void onResume(){super.onResume();if(web!=null)web.evaluateJavascript("window.systemThemeChanged&&window.systemThemeChanged()",null);}
+    @Override protected void onResume(){super.onResume();NativeUi.bars(this);if(web!=null)web.evaluateJavascript("window.systemThemeChanged&&window.systemThemeChanged()",null);}
     @Override public void onBackPressed(){if(web!=null){web.evaluateJavascript("window.appBack&&window.appBack()",null);}else if(loginScreen&&hasSavedAccounts){showAccounts();}else super.onBackPressed();}
     @Override protected void onDestroy(){closing=true;calendarWorker.shutdownNow();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();super.onDestroy();}
 }

@@ -23,7 +23,8 @@ def main():
             if old.name!=filename:old.unlink()
         update={'packageId':manifest.attrib['package'],'versionCode':code,'versionName':name,'url':'https://github.com/'+REPO+'/releases/download/'+tag+'/'+filename,'sha256':hashlib.sha256(apk.read_bytes()).hexdigest()}
         (assets/'update.json').write_text(json.dumps(update,indent=2)+'\n')
-        (assets/'release-notes.txt').write_text('Версия '+name+' для личного тестирования. Установка поверх предыдущей версии сохраняет аккаунты и задачи.\n')
+        notes=ROOT/'release-notes'/(name+'.md')
+        (assets/'release-notes.txt').write_text(notes.read_text(encoding='utf-8') if notes.exists() else 'Версия '+name+' для личного тестирования. Установка поверх предыдущей версии сохраняет аккаунты и задачи.\n',encoding='utf-8')
         template=(ROOT/'docs/update-channel-README.md').read_text(encoding='utf-8')
         (checkout/'README.md').write_text(template.replace('{{VERSION}}',name).replace('{{CODE}}',str(code)),encoding='utf-8')
         run('git','config','user.name','APK Publisher',cwd=checkout);run('git','config','user.email','apk-publisher@users.noreply.github.com',cwd=checkout)
