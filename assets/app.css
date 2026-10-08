@@ -247,3 +247,5 @@ html.day-overlay { overflow-y:hidden; }
  #mail-v2 .bottom { gap:4px; padding-left:10px; padding-right:10px; }
 }
 @media(prefers-reduced-motion:reduce) { #mail-v2 *,#mail-v2 *::before,#mail-v2 *::after { scroll-behavior:auto!important; animation:none!important; transition:none!important; } }
+
+.mail-updates{margin:12px 18px 0;padding:12px 16px;max-width:calc(100% - 36px);background:var(--tint);color:var(--brand);border:0;border-radius:14px;font-weight:600;}

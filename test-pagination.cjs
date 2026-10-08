@@ -14,7 +14,7 @@ function setup({defer=false,state={}}={}) {
  const root=document.getElementById('mail-v2');
  const click=selector=>{const b=root.querySelector(selector);assert.ok(b,selector);b.dispatchEvent(new window.Event('click',{bubbles:true}));};
  const folder=name=>{const select=root.querySelector('#mail-folder');for(const o of select.querySelectorAll('option'))o.selected=o.value===name;select.dispatchEvent(new window.Event('change',{bubbles:true}));};
- return {root,click,folder,calls,queue,fail:()=>{failNext=true;},state:()=>state};
+ return {root,window,document,click,folder,calls,queue,fail:()=>{failNext=true;},state:()=>state};
 }
 let a=setup();assert.equal(a.root.querySelectorAll('.mail-row').length,50);assert.equal(a.root.querySelector('.inline-hint').textContent,'50 из 137');
 a.click('[data-action="more"]');assert.equal(a.root.querySelectorAll('.mail-row').length,100);
@@ -26,3 +26,11 @@ a=setup({state:{tasks:[{id:'old',title:'Старое поручение',mail:{u
 a.click('[data-route="tasks"]');a.click('[data-action="task-source"][data-id="old"]');assert.equal(a.root.querySelector('.detail h3').textContent,'INBOX письмо 1');assert.equal(a.calls.at(-1).folder,'INBOX');
 a.click('[data-route="tasks"]');a.click('[data-action="task-source"][data-id="sent"]');assert.equal(a.root.querySelector('.detail h3').textContent,'Sent письмо 1');assert.equal(a.calls.at(-1).folder,'Sent');
 console.log('PASS: 137 messages accessible without duplicates, retry keeps cursor, folder switch, stale callbacks ignored, direct old-task links, legacy task compatibility and same-UID folder separation.');
+
+a=setup();const before=a.calls.length;a.window.mailChanged('INBOX');assert.equal(a.calls.length,before+1);assert.equal(a.root.querySelectorAll('.mail-row').length,50);
+a.window.mailChanged('Sent');assert.equal(a.calls.length,before+1,'old folder event ignored');
+a.click('[data-action="more"]');const loaded=a.calls.length;a.window.mailChanged('INBOX');assert.equal(a.calls.length,loaded);assert.equal(a.root.querySelectorAll('.mail-row').length,100);assert.equal(a.root.querySelector('#mail-updates').hidden,false);
+a.click('[data-action="compose"]');const recipient=a.root.querySelector('[name="to"]');recipient.value='kept@example.invalid';a.window.mailChanged('INBOX');assert.equal(a.root.querySelector('[name="to"]'),recipient);assert.equal(recipient.value,'kept@example.invalid');assert.equal(a.calls.length,loaded);
+a=setup({defer:true});a.queue.shift()();const rows=a.root.querySelectorAll('.mail-row').length;a.window.mailChanged('INBOX');assert.equal(a.root.querySelectorAll('.mail-row').length,rows,'silent update must keep old rows while fetching');a.fail();a.queue.shift()();assert.equal(a.root.querySelectorAll('.mail-row').length,rows,'silent error must keep old rows');assert.equal(a.root.querySelector('#mail-updates').hidden,false);
+a=setup();a.window.scrollY=200;const scrolled=a.calls.length;a.window.mailChanged('INBOX');assert.equal(a.calls.length,scrolled);assert.equal(a.window.scrollY,200);
+console.log('PASS: live mail refresh, stale-folder isolation, no reset of paginated/scrolled mail or composer, quiet loading/error retain visible rows.');

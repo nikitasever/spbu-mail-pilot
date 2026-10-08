@@ -32,6 +32,27 @@ public final class MainActivity extends Activity {
     private String account = "";
     private volatile String appearanceMode="system";
     private volatile boolean closing;
+    private boolean resumed;
+    private MailWatch mailWatch;
+    private SavedAccounts.Login watchOwner;
+    private String watchedFolder="INBOX",watchFolder="INBOX";
+    private final android.os.Handler watchHandler=new android.os.Handler(android.os.Looper.getMainLooper());
+    private Runnable watchUpdate;
+    private void stopWatch(){if(mailWatch!=null)mailWatch.close();mailWatch=null;watchOwner=null;if(watchUpdate!=null)watchHandler.removeCallbacks(watchUpdate);watchUpdate=null;}
+    private void startWatch(){
+        SavedAccounts.Login owner=sessionLogin;
+        if(!resumed||closing||web==null||owner==null){stopWatch();return;}
+        if(mailWatch!=null&&watchOwner==owner&&watchedFolder.equals(watchFolder))return;
+        stopWatch();watchOwner=owner;watchedFolder=watchFolder;String folder=watchFolder;
+        final MailWatch[] token=new MailWatch[1];
+        token[0]=new MailWatch(()->new ImapWatchConnection(owner,folder),()->runOnUiThread(()->{
+            if(mailWatch!=token[0]||sessionLogin!=owner||!resumed||web==null)return;
+            if(watchUpdate!=null)watchHandler.removeCallbacks(watchUpdate);
+            watchUpdate=()->{if(mailWatch==token[0]&&sessionLogin==owner&&resumed&&web!=null)web.evaluateJavascript("window.mailChanged&&window.mailChanged("+JSONObject.quote(folder)+")",null);};
+            watchHandler.postDelayed(watchUpdate,750);
+        }));
+        mailWatch=token[0];mailWatch.start();
+    }
     private boolean loginBusy;
     private boolean hasSavedAccounts;
     private boolean loginScreen;
@@ -147,6 +168,7 @@ public final class MainActivity extends Activity {
         setContentView(box);
     }
     private void leaveAccount() {
+        runOnUiThread(this::stopWatch);
         ++calendarSerial;
         worker.execute(()->{
             try{vault.deactivate();}catch(Exception storage){runOnUiThread(()->Toast.makeText(this,"Не удалось сохранить выход. Повторите попытку.",Toast.LENGTH_LONG).show());return;}
@@ -184,6 +206,7 @@ public final class MainActivity extends Activity {
         });
     }
     private void connectSaved(SavedAccounts.Login login){
+        stopWatch();watchFolder="INBOX";
         showReconnect("Подключение к "+login.user+"…",true);
         ++calendarSerial;
         if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}
@@ -210,6 +233,7 @@ public final class MainActivity extends Activity {
         }catch(Exception error){runOnUiThread(()->Toast.makeText(this,"Не удалось открыть аккаунты.",Toast.LENGTH_LONG).show());}});
     }
     private void leaveForNewAccount(){
+        stopWatch();watchFolder="INBOX";
         ++calendarSerial;
         worker.execute(()->{try{vault.deactivate();if(reader!=null)reader.close();reader=null;sessionLogin=null;local=null;account="";NoticeCenter.schedule(this);
             runOnUiThread(()->{if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}showLogin();});
@@ -248,6 +272,7 @@ public final class MainActivity extends Activity {
             }
         });
         setContentView(web);web.loadUrl("https://mail-pilot.local/assets/index.html");
+        watchFolder="INBOX";startWatch();
         requestNoticePermission();
     }
     private void requestNoticePermission(){
@@ -477,11 +502,13 @@ public final class MainActivity extends Activity {
             if(name==null||name.length()>2048||name.contains("\r")||name.contains("\n")||uid==null||validity==null||!uid.matches("[0-9]{1,20}")||!validity.matches("[0-9]{1,20}")||path==null||path.length()>160){failure(request,"Некорректные параметры вложения.");return;}
             worker.execute(()->{try{JSONObject downloaded=readWithReconnect(()->reader.attachment(name,uid,validity,path,new java.io.File(getCacheDir(),"attachments")));runOnUiThread(()->openAttachmentFile(request,downloaded));}catch(Exception error){readFailure(request,error,"Не удалось скачать вложение. Проверьте сеть и повторите попытку. Максимальный размер файла — 100 МБ.");}});
         }
+        @JavascriptInterface public void watchFolder(String folder){if(folder==null||folder.length()>2048||folder.contains("\r")||folder.contains("\n"))return;runOnUiThread(()->{watchFolder=folder;startWatch();});}
         @JavascriptInterface public void logout(){leaveAccount();}
         @JavascriptInterface public void removeUpload(String token){worker.execute(()->{try{if(sessionLogin!=null)MailSender.file(uploads(sessionLogin),token).delete();}catch(Exception ignored){}});}
         @JavascriptInterface public void switchAccount(){runOnUiThread(()->quickAccounts());}
     }
-    @Override protected void onResume(){super.onResume();NativeUi.bars(this);if(web!=null)web.evaluateJavascript("window.systemThemeChanged&&window.systemThemeChanged()",null);}
+    @Override protected void onResume(){super.onResume();resumed=true;NativeUi.bars(this);if(web!=null)web.evaluateJavascript("window.systemThemeChanged&&window.systemThemeChanged()",null);startWatch();}
+    @Override protected void onPause(){resumed=false;stopWatch();super.onPause();}
     @Override public void onBackPressed(){if(web!=null){web.evaluateJavascript("window.appBack&&window.appBack()",null);}else if(loginScreen&&hasSavedAccounts){showAccounts();}else super.onBackPressed();}
-    @Override protected void onDestroy(){closing=true;calendarWorker.shutdownNow();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){closing=true;stopWatch();calendarWorker.shutdownNow();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();super.onDestroy();}
 }
