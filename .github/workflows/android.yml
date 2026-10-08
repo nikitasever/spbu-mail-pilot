@@ -1,0 +1,52 @@
+name: Android cloud build
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-main
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Android SDK
+        run: sdkmanager 'platforms;android-34' 'build-tools;35.0.0'
+      - name: Restore signing key
+        env:
+          APK_KEYSTORE_BASE64: ${{ secrets.APK_KEYSTORE_BASE64 }}
+        run: |
+          python -c "import os,base64,pathlib; pathlib.Path('build').mkdir(exist_ok=True); pathlib.Path('build/signing.keystore').write_bytes(base64.b64decode(os.environ['APK_KEYSTORE_BASE64']))"
+      - name: Test and build signed APK
+        env:
+          APK_STORE_PASSWORD: ${{ secrets.APK_STORE_PASSWORD }}
+          APK_KEY_PASSWORD: ${{ secrets.APK_KEY_PASSWORD }}
+          APK_KEY_ALIAS: pilot
+        run: python build.py --test --keystore build/signing.keystore
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: signed-apk
+          path: build/spbu-mail-pilot.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish update channel
+        env:
+          UPDATE_DEPLOY_KEY: ${{ secrets.UPDATE_DEPLOY_KEY }}
+        run: python cloud_publish.py
+      - name: Remove signing material
+        if: always()
+        run: rm -f build/signing.keystore
