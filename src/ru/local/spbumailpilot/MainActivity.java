@@ -71,7 +71,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xfffaf8fe);
         LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(28),dp(24),dp(24));scroll.addView(box);setContentView(scroll);
         TextView heading=text("Рабочая почта",29,0xff29262e);heading.setTypeface(null,Typeface.BOLD);box.addView(heading);
-        box.addView(text("Тестовая версия 0.14 · реальный ящик",14,0xff8051b1));
+        box.addView(text("Тестовая версия 0.14.1 · реальный ящик",14,0xff8051b1));
         box.addView(text("Данные аккаунтов сохраняются на телефоне в зашифрованном виде. Можно переключать ящики без повторного ввода пароля. «Выйти» закрывает ящик, сохраняя его данные; удалить их можно в списке аккаунтов.",15,0xff726d7c));
         box.addView(text("Почтовый сервис",14,0xff726d7c));
         Spinner provider=new Spinner(this);provider.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"СПбГУ","Mail.ru","Другая почта"}));box.addView(provider);
@@ -106,7 +106,7 @@ public final class MainActivity extends Activity {
                     try{vault.save(login);}catch(Exception storage){next.close();runOnUiThread(()->{loginBusy=false;connect.setEnabled(true);status.setText("Не удалось безопасно сохранить вход на телефоне. Повторите попытку.");});return;}
                     attachLogin(next,login);
                     runOnUiThread(()->{password.getText().clear();showMail();});
-                }catch(Exception error){next.close();runOnUiThread(()->{loginBusy=false;connect.setEnabled(true);status.setText(error instanceof AuthenticationFailedException?"Сервер не принял вход. Проверьте логин и пароль или доступ к IMAP.":"Не удалось подключиться по TLS. Проверьте сервер, сеть/VPN и доступ к IMAP. Проверка сертификата не отключалась.");});}
+                }catch(Exception error){next.close();runOnUiThread(()->{loginBusy=false;connect.setEnabled(true);status.setText(LoginFailure.describe(error,h,u,pw));});}
             });
         });
     }
@@ -130,7 +130,7 @@ public final class MainActivity extends Activity {
             if(login==null){runOnUiThread(this::showAccounts);return;}
             MailReader next=new MailReader();
             try{next.connect(login.host,login.port,login.user,login.password);if(closing){next.close();return;}attachLogin(next,login);runOnUiThread(this::showMail);}
-            catch(Exception error){next.close();runOnUiThread(()->showReconnect(error instanceof AuthenticationFailedException?"Сервер отклонил сохранённый вход. Если пароль изменился, откройте «Аккаунты» и подключите этот ящик с новым паролем.":"Нет соединения с почтой. Сохранённый вход остаётся на телефоне: проверьте сеть/VPN и повторите подключение.",false));}
+            catch(Exception error){next.close();runOnUiThread(()->showReconnect(LoginFailure.describe(error,login.host,login.user,login.password)+"\n\nСохранённый вход остаётся на телефоне.",false));}
         });
     }
     private void showReconnect(String message,boolean busy) {
@@ -190,7 +190,7 @@ public final class MainActivity extends Activity {
             if(reader!=null)reader.close();reader=null;sessionLogin=null;local=null;account="";
             MailReader next=new MailReader();
             try{next.connect(login.host,login.port,login.user,login.password);if(closing){next.close();return;}vault.save(login);attachLogin(next,login);runOnUiThread(this::showMail);}
-            catch(Exception error){next.close();runOnUiThread(()->showAccounts());runOnUiThread(()->Toast.makeText(this,error instanceof AuthenticationFailedException?"Сервер отклонил вход. Добавьте этот ящик заново с новым паролем.":"Не удалось подключиться. Проверьте сеть/VPN и повторите выбор аккаунта.",Toast.LENGTH_LONG).show());}
+            catch(Exception error){next.close();runOnUiThread(()->{showAccounts();new android.app.AlertDialog.Builder(this).setTitle("Не удалось открыть ящик").setMessage(LoginFailure.describe(error,login.host,login.user,login.password)).setPositiveButton("Понятно",null).show();});}
         });
     }
     private void quickAccounts(){
