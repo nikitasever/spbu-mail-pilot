@@ -271,7 +271,7 @@ public final class MainActivity extends Activity {
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
                 Uri uri=request.getUrl();String path=uri.getPath();
                 if("https".equals(uri.getScheme())&&"mail-pilot.local".equals(uri.getHost())&&path!=null&&path.matches("/assets/[a-zA-Z0-9._-]+")){
-                    try{String name=path.substring(8);String type=name.endsWith(".js")?"application/javascript":name.endsWith(".css")?"text/css":"text/html";return new WebResourceResponse(type,"UTF-8",getAssets().open(name));}catch(Exception ignored){}
+                    try{String name=path.substring(8);String type=name.endsWith(".js")?"application/javascript":name.endsWith(".css")?"text/css":name.endsWith(".png")?"image/png":"text/html";return new WebResourceResponse(type,name.endsWith(".png")?null:"UTF-8",getAssets().open(name));}catch(Exception ignored){}
                 }
                 return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));
             }
