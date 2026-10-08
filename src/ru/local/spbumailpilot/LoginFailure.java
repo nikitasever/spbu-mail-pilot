@@ -9,12 +9,14 @@ import javax.mail.MessagingException;
 /** Local, bounded diagnostics. Never log an authentication exchange. */
 final class LoginFailure {
     static String describe(Throwable error,String host,String user,String password){
-        StringBuilder details=new StringBuilder();boolean auth=false;
+        StringBuilder details=new StringBuilder();boolean auth=false,unavailable=false;
         IdentityHashMap<Throwable,Boolean> visited=new IdentityHashMap<>();
         for(Throwable current=error;current!=null&&visited.size()<8&&!visited.containsKey(current);){
             visited.put(current,true);auth|=current instanceof AuthenticationFailedException;
             String message=current.getMessage();
             if(message!=null&&!message.isEmpty()){
+                String lower=message.toLowerCase(java.util.Locale.ROOT);
+                unavailable|=lower.contains("service temporarily unavailable")||lower.contains("[unavailable]");
                 String safe=redact(message,user,password);
                 if(details.indexOf(safe)<0){if(details.length()>0)details.append("\n");details.append(safe);}
             }
@@ -22,8 +24,8 @@ final class LoginFailure {
             if(next==null&&current instanceof MessagingException)next=((MessagingException)current).getNextException();
             current=next;
         }
-        String heading=auth?"Сервер отклонил авторизацию.":"Не удалось подключить почту.";
-        String advice=auth&&"imap.mail.ru".equalsIgnoreCase(host)?"\nДля Mail.ru нужны полный адрес и пароль внешнего приложения с полным доступом к Почте. Пароль только для Календаря не подходит. Если эти условия выполнены, сообщите текст ответа ниже.":"";
+        String heading=unavailable?"Почтовый сервис временно недоступен.":auth?"Сервер отклонил авторизацию.":"Не удалось подключить почту.";
+        String advice=unavailable?"\nЭтот ответ не означает, что пароль неверный. Повторите подключение позже. Если ошибка сохраняется, попробуйте другую сеть или отключите VPN, если он включён.":auth&&"imap.mail.ru".equalsIgnoreCase(host)?"\nДля Mail.ru нужны полный адрес и пароль внешнего приложения с полным доступом к Почте. Пароль только для Календаря не подходит. Если эти условия выполнены, сообщите текст ответа ниже.":"";
         String response=details.length()==0?"Сервер не сообщил подробностей.":details.substring(0,Math.min(600,details.length()));
         return heading+advice+"\n\nОтвет подключения:\n"+response;
     }

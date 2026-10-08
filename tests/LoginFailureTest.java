@@ -16,6 +16,11 @@ public final class LoginFailureTest {
         check(!result.contains(user)&&!result.contains(password)&&!result.contains(encoded));
         MessagingException wrapped=new MessagingException("Connection failed",denied);
         check(LoginFailure.describe(wrapped,"imap.mail.ru",user,password).contains("Сервер отклонил авторизацию"));
+        String temporary=LoginFailure.describe(new AuthenticationFailedException("Service temporarily unavailable"),"imap.mail.ru",user,password);
+        check(temporary.startsWith("Почтовый сервис временно недоступен")&&!temporary.contains("Полным доступом")&&!temporary.contains("Пароль только"));
+        check(!temporary.contains("отклонил авторизацию"));
+        check(LoginFailure.describe(new MessagingException("[UNAVAILABLE] Try later"),"mail.spbu.ru",user,password).startsWith("Почтовый сервис временно недоступен"));
+        check(LoginFailure.describe(new MessagingException("Wrapper",new AuthenticationFailedException("SERVICE TEMPORARILY UNAVAILABLE")),"imap.mail.ru",user,password).startsWith("Почтовый сервис временно недоступен"));
         check(!LoginFailure.describe(new java.net.SocketTimeoutException("Read timed out"),"mail.spbu.ru",user,password).contains("отклонил авторизацию"));
         check(LoginFailure.describe(new Exception("x".repeat(2000)),"imap.mail.ru",user,password).length()<1000);
         System.out.println("LoginFailureTest passed");
