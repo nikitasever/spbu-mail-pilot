@@ -221,3 +221,61 @@ html,body { width:100%; max-width:100%; overflow-x:clip; overscroll-behavior-x:n
 #mail-v2 .month-today { display:flex; justify-content:center; margin:8px 0 12px; }
 #mail-v2 .month-today button { border:0; background:transparent; color:var(--brand); padding:6px 14px; }
 #mail-v2 #account-label.account-switch { max-width:100%; text-align:left; border:0; background:transparent; color:var(--muted); padding:8px 0; min-height:44px; }
+
+/* Month first, with a readable agenda below it on phone screens. */
+#mail-v2 .calendar-page { --cal-blue:#0879f9; --cal-green:#139b70; background:#fff; padding:16px 16px 24px; }
+#mail-v2 .calendar-toolbar { margin-bottom:12px; }
+#mail-v2 .calendar-page .month-navigation strong { font-size:18px; font-weight:600; text-transform:capitalize; }
+#mail-v2 .calendar-page .month-navigation button { background:transparent; border:0; border-radius:10px; color:var(--muted); }
+#mail-v2 .calendar-tools { display:flex; align-items:center; justify-content:space-between; margin-top:5px; gap:12px; }
+#mail-v2 .calendar-tools button { display:inline-flex; gap:7px; align-items:center; font-size:13px; border-radius:10px; padding:9px 12px; min-height:44px; }
+#mail-v2 .calendar-grid { gap:0; grid-template-columns:repeat(7,minmax(0,1fr)); border:1px solid #e4e7ee; border-radius:14px; overflow:hidden; }
+#mail-v2 .calendar-grid .weekday { font-weight:500; font-size:12px; padding:9px 0; background:#f8f9fc; color:#848b99; border-bottom:1px solid #e4e7ee; }
+#mail-v2 .calendar-grid .weekday:nth-child(6),#mail-v2 .calendar-grid .weekday:nth-child(7) { color:var(--cal-green); }
+#mail-v2 .calendar-grid button.calendar-cell { min-height:46px; border-radius:0; padding:4px 0 2px; gap:2px; border-bottom:1px solid #eef0f5; background:#fff; color:#343944; font-size:14px; outline:0; }
+#mail-v2 .calendar-cell:nth-last-child(-n+7) { border-bottom:0; }
+#mail-v2 .calendar-grid button.weekend { background:#f7fbfa; }
+#mail-v2 .calendar-grid button.outside { color:#a9afbc; }
+#mail-v2 .calendar-grid button[aria-pressed="true"] { background:#edf5ff; color:var(--cal-blue); box-shadow:inset 0 0 0 1px #c1dbfd; }
+#mail-v2 .day-number { width:26px; height:26px; display:flex; align-items:center; justify-content:center; border-radius:10px; font-weight:500; }
+#mail-v2 .today .day-number { background:var(--cal-blue); color:#fff; }
+#mail-v2 .day-markers { display:flex; align-items:center; justify-content:center; gap:3px; min-height:8px; }
+#mail-v2 .day-markers small { font-size:9px; line-height:10px; }
+#mail-v2 .calendar-dot { display:inline-block; width:5px; height:5px; border-radius:50%; flex-shrink:0; }
+#mail-v2 .calendar-dot.remote { background:var(--cal-blue); }
+#mail-v2 .calendar-dot.task { background:var(--brand); }
+#mail-v2 .calendar-dot.event { background:var(--cal-green); }
+#mail-v2 .calendar-legend { display:flex; flex-wrap:wrap; gap:12px; padding:12px 2px; font-size:11px; color:#7c8391; }
+#mail-v2 .calendar-legend span { display:flex; align-items:center; gap:5px; }
+#mail-v2 .day-agenda { border-top:1px solid #e4e7ee; margin-top:8px; }
+#mail-v2 .day-agenda .day-heading { margin:17px 0 8px; align-items:center; }
+#mail-v2 .day-heading h3 { text-transform:none; font-weight:600; font-size:17px; }
+#mail-v2 .day-heading small { font-size:12px; color:var(--muted); }
+#mail-v2 .day-heading button.add-event { background:transparent; min-width:44px; min-height:44px; border:1px solid var(--line); border-radius:12px; justify-content:center; color:var(--brand); }
+#mail-v2 .agenda-item { display:flex; gap:12px; padding:15px 0; border-bottom:1px solid #eef0f5; }
+#mail-v2 .agenda-time { flex:0 0 58px; font-size:12px; color:#737d8c; padding-top:3px; }
+#mail-v2 .agenda-content { flex:1; min-width:0; border-left:3px solid var(--cal-blue); padding:0 0 0 12px; }
+#mail-v2 .agenda-item.task .agenda-content { border-color:var(--brand); }
+#mail-v2 .agenda-item.event .agenda-content { border-color:var(--cal-green); }
+#mail-v2 .agenda-content h4 { font-size:15px; font-weight:600; line-height:1.45; margin:0; overflow-wrap:anywhere; }
+#mail-v2 .agenda-content p { font-size:13px; white-space:pre-wrap; overflow-wrap:anywhere; }
+#mail-v2 .agenda-content .agenda-source { font-size:11px; color:#818896; margin:4px 0; }
+#mail-v2 .agenda-content .inline-actions { gap:3px 10px; margin-top:5px; }
+#mail-v2 .agenda-content .inline-actions button { min-height:44px; font-size:12px; padding:7px 0; }
+#mail-v2 .calendar-empty { text-align:center; color:#949cac; padding:27px 8px; }
+#mail-v2 .calendar-empty>svg { width:28px; height:28px; }
+#mail-v2 .calendar-empty p { font-size:13px; color:var(--muted); }
+#mail-v2 .calendar-connections { margin-top:14px; border-top:1px solid #e4e7ee; }
+#mail-v2 .calendar-connections>summary { color:var(--muted); gap:8px; font-size:13px; }
+#mail-v2 .calendar-connections>summary span { margin-left:auto; color:#999faf; }
+#mail-v2 .calendar-source { display:flex; gap:8px; align-items:flex-start; padding:12px 0; border-bottom:1px solid #eef0f5; }
+#mail-v2 .calendar-source>div { min-width:0; flex:1; }
+#mail-v2 .calendar-source strong { font-weight:500; font-size:14px; }
+#mail-v2 .calendar-source .note { font-size:11px; overflow-wrap:anywhere; }
+#mail-v2 .calendar-source button { font-size:12px; }
+#mail-v2 .calendar-connections .note { font-size:12px; line-height:1.55; }
+#mail-v2 .task-notes { white-space:pre-wrap; font-size:13px; color:var(--muted); overflow-wrap:anywhere; }
+@media(min-width:700px) { #mail-v2 .calendar-page { max-width:900px; margin:auto; } #mail-v2 .calendar-grid button.calendar-cell { min-height:72px; } }
+
+#mail-v2 .calendar-view .top { padding:14px 16px 10px; }
+#mail-v2 .calendar-view .titlebar h2 { margin-top:10px; }
