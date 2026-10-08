@@ -3,6 +3,7 @@ import java.io.*;
 import java.net.URL;
 import java.security.MessageDigest;
 final class UpdatePolicy {
+    static String accept(URL url){return "api.github.com".equals(url.getHost())?"application/vnd.github+json":"application/octet-stream";}
     static boolean allowed(URL url){String host=url.getHost();return "https".equals(url.getProtocol())&&url.getUserInfo()==null&&url.getPort()==-1&&(host.equals("api.github.com")||host.equals("github.com")||host.equals("release-assets.githubusercontent.com")||host.equals("objects.githubusercontent.com"));}
     static void copy(InputStream in,String sha,File target,long limit)throws Exception{
         if(!sha.matches("[a-fA-F0-9]{64}"))throw new IOException("Invalid checksum");

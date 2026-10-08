@@ -20,7 +20,7 @@ public final class AppUpdater {
         URL url=new URL(address);
         for(int redirect=0;redirect<6;redirect++){
             if(!UpdatePolicy.allowed(url))throw new IOException("Untrusted update host");
-            HttpURLConnection connection=(HttpURLConnection)url.openConnection();connection.setConnectTimeout(20000);connection.setReadTimeout(45000);connection.setInstanceFollowRedirects(false);connection.setRequestProperty("User-Agent","SPBU-Mail-Pilot");connection.setRequestProperty("Accept","application/octet-stream");
+            HttpURLConnection connection=(HttpURLConnection)url.openConnection();connection.setConnectTimeout(20000);connection.setReadTimeout(45000);connection.setInstanceFollowRedirects(false);connection.setRequestProperty("User-Agent","SPBU-Mail-Pilot");connection.setRequestProperty("Accept",UpdatePolicy.accept(url));
             int status=connection.getResponseCode();
             if(status>=300&&status<400){String next=connection.getHeaderField("Location");connection.disconnect();if(next==null)throw new IOException("Missing redirect");url=new URL(url,next);continue;}
             if(status!=200){connection.disconnect();throw new IOException("HTTP "+status);}
