@@ -13,7 +13,7 @@ def main():
         if error.code!=404:raise
     apk=ROOT/'build/spbu-mail-pilot.apk'
     with tempfile.TemporaryDirectory(prefix='apk-publish-') as temporary:
-        directory=pathlib.Path(temporary);key=directory/'deploy-key';key.write_text(os.environ['UPDATE_DEPLOY_KEY']+'\n');key.chmod(0o600)
+        directory=pathlib.Path(temporary);key=directory/'deploy-key';key.write_text(os.environ['UPDATE_DEPLOY_KEY'].replace('\r','').strip()+'\n');key.chmod(0o600)
         hosts=directory/'known_hosts';meta=json.load(urllib.request.urlopen('https://api.github.com/meta'));hosts.write_text(''.join('github.com '+k+'\n' for k in meta['ssh_keys']))
         env={**os.environ,'GIT_SSH_COMMAND':f'ssh -i "{key}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="{hosts}"'}
         checkout=directory/'release';run('git','clone','git@github.com:'+REPO+'.git',str(checkout),env=env)
