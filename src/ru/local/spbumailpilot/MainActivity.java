@@ -58,6 +58,7 @@ public final class MainActivity extends Activity {
     private boolean loginScreen;
     private boolean pendingTestNotice;
     private volatile long calendarSerial;
+    private volatile long digestSerial;
     private final java.util.concurrent.atomic.AtomicBoolean sending=new java.util.concurrent.atomic.AtomicBoolean();
     private String attachmentPickRequest,attachmentPickOwner;
     private String exportRequest,exportOwner;private java.io.File exportFile;
@@ -168,6 +169,7 @@ public final class MainActivity extends Activity {
         setContentView(box);
     }
     private void leaveAccount() {
+        ++digestSerial;
         runOnUiThread(this::stopWatch);
         ++calendarSerial;
         worker.execute(()->{
@@ -206,6 +208,7 @@ public final class MainActivity extends Activity {
         });
     }
     private void connectSaved(SavedAccounts.Login login){
+        ++digestSerial;
         stopWatch();watchFolder="INBOX";
         showReconnect("Подключение к "+login.user+"…",true);
         ++calendarSerial;
@@ -233,6 +236,7 @@ public final class MainActivity extends Activity {
         }catch(Exception error){runOnUiThread(()->Toast.makeText(this,"Не удалось открыть аккаунты.",Toast.LENGTH_LONG).show());}});
     }
     private void leaveForNewAccount(){
+        ++digestSerial;
         stopWatch();watchFolder="INBOX";
         ++calendarSerial;
         worker.execute(()->{try{vault.deactivate();if(reader!=null)reader.close();reader=null;sessionLogin=null;local=null;account="";NoticeCenter.schedule(this);
@@ -501,6 +505,23 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void attachment(String name,String uid,String validity,String path,String request){
             if(name==null||name.length()>2048||name.contains("\r")||name.contains("\n")||uid==null||validity==null||!uid.matches("[0-9]{1,20}")||!validity.matches("[0-9]{1,20}")||path==null||path.length()>160){failure(request,"Некорректные параметры вложения.");return;}
             worker.execute(()->{try{JSONObject downloaded=readWithReconnect(()->reader.attachment(name,uid,validity,path,new java.io.File(getCacheDir(),"attachments")));runOnUiThread(()->openAttachmentFile(request,downloaded));}catch(Exception error){readFailure(request,error,"Не удалось скачать вложение. Проверьте сеть и повторите попытку. Максимальный размер файла — 100 МБ.");}});
+        }
+        @JavascriptInterface public void cancelDigest(){++digestSerial;}
+        @JavascriptInterface public void digestBodies(String folder,String json,String request){
+            final org.json.JSONArray refs;
+            try{if(folder==null||folder.length()>2048||folder.contains("\r")||folder.contains("\n"))throw new IllegalArgumentException();refs=DigestBatch.references(json);}catch(Exception invalid){failure(request,"Выберите от 1 до 20 писем.");return;}
+            SavedAccounts.Login owner=sessionLogin;long generation=++digestSerial;
+            worker.execute(()->{
+                org.json.JSONArray items=new org.json.JSONArray();int failed=0;long started=System.nanoTime();
+                for(int i=0;i<refs.length();i++){
+                    if(closing||sessionLogin!=owner||owner==null||generation!=digestSerial)return;
+                    if(System.nanoTime()-started>java.util.concurrent.TimeUnit.SECONDS.toNanos(60)){failed+=refs.length()-i;break;}
+                    try{JSONObject ref=refs.getJSONObject(i);JSONObject body=readWithReconnect(()->reader.body(folder,ref.getString("uid"),ref.getString("validity")));items.put(DigestBatch.item(folder,ref,body));}
+                    catch(AuthenticationFailedException rejected){runOnUiThread(()->{if(sessionLogin==owner&&generation==digestSerial)readFailure(request,rejected,"");});return;}
+                    catch(Exception unavailable){failed++;}
+                }
+                if(generation==digestSerial&&sessionLogin==owner)try{JSONObject result=new JSONObject().put("items",items).put("failed",failed);runOnUiThread(()->{if(generation==digestSerial&&sessionLogin==owner&&!closing&&web!=null)reply(request,result);});}catch(Exception ignored){}
+            });
         }
         @JavascriptInterface public void watchFolder(String folder){if(folder==null||folder.length()>2048||folder.contains("\r")||folder.contains("\n"))return;runOnUiThread(()->{watchFolder=folder;startWatch();});}
         @JavascriptInterface public void logout(){leaveAccount();}

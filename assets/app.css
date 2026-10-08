@@ -249,3 +249,18 @@ html.day-overlay { overflow-y:hidden; }
 @media(prefers-reduced-motion:reduce) { #mail-v2 *,#mail-v2 *::before,#mail-v2 *::after { scroll-behavior:auto!important; animation:none!important; transition:none!important; } }
 
 .mail-updates{margin:12px 18px 0;padding:12px 16px;max-width:calc(100% - 36px);background:var(--tint);color:var(--brand);border:0;border-radius:14px;font-weight:600;}
+
+#mail-v2 .digest-entry {display:flex;align-items:center;justify-content:space-between;gap:12px;width:calc(100% - 40px);margin:0 20px 8px;background:var(--surface);color:var(--brand);border:1px solid var(--line);border-radius:14px;text-align:left;font-size:13px;padding:12px 14px;}
+#mail-v2 .digest-entry span {min-width:0;overflow-wrap:anywhere;}
+#mail-v2 .digest-entry svg {flex-shrink:0;width:18px;height:18px;}
+#mail-v2 .digest-choice {display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line);}
+#mail-v2 .digest-choice input {width:20px;height:20px;min-height:20px;flex:0 0 20px;margin:2px 0;accent-color:var(--brand);}
+#mail-v2 .digest-choice span {min-width:0;overflow-wrap:anywhere;}
+#mail-v2 .digest-choice strong,#mail-v2 .digest-choice small {display:block;}
+#mail-v2 .digest-choice small {font-size:12px;color:var(--muted);margin-top:4px;}
+#mail-v2 .digest-item {padding:16px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere;}
+#mail-v2 .digest-item h4 {margin:5px 0 8px;font-size:15px;}
+#mail-v2 .digest-item p {font-size:13px;line-height:1.6;margin:8px 0;}
+#mail-v2 .digest-item small {color:var(--muted);font-size:12px;}
+
+#mail-v2 .digest-subtitle {font-size:15px;color:var(--muted);margin:0 0 12px;}
