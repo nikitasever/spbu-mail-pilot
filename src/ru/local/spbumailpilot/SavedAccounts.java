@@ -12,7 +12,7 @@ final class SavedAccounts {
         final String smtpHost,from;
         final int smtpPort;
         final boolean smtpSsl;
-        Login(String host,int port,String user,String password){this(host,port,user,password,host,465,true,user.contains("@")?user:user+"@"+host.replaceFirst("(?i)^mail\\.",""));}
+        Login(String host,int port,String user,String password){this(host,port,user,password,"imap.mail.ru".equalsIgnoreCase(host)?"smtp.mail.ru":host,465,true,user.contains("@")?user:user+"@"+host.replaceFirst("(?i)^mail\\.",""));}
         Login(String host,int port,String user,String password,String smtpHost,int smtpPort,boolean smtpSsl,String from){this.host=host;this.port=port;this.user=user;this.password=password;this.smtpHost=smtpHost;this.smtpPort=smtpPort;this.smtpSsl=smtpSsl;this.from=from;}
         String identity(){return host.toLowerCase(Locale.ROOT)+"\n"+port+"\n"+user.toLowerCase(Locale.ROOT);}
     }

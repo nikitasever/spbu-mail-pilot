@@ -3,6 +3,10 @@ package ru.local.spbumailpilot;
 public class SavedAccountsTest {
     static void check(boolean condition){if(!condition)throw new AssertionError();}
     public static void main(String[] args){
+        SavedAccounts.Login mail=new SavedAccounts.Login("IMAP.MAIL.RU",993,"pilot-test@mail.ru","fake-app-password");
+        check(mail.smtpHost.equals("smtp.mail.ru")&&mail.smtpPort==465&&mail.smtpSsl&&mail.from.equals("pilot-test@mail.ru"));
+        SavedAccounts.Login custom=new SavedAccounts.Login("imap.mail.ru",993,"pilot-test@mail.ru","fake-app-password","custom.example.org",587,false,"alias@example.org");
+        check(custom.smtpHost.equals("custom.example.org")&&custom.smtpPort==587&&!custom.smtpSsl);
         SavedAccounts book=new SavedAccounts();
         SavedAccounts.Login work=new SavedAccounts.Login("mail.spbu.ru",993,"work@example.org","test-password-a");
         SavedAccounts.Login other=new SavedAccounts.Login("mail.spbu.ru",993,"other@example.org","test-password-b");

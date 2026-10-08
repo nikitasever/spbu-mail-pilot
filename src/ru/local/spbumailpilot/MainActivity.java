@@ -66,13 +66,24 @@ public final class MainActivity extends Activity {
         loginBusy = false;
         ScrollView scroll = new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xfffaf8fe);
         LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(28),dp(24),dp(24));scroll.addView(box);setContentView(scroll);
-        TextView heading=text("Почта СПбГУ",29,0xff29262e);heading.setTypeface(null,Typeface.BOLD);box.addView(heading);
-        box.addView(text("Тестовая версия 0.10.1 · реальный ящик",14,0xff8051b1));
+        TextView heading=text("Рабочая почта",29,0xff29262e);heading.setTypeface(null,Typeface.BOLD);box.addView(heading);
+        box.addView(text("Тестовая версия 0.11 · реальный ящик",14,0xff8051b1));
         box.addView(text("Данные аккаунтов сохраняются на телефоне в зашифрованном виде. Можно переключать ящики без повторного ввода пароля. «Выйти» закрывает ящик, сохраняя его данные; удалить их можно в списке аккаунтов.",15,0xff726d7c));
+        box.addView(text("Почтовый сервис",14,0xff726d7c));
+        Spinner provider=new Spinner(this);provider.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"СПбГУ","Mail.ru","Другая почта"}));box.addView(provider);
         EditText user=input(box,"Логин или полный адрес почты","",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
         EditText password=input(box,"Пароль","",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
         EditText host=input(box,"Сервер IMAP","mail.spbu.ru",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
         EditText port=input(box,"Порт TLS","993",InputType.TYPE_CLASS_NUMBER);
+        TextView help=text("",14,0xff726d7c);box.addView(help);
+        provider.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+            public void onNothingSelected(android.widget.AdapterView<?> parent){}
+            public void onItemSelected(android.widget.AdapterView<?> parent,View view,int position,long id){
+                if(position<2){host.setText(position==1?"imap.mail.ru":"mail.spbu.ru");port.setText("993");}
+                host.setEnabled(position==2);port.setEnabled(position==2);
+                help.setText(position==1?"Введите полный адрес ящика и пароль для внешнего приложения Mail.ru с доступом к Почте. Создайте его в Mail.ru: Настройки → Все настройки → Безопасность → Пароли для внешних приложений. Получение и отправка настроены автоматически.":"Используйте данные входа своего почтового сервера. Настройки отправки доступны в приложении.");
+            }
+        });
         TextView status=text("",14,0xff9b422b);box.addView(status);
         Button connect=new Button(this);connect.setText("Подключить ящик");connect.setTextColor(Color.WHITE);connect.setBackgroundTintList(android.content.res.ColorStateList.valueOf(PURPLE));box.addView(connect,new LinearLayout.LayoutParams(-1,dp(56)));
         box.addView(text("Для входа нужен IMAP. SMTP для отправки можно настроить в приложении. Звонки открываются в «Телефоне». Мессенджер СПбГУ пока не подключён.",13,0xff726d7c));
@@ -80,6 +91,7 @@ public final class MainActivity extends Activity {
         connect.setOnClickListener(v->{
             if (loginBusy) return;
             String u=user.getText().toString().trim(),h=host.getText().toString().trim(),pw=password.getText().toString();
+            if(provider.getSelectedItemPosition()==1&&!u.contains("@")){status.setText("Для Mail.ru нужен полный адрес ящика, включая @ и домен.");return;}
             int p;try{p=Integer.parseInt(port.getText().toString());}catch(Exception e){status.setText("Проверьте порт подключения.");return;}
             if(u.isEmpty()||pw.isEmpty()||!h.matches("[A-Za-z0-9.-]+")||p<1||p>65535){status.setText("Заполните логин, пароль и сервер.");return;}
             loginBusy=true;connect.setEnabled(false);status.setText("Подключение…");
@@ -122,7 +134,7 @@ public final class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         loginScreen=false;
         LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(40),dp(24),dp(24));box.setBackgroundColor(0xfffaf8fe);
-        box.addView(text("Почта СПбГУ",29,0xff29262e));box.addView(text(message,16,0xff726d7c));
+        box.addView(text("Рабочая почта",29,0xff29262e));box.addView(text(message,16,0xff726d7c));
         if(busy){box.addView(new ProgressBar(this));}else{
             Button retry=new Button(this);retry.setText("Повторить подключение");retry.setOnClickListener(v->restoreLogin());box.addView(retry);
             Button exit=new Button(this);exit.setText("Аккаунты / другой ящик");exit.setOnClickListener(v->leaveAccount());box.addView(exit);
@@ -277,7 +289,7 @@ public final class MainActivity extends Activity {
         SavedAccounts.Login owner=sessionLogin;if(owner==null){failure(request,"Войдите в почтовый аккаунт.");return;}
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         ScrollView scroll=new ScrollView(this);LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(20),dp(12),dp(20),dp(12));scroll.addView(box);
-        box.addView(text("Для Mail.ru откройте меню нужного календаря → синхронизация CalDAV и скопируйте ссылку. Используйте пароль внешнего приложения. Для рабочего сервера нужны его CalDAV-ссылка и данные входа.",14,0xff726d7c));
+        box.addView(text("Mail.ru: откройте calendar.mail.ru на компьютере. В списке слева наведите курсор на название календаря → ⋯ → пролистайте окно вниз до «Синхронизация через CalDAV» → скопируйте ссылку. На телефоне попробуйте режим браузера «Версия для ПК». Ссылка на страницу /month/today/ не подходит. Создайте пароль внешнего приложения с доступом к Календарю. Для другого сервера используйте его CalDAV-ссылку.",14,0xff726d7c));
         EditText title=input(box,"Название календаря","Рабочий календарь",InputType.TYPE_CLASS_TEXT);
         EditText url=input(box,"Полная HTTPS-ссылка CalDAV","",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
         EditText user=input(box,"Логин календаря (полный адрес)",owner.user,InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
