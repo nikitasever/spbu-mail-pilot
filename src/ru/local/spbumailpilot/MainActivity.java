@@ -59,6 +59,7 @@ public final class MainActivity extends Activity {
     private boolean pendingTestNotice;
     private volatile long calendarSerial;
     private volatile long digestSerial;
+    private final GeminiDigest gemini=new GeminiDigest();
     private final java.util.concurrent.atomic.AtomicBoolean sending=new java.util.concurrent.atomic.AtomicBoolean();
     private String attachmentPickRequest,attachmentPickOwner;
     private String exportRequest,exportOwner;private java.io.File exportFile;
@@ -416,6 +417,18 @@ public final class MainActivity extends Activity {
     }
     private static final class JSONObjectSafe extends JSONObject { JSONObjectSafe putValue(String key,String value){try{put(key,value);}catch(Exception ignored){}return this;} }
     public final class Bridge {
+        @JavascriptInterface public void shareMailText(String text,String request){
+            if(text==null||text.trim().isEmpty()||text.length()>140000){failure(request,"Текст пустой или слишком большой.");return;}
+            SavedAccounts.Login owner=sessionLogin;if(owner==null)return;
+            runOnUiThread(()->{if(closing||web==null||sessionLogin!=owner)return;try{ShareActions.text(MainActivity.this,text);reply(request,new JSONObject().put("chooserOpened",true));}catch(Exception error){failure(request,"Не удалось открыть меню передачи текста.");}});
+        }
+        @JavascriptInterface public void shareAttachment(String name,String uid,String validity,String path,String request){
+            if(name==null||name.length()>2048||name.contains("\r")||name.contains("\n")||uid==null||validity==null||!uid.matches("[0-9]{1,20}")||!validity.matches("[0-9]{1,20}")||path==null||path.length()>160){failure(request,"Некорректные параметры файла.");return;}
+            SavedAccounts.Login owner=sessionLogin;if(owner==null)return;
+            worker.execute(()->{try{if(closing||sessionLogin!=owner)return;JSONObject downloaded=readWithReconnect(()->reader.attachment(name,uid,validity,path,new java.io.File(getCacheDir(),"attachments")));
+                runOnUiThread(()->{if(closing||web==null||sessionLogin!=owner)return;try{ShareActions.file(MainActivity.this,new java.io.File(downloaded.getString("file")),downloaded.getString("mime"),downloaded.getString("name"));reply(request,new JSONObject().put("chooserOpened",true));}catch(Exception error){failure(request,"Не удалось открыть меню передачи файла.");}});
+            }catch(Exception error){if(sessionLogin==owner)readFailure(request,error,"Не удалось скачать вложение для передачи.");}});
+        }
         @JavascriptInterface public void shareAi(String text,boolean copy,String request){
             if(text==null||text.trim().isEmpty()||text.length()>120000){failure(request,"Текст для ИИ пустой или слишком большой.");return;}
             SavedAccounts.Login owner=sessionLogin;if(owner==null)return;
@@ -506,8 +519,16 @@ public final class MainActivity extends Activity {
             if(name==null||name.length()>2048||name.contains("\r")||name.contains("\n")||uid==null||validity==null||!uid.matches("[0-9]{1,20}")||!validity.matches("[0-9]{1,20}")||path==null||path.length()>160){failure(request,"Некорректные параметры вложения.");return;}
             worker.execute(()->{try{JSONObject downloaded=readWithReconnect(()->reader.attachment(name,uid,validity,path,new java.io.File(getCacheDir(),"attachments")));runOnUiThread(()->openAttachmentFile(request,downloaded));}catch(Exception error){readFailure(request,error,"Не удалось скачать вложение. Проверьте сеть и повторите попытку. Максимальный размер файла — 100 МБ.");}});
         }
-        @JavascriptInterface public void cancelDigest(){++digestSerial;}
-        @JavascriptInterface public void digestBodies(String folder,String json,String request){
+        @JavascriptInterface public void geminiSettings(){runOnUiThread(()->{
+            final AiVault secret=new AiVault(MainActivity.this);EditText input=new EditText(NativeUi.context(MainActivity.this,true));input.setSingleLine(true);input.setHint("API-ключ Gemini");input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);input.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);input.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(512)});
+            LinearLayout layout=new LinearLayout(NativeUi.context(MainActivity.this,true));layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(dp(20),dp(10),dp(20),dp(10));TextView hint=new TextView(NativeUi.context(MainActivity.this,true));hint.setText(""+(secret.configured()?"Ключ сохранён. Можно заменить или удалить.\n":"")+"Ключ хранится зашифрованным на телефоне. При открытии умной панели выбранные тексты писем передаются Google Gemini. Вложения не отправляются.");layout.addView(hint);layout.addView(input);CheckBox show=new CheckBox(NativeUi.context(MainActivity.this,true));show.setText("Показать введённый ключ");show.setOnCheckedChangeListener((b,checked)->{input.setTransformationMethod(checked?null:android.text.method.PasswordTransformationMethod.getInstance());input.setSelection(input.length());});layout.addView(show);
+            android.app.AlertDialog dialog=NativeUi.dialog(MainActivity.this).setTitle("Gemini · умная сводка").setView(layout).setPositiveButton("Сохранить",null).setNeutralButton("Удалить",null).setNegativeButton("Отмена",null).create();dialog.setOnShowListener(d->{dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.getButton(-1).setOnClickListener(v->{try{secret.save(input.getText().toString());input.setText("");dialog.dismiss();Toast.makeText(MainActivity.this,"Ключ сохранён",Toast.LENGTH_SHORT).show();}catch(Exception invalid){input.setError("Не удалось сохранить ключ. Проверьте значение.");}});dialog.getButton(-3).setOnClickListener(v->{try{secret.remove();gemini.cancel();++digestSerial;input.setText("");dialog.dismiss();}catch(Exception error){input.setError("Не удалось удалить ключ.");}});});dialog.show();
+        });}
+        @JavascriptInterface public boolean geminiReady(){return new AiVault(MainActivity.this).configured();}
+        @JavascriptInterface public void cancelDigest(){++digestSerial;gemini.cancel();}
+        @JavascriptInterface public void digestBodies(String folder,String json,String request){digestBatch(folder,json,request,false);}
+        @JavascriptInterface public void smartDigest(String folder,String json,String request){digestBatch(folder,json,request,true);}
+        private void digestBatch(String folder,String json,String request,boolean smart){
             final org.json.JSONArray refs;
             try{if(folder==null||folder.length()>2048||folder.contains("\r")||folder.contains("\n"))throw new IllegalArgumentException();refs=DigestBatch.references(json);}catch(Exception invalid){failure(request,"Выберите от 1 до 20 писем.");return;}
             SavedAccounts.Login owner=sessionLogin;long generation=++digestSerial;
@@ -520,7 +541,7 @@ public final class MainActivity extends Activity {
                     catch(AuthenticationFailedException rejected){runOnUiThread(()->{if(sessionLogin==owner&&generation==digestSerial)readFailure(request,rejected,"");});return;}
                     catch(Exception unavailable){failed++;}
                 }
-                if(generation==digestSerial&&sessionLogin==owner)try{JSONObject result=new JSONObject().put("items",items).put("failed",failed);runOnUiThread(()->{if(generation==digestSerial&&sessionLogin==owner&&!closing&&web!=null)reply(request,result);});}catch(Exception ignored){}
+                if(generation==digestSerial&&sessionLogin==owner)try{JSONObject result=new JSONObject().put("items",items).put("failed",failed);if(smart){if(items.length()==0)throw new java.io.IOException("Не удалось загрузить тексты писем. Повторите попытку.");result.put("analysis",gemini.analyze(new AiVault(MainActivity.this).load(),items,owner.user,()->generation==digestSerial&&sessionLogin==owner&&!closing));}runOnUiThread(()->{if(generation==digestSerial&&sessionLogin==owner&&!closing&&web!=null)reply(request,result);});}catch(Exception error){String message=error instanceof java.io.IOException&&error.getMessage()!=null&&error.getMessage().matches("(?:Gemini|Доступ|Лимит|Модель|Добавьте|Не удалось загрузить|Некоррект|Сводка|Неизвестный|Слишком).*" )?error.getMessage():"Не удалось получить сводку Gemini. Проверьте сеть и ключ в настройках.";runOnUiThread(()->{if(generation==digestSerial&&sessionLogin==owner&&!closing)failure(request,message);});}
             });
         }
         @JavascriptInterface public void watchFolder(String folder){if(folder==null||folder.length()>2048||folder.contains("\r")||folder.contains("\n"))return;runOnUiThread(()->{watchFolder=folder;startWatch();});}
@@ -531,5 +552,5 @@ public final class MainActivity extends Activity {
     @Override protected void onResume(){super.onResume();resumed=true;NativeUi.bars(this);if(web!=null)web.evaluateJavascript("window.systemThemeChanged&&window.systemThemeChanged()",null);startWatch();}
     @Override protected void onPause(){resumed=false;stopWatch();super.onPause();}
     @Override public void onBackPressed(){if(web!=null){web.evaluateJavascript("window.appBack&&window.appBack()",null);}else if(loginScreen&&hasSavedAccounts){showAccounts();}else super.onBackPressed();}
-    @Override protected void onDestroy(){closing=true;stopWatch();calendarWorker.shutdownNow();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){closing=true;stopWatch();calendarWorker.shutdownNow();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();gemini.cancel();super.onDestroy();}
 }
