@@ -144,12 +144,26 @@ final class MailReader implements AutoCloseable {
             }
             obj.put("sender", name); obj.put("email", email);
             Address[] reply=m.getReplyTo();obj.put("replyTo",reply!=null&&reply.length>0&&reply[0] instanceof InternetAddress?((InternetAddress)reply[0]).getAddress():email);
+            obj.put("recipients", recipients(m));
             Date date = m.getReceivedDate(); if (date == null) date = m.getSentDate();
             SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.ROOT);
             format.setTimeZone(TimeZone.getTimeZone("Europe/Moscow"));
             obj.put("date", date == null ? "" : format.format(date));
             obj.put("seen", m.isSet(Flags.Flag.SEEN));
             return obj;
+    }
+    private JSONArray recipients(Message message) throws Exception {
+        JSONArray result=new JSONArray();
+        Message.RecipientType[] types={Message.RecipientType.TO,Message.RecipientType.CC,Message.RecipientType.BCC};
+        for(Message.RecipientType type:types){
+            Address[] values=message.getRecipients(type);if(values==null)continue;
+            for(Address value:values)if(value instanceof InternetAddress){
+                InternetAddress address=(InternetAddress)value;String email=address.getAddress();
+                if(email==null||!email.matches("[^\\s<>@]+@[^\\s<>@]+"))continue;
+                result.put(new JSONObject().put("email",email).put("sender",address.getPersonal()==null?email:address.getPersonal()));
+            }
+        }
+        return result;
     }
     JSONObject arrivals(String oldValidity,long oldUid)throws Exception{
         openFolder("INBOX");String current=Long.toString(validity);
