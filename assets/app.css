@@ -335,3 +335,20 @@ html,body { width:100%; max-width:100%; overflow-x:clip; overscroll-behavior-x:n
 #mail-v2 .compact .inbox-view .row-title { -webkit-line-clamp:1; }
 
 html.day-overlay { overflow-y:hidden; }
+
+#mail-v2 .search-form { display:flex; gap:6px; padding:12px 18px; align-items:center; }
+#mail-v2 .page .search-form { padding:8px 0; }
+#mail-v2 .search-form input { margin:0; flex:1; min-width:0; background:#f5f4f8; border:0; font-size:14px; border-radius:12px; }
+#mail-v2 .search-form button { display:flex; justify-content:center; align-items:center; width:44px; min-width:44px; padding:10px; border:0; background:var(--tint); }
+#mail-v2 .message-label { display:inline-block; padding:2px 7px; font-size:10px; border-radius:5px; margin-top:5px; background:#eeeaf6; color:#8051b1; }
+#mail-v2 .message-label.urgent { background:#fce9e7; color:#ac4540; }
+#mail-v2 .message-label.important { background:#fbefd9; color:#906820; }
+#mail-v2 .message-label.waiting { background:#e5f0fd; color:#3a71af; }
+#mail-v2 .tasks-head { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+#mail-v2 .tasks-head button { display:flex; align-items:center; gap:6px; font-size:13px; }
+#mail-v2 .task-tabs { display:flex; gap:5px; margin:16px 0 7px; }
+#mail-v2 .task-tabs button { flex:1; font-size:12px; padding:8px 5px; border:0; background:#f5f4f8; min-width:0; border-radius:9px; }
+#mail-v2 .task-tabs button[aria-pressed="true"] { background:var(--tint); color:var(--brand); }
+#mail-v2 .attachment-actions { padding:4px 0 10px; border-bottom:1px solid var(--line); }
+
+#mail-v2 .form-message { color:#a34740; font-size:13px; }

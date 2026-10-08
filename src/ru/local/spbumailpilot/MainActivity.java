@@ -38,6 +38,7 @@ public final class MainActivity extends Activity {
     private volatile long calendarSerial;
     private final java.util.concurrent.atomic.AtomicBoolean sending=new java.util.concurrent.atomic.AtomicBoolean();
     private String attachmentPickRequest,attachmentPickOwner;
+    private String exportRequest,exportOwner;private java.io.File exportFile;
     private static final int PURPLE = 0xff8051b1;
     private int dp(int v) { return (int)(v * getResources().getDisplayMetrics().density); }
     @Override public void onCreate(Bundle state) {
@@ -71,7 +72,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xfffaf8fe);
         LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(28),dp(24),dp(24));scroll.addView(box);setContentView(scroll);
         TextView heading=text("Рабочая почта",29,0xff29262e);heading.setTypeface(null,Typeface.BOLD);box.addView(heading);
-        box.addView(text("Тестовая версия 0.16 · реальный ящик",14,0xff8051b1));
+        box.addView(text("Тестовая версия 0.17 · реальный ящик",14,0xff8051b1));
         box.addView(text("Данные аккаунтов сохраняются на телефоне в зашифрованном виде. Можно переключать ящики без повторного ввода пароля. «Выйти» закрывает ящик, сохраняя его данные; удалить их можно в списке аккаунтов.",15,0xff726d7c));
         box.addView(text("Почтовый сервис",14,0xff726d7c));
         Spinner provider=new Spinner(this);provider.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"СПбГУ","Mail.ru","Другая почта"}));box.addView(provider);
@@ -276,7 +277,13 @@ public final class MainActivity extends Activity {
     }
     private java.io.File uploads(SavedAccounts.Login login)throws Exception{return new java.io.File(getFilesDir(),"outgoing/"+NoticeCenter.scope(login));}
     @Override protected void onActivityResult(int requestCode,int resultCode,android.content.Intent data){
-        super.onActivityResult(requestCode,resultCode,data);if(requestCode!=72||attachmentPickRequest==null)return;
+        super.onActivityResult(requestCode,resultCode,data);
+        if(requestCode==73&&exportRequest!=null){String request=exportRequest,owner=exportOwner;java.io.File file=exportFile;exportRequest=null;exportOwner=null;exportFile=null;
+            SavedAccounts.Login login=sessionLogin;if(login==null||!login.identity().equals(owner))return;
+            if(resultCode!=RESULT_OK||data==null||data.getData()==null){try{reply(request,new JSONObject().put("cancelled",true));}catch(Exception ignored){}return;}
+            Uri target=data.getData();worker.execute(()->{try{if(sessionLogin!=login)return;try(java.io.InputStream input=new java.io.FileInputStream(file);java.io.OutputStream output=getContentResolver().openOutputStream(target,"wt")){if(output==null)throw new java.io.IOException();byte[] buffer=new byte[65536];int n;while((n=input.read(buffer))!=-1)output.write(buffer,0,n);}if(sessionLogin==login)reply(request,new JSONObject().put("saved",true));}catch(Exception e){if(sessionLogin==login)failure(request,"Не удалось сохранить файл в выбранное место.");}});return;
+        }
+        if(requestCode!=72||attachmentPickRequest==null)return;
         String request=attachmentPickRequest,owner=attachmentPickOwner;attachmentPickRequest=null;attachmentPickOwner=null;
         if(resultCode!=RESULT_OK||data==null){try{reply(request,new JSONObject().put("cancelled",true));}catch(Exception ignored){}return;}
         java.util.ArrayList<Uri> selected=new java.util.ArrayList<>();if(data.getClipData()!=null){for(int i=0;i<data.getClipData().getItemCount();i++)selected.add(data.getClipData().getItemAt(i).getUri());}else if(data.getData()!=null)selected.add(data.getData());
@@ -312,6 +319,13 @@ public final class MainActivity extends Activity {
             }
             reply(request,new JSONObject().put("opened",true));
         }catch(Exception error){failure(request,"Не удалось открыть скачанный документ. Повторите попытку.");}
+    }
+    private void chooseExport(String request,JSONObject downloaded,SavedAccounts.Login owner){
+        if(closing||sessionLogin!=owner)return;
+        if(exportRequest!=null){failure(request,"Сначала завершите сохранение предыдущего файла.");return;}
+        try{exportRequest=request;exportOwner=owner.identity();exportFile=new java.io.File(downloaded.getString("file"));
+            android.content.Intent intent=new android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).setType(downloaded.getString("mime")).addCategory(android.content.Intent.CATEGORY_OPENABLE).putExtra(android.content.Intent.EXTRA_TITLE,downloaded.getString("name"));startActivityForResult(intent,73);
+        }catch(Exception e){exportRequest=null;exportFile=null;failure(request,"Не удалось открыть системное сохранение файла.");}
     }
     private void calendarReply(SavedAccounts.Login owner,String request,JSONObject result){runOnUiThread(()->{if(!closing&&sessionLogin!=null&&sessionLogin.identity().equals(owner.identity()))reply(request,result);});}
     private void calendarSetup(String month,String request) {
@@ -422,6 +436,18 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void folders(String request){worker.execute(()->{try{reply(request,readWithReconnect(()->new JSONObject().put("folders",reader.folders())));}catch(Exception e){readFailure(request,e,"Не удалось получить папки. Проверьте сеть/VPN и повторите загрузку.");}});}
         @JavascriptInterface public void page(String name,int offset,String snapshot,String request){if(name==null||name.length()>2048||name.contains("\r")||name.contains("\n")||offset<0){failure(request,"Некорректные параметры списка.");return;}worker.execute(()->{try{reply(request,readWithReconnect(()->reader.page(name,offset,snapshot)));}catch(Exception e){readFailure(request,e,"Не удалось загрузить письма. Повторите попытку; если список изменился, нажмите обновление.");}});}
         @JavascriptInterface public void body(String name,String uid,String validity,String request){if(name==null||name.length()>2048||name.contains("\r")||name.contains("\n")||uid==null||validity==null||!uid.matches("[0-9]{1,20}")||!validity.matches("[0-9]{1,20}")){failure(request,"Некорректный идентификатор письма.");return;}worker.execute(()->{try{reply(request,readWithReconnect(()->reader.body(name,uid,validity)));}catch(Exception e){readFailure(request,e,"Не удалось прочитать письмо. Проверьте сеть и повторите загрузку.");}});}
+        @JavascriptInterface public void searchPage(String name,String query,int offset,String snapshot,String request){
+            if(name==null||name.length()>2048||query==null||query.length()>200||query.matches("(?s).*\\p{Cntrl}.*")||offset<0){failure(request,"Проверьте поисковый запрос.");return;}
+            SavedAccounts.Login owner=sessionLogin;worker.execute(()->{try{if(owner==null||sessionLogin!=owner)return;calendarReply(owner,request,readWithReconnect(()->reader.page(name,offset,snapshot,query)));}catch(Exception e){if(sessionLogin==owner)readFailure(request,e,"Поиск не выполнен. Проверьте сеть или попробуйте другой запрос.");}});
+        }
+        @JavascriptInterface public void filesPage(String name,String query,int offset,String snapshot,String request){
+            if(name==null||name.length()>2048||query==null||query.length()>200||offset<0){failure(request,"Проверьте запрос поиска файлов.");return;}
+            SavedAccounts.Login owner=sessionLogin;worker.execute(()->{try{if(owner==null||sessionLogin!=owner)return;calendarReply(owner,request,readWithReconnect(()->reader.files(name,offset,snapshot,query)));}catch(Exception e){if(sessionLogin==owner)readFailure(request,e,"Не удалось получить вложения. Повторите поиск.");}});
+        }
+        @JavascriptInterface public void saveDocument(String name,String uid,String validity,String path,boolean message,String request){
+            if(name==null||name.length()>2048||uid==null||validity==null||!uid.matches("[0-9]{1,20}")||!validity.matches("[0-9]{1,20}")||path==null||path.length()>160){failure(request,"Некорректные параметры файла.");return;}
+            SavedAccounts.Login owner=sessionLogin;worker.execute(()->{try{if(owner==null||sessionLogin!=owner)return;JSONObject downloaded=readWithReconnect(()->message?reader.exportMessage(name,uid,validity,new java.io.File(getCacheDir(),"attachments")):reader.attachment(name,uid,validity,path,new java.io.File(getCacheDir(),"attachments")));runOnUiThread(()->chooseExport(request,downloaded,owner));}catch(Exception e){if(sessionLogin==owner)readFailure(request,e,"Не удалось скачать файл для сохранения. Проверьте сеть и размер файла (до 100 МБ).");}});
+        }
         @JavascriptInterface public void attachment(String name,String uid,String validity,String path,String request){
             if(name==null||name.length()>2048||name.contains("\r")||name.contains("\n")||uid==null||validity==null||!uid.matches("[0-9]{1,20}")||!validity.matches("[0-9]{1,20}")||path==null||path.length()>160){failure(request,"Некорректные параметры вложения.");return;}
             worker.execute(()->{try{JSONObject downloaded=readWithReconnect(()->reader.attachment(name,uid,validity,path,new java.io.File(getCacheDir(),"attachments")));runOnUiThread(()->openAttachmentFile(request,downloaded));}catch(Exception error){readFailure(request,error,"Не удалось скачать вложение. Проверьте сеть и повторите попытку. Максимальный размер файла — 100 МБ.");}});

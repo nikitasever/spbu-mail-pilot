@@ -2,7 +2,7 @@
   "name": "spbu-mail-pilot-tests",
   "private": true,
   "scripts": {
-    "test": "node test-ui.cjs && node test-pagination.cjs && node test-actions.cjs && node test-calendar.cjs",
+    "test": "node test-ui.cjs && node test-pagination.cjs && node test-actions.cjs && node test-calendar.cjs && node test-workspace.cjs",
     "test:layout": "node test-layout.cjs"
   },
   "devDependencies": {

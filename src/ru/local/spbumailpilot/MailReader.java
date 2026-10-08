@@ -26,7 +26,8 @@ final class MailReader implements AutoCloseable {
     private String pagingFolder = "";
     private long pagingValidity;
     private long generation;
-    private UidPages pages;
+    private UidPages pages,filePages;
+    private String pagingQuery="",fileFolder;private long fileValidity,fileGeneration;
     void connect(String host, int port, String user, String password) throws Exception {
         Properties props = new Properties();
         props.setProperty("mail.imaps.ssl.checkserveridentity", "true");
@@ -67,21 +68,24 @@ final class MailReader implements AutoCloseable {
         for (String name : names) result.put(name);
         return result;
     }
-    private long[] uidSnapshot() throws Exception {
+    private long[] uidSnapshot() throws Exception {return uidSnapshot("");}
+    private long[] uidSnapshot(String query) throws Exception {
+        final com.sun.mail.iap.Argument search=query.isEmpty()?null:SearchQuery.arguments(query);
         return (long[]) ((IMAPFolder) inbox).doCommand(protocol -> {
-            Response[] responses = protocol.command("UID SEARCH ALL", null);
+            Response[] responses = query.isEmpty()?protocol.command("UID SEARCH ALL", null):protocol.command("UID SEARCH",search);
             protocol.handleResult(responses[responses.length - 1]);
             long[] values = UidSearch.parse(responses);
             protocol.notifyResponseHandlers(responses);
             return values;
         });
     }
-    JSONObject page(String name, int offset, String snapshot) throws Exception {
+    JSONObject page(String name,int offset,String snapshot)throws Exception{return page(name,offset,snapshot,"");}
+    JSONObject page(String name, int offset, String snapshot,String query) throws Exception {
         openFolder(name);
         if (offset == 0) {
-            pages = new UidPages(uidSnapshot());
+            pages = new UidPages(uidSnapshot(query));pagingQuery=query;
             pagingFolder = name; pagingValidity = validity; generation++;
-        } else if (pages == null || !name.equals(pagingFolder) || pagingValidity != validity || !Long.toString(generation).equals(snapshot)) {
+        } else if (pages == null || !query.equals(pagingQuery) || !name.equals(pagingFolder) || pagingValidity != validity || !Long.toString(generation).equals(snapshot)) {
             throw new MessagingException("Page snapshot changed");
         }
         long[] uids = pages.page(offset);
@@ -103,6 +107,25 @@ final class MailReader implements AutoCloseable {
         int next = pages.next(offset);
         return new JSONObject().put("messages", result).put("total", pages.size()).put("nextOffset", next)
                 .put("hasMore", next < pages.size()).put("snapshot", Long.toString(generation)).put("folder", name);
+    }
+    JSONObject files(String name,int offset,String snapshot,String query)throws Exception{
+        openFolder(name);
+        if(offset==0){filePages=new UidPages(uidSnapshot());fileFolder=name;fileValidity=validity;fileGeneration++;}
+        else if(filePages==null||!name.equals(fileFolder)||fileValidity!=validity||!Long.toString(fileGeneration).equals(snapshot))throw new MessagingException("File snapshot changed");
+        long[] uids=filePages.page(offset);Message[] found=uids.length==0?new Message[0]:((UIDFolder)inbox).getMessagesByUID(uids);
+        FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add(FetchProfile.Item.CONTENT_INFO);profile.add(UIDFolder.FetchProfileItem.UID);if(found.length>0)inbox.fetch(found,profile);
+        JSONArray result=new JSONArray();for(int i=found.length-1;i>=0;i--){Message message=found[i];if(message==null||message.isExpunged())continue;
+            JSONArray entries=AttachmentIndex.list(message,query);JSONObject info=header(message);
+            for(int j=0;j<entries.length();j++){JSONObject entry=entries.getJSONObject(j);entry.put("message",info);result.put(entry);}
+        }
+        int next=filePages.next(offset);return new JSONObject().put("files",result).put("total",filePages.size()).put("nextOffset",next).put("hasMore",next<filePages.size()).put("snapshot",Long.toString(fileGeneration));
+    }
+    JSONObject exportMessage(String name,String uid,String expectedValidity,java.io.File directory)throws Exception{
+        openFolder(name);if(!Long.toString(validity).equals(expectedValidity))throw new MessagingException("UID validity changed");Message message=((UIDFolder)inbox).getMessageByUID(Long.parseLong(uid));if(message==null||message.isExpunged())throw new MessagingException("Missing message");
+        if(message instanceof com.sun.mail.imap.IMAPMessage)((com.sun.mail.imap.IMAPMessage)message).setPeek(true);
+        directory.mkdirs();java.io.File file=java.io.File.createTempFile("message-",".eml",directory);
+        try(java.io.OutputStream raw=new java.io.FileOutputStream(file);java.io.OutputStream bounded=new java.io.FilterOutputStream(raw){long size;public void write(int b)throws java.io.IOException{if(++size>AttachmentFiles.MAX_BYTES)throw new java.io.IOException("Message too large");out.write(b);}public void write(byte[] b,int off,int len)throws java.io.IOException{if((size+=len)>AttachmentFiles.MAX_BYTES)throw new java.io.IOException("Message too large");out.write(b,off,len);}}){message.writeTo(bounded);}catch(Exception e){file.delete();throw e;}
+        return new JSONObject().put("file",file.getAbsolutePath()).put("name",AttachmentFiles.safeName(message.getSubject())+".eml").put("mime","message/rfc822");
     }
     private JSONObject header(Message m) throws Exception {
             JSONObject obj = new JSONObject();
