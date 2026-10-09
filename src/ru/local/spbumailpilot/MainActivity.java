@@ -23,6 +23,10 @@ import javax.mail.MessagingException;
 
 public final class MainActivity extends Activity {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private final ExecutorService bodyWorker=Executors.newSingleThreadExecutor();
+    private MailReader bodyReader;
+    private SavedAccounts.Login bodyOwner;
+    private volatile long bodySerial;
     private final ExecutorService calendarWorker=Executors.newSingleThreadExecutor();
     private final ExecutorService draftWorker=Executors.newSingleThreadExecutor();
     private final ExecutorService directoryWorker=Executors.newSingleThreadExecutor();
@@ -102,7 +106,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(NativeUi.context(this,false));scroll.setFillViewport(true);scroll.setBackgroundColor(NativeUi.paper(this));
         LinearLayout box=new LinearLayout(NativeUi.context(this,false));box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(28),dp(24),dp(24));scroll.addView(box);setContentView(scroll);
         TextView heading=text("Рабочая почта",29,0xff29262e);heading.setTypeface(null,Typeface.BOLD);box.addView(heading);
-        box.addView(text("Тестовая версия 0.38 · реальный ящик",14,0xff8051b1));
+        box.addView(text("Тестовая версия 0.39 · реальный ящик",14,0xff8051b1));
         box.addView(text("Вход сохранится на этом телефоне в зашифрованном виде. Переключайте ящики без повторного ввода пароля.",15,0xff726d7c));
         box.addView(text("Почтовый сервис",14,0xff726d7c));
         Spinner provider=new Spinner(NativeUi.context(this,false));provider.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"СПбГУ","Mail.ru","Другая почта"}));box.addView(provider);
@@ -142,6 +146,7 @@ public final class MainActivity extends Activity {
         });
     }
     private void attachLogin(MailReader next,SavedAccounts.Login login) throws Exception {
+        ++bodySerial;bodyWorker.execute(this::closeBodyReader);
         String oldScope="account-"+digest(login.host+":"+login.port+":"+login.user.toLowerCase(java.util.Locale.ROOT));
         String scope="account-"+digest(login.host.toLowerCase(java.util.Locale.ROOT)+":"+login.port+":"+login.user.toLowerCase(java.util.Locale.ROOT));
         local=getSharedPreferences(scope,MODE_PRIVATE);
@@ -251,6 +256,12 @@ public final class MainActivity extends Activity {
         worker.execute(()->{try{vault.deactivate();if(reader!=null)reader.close();reader=null;sessionLogin=null;local=null;account="";NoticeCenter.schedule(this);
             runOnUiThread(()->{if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}showLogin();});
         }catch(Exception error){runOnUiThread(()->Toast.makeText(this,"Не удалось открыть добавление аккаунта.",Toast.LENGTH_LONG).show());}});
+    }
+    private void closeBodyReader(){if(bodyReader!=null)bodyReader.close();bodyReader=null;bodyOwner=null;}
+    private void bodyReply(SavedAccounts.Login owner,String request,long generation,JSONObject value){runOnUiThread(()->{if(!closing&&sessionLogin==owner){try{reply(request,generation==bodySerial?value:new JSONObject().put("cancelled",true));}catch(org.json.JSONException invalid){failure(request,"Не удалось показать письмо.");}}});}
+    private MailReader bodyConnection(SavedAccounts.Login owner)throws Exception{
+        if(bodyReader==null||bodyOwner!=owner){closeBodyReader();MailReader next=new MailReader();try{next.connect(owner.host,owner.port,owner.user,owner.password);}catch(Exception failure){next.close();throw failure;}bodyReader=next;bodyOwner=owner;}
+        return bodyReader;
     }
     private interface ReadOperation {JSONObject run() throws Exception;}
     private JSONObject readWithReconnect(ReadOperation operation) throws Exception {
@@ -571,7 +582,18 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void testNotification(){runOnUiThread(()->{if(!NoticeCenter.allowed(MainActivity.this)){pendingTestNotice=true;getSharedPreferences("notification-permission",MODE_PRIVATE).edit().putBoolean("requested",false).apply();requestNoticePermission();}else NoticeCenter.test(MainActivity.this);});}
         @JavascriptInterface public void folders(String request){worker.execute(()->{try{reply(request,readWithReconnect(()->new JSONObject().put("folders",reader.folders())));}catch(Exception e){readFailure(request,e,"Не удалось получить папки. Проверьте сеть/VPN и повторите загрузку.");}});}
         @JavascriptInterface public void page(String name,int offset,String snapshot,String request){if(name==null||name.length()>2048||name.contains("\r")||name.contains("\n")||offset<0){failure(request,"Некорректные параметры списка.");return;}worker.execute(()->{try{reply(request,readWithReconnect(()->reader.page(name,offset,snapshot)));}catch(Exception e){readFailure(request,e,"Не удалось загрузить письма. Повторите попытку; если список изменился, нажмите обновление.");}});}
-        @JavascriptInterface public void body(String name,String uid,String validity,String request){if(name==null||name.length()>2048||name.contains("\r")||name.contains("\n")||uid==null||validity==null||!uid.matches("[0-9]{1,20}")||!validity.matches("[0-9]{1,20}")){failure(request,"Некорректный идентификатор письма.");return;}worker.execute(()->{try{reply(request,readWithReconnect(()->reader.body(name,uid,validity)));}catch(Exception e){readFailure(request,e,"Не удалось прочитать письмо. Проверьте сеть и повторите загрузку.");}});}
+        @JavascriptInterface public void body(String name,String uid,String validity,String request){
+            if(name==null||name.length()>2048||name.contains("\r")||name.contains("\n")||uid==null||validity==null||!uid.matches("[0-9]{1,20}")||!validity.matches("[0-9]{1,20}")){failure(request,"Некорректный идентификатор письма.");return;}
+            SavedAccounts.Login owner=sessionLogin;long generation=++bodySerial;
+            bodyWorker.execute(()->{try{
+                if(owner==null||closing||sessionLogin!=owner)return;if(generation!=bodySerial){bodyReply(owner,request,generation,new JSONObject());return;}
+                JSONObject result;
+                try{result=bodyConnection(owner).body(name,uid,validity);}
+                catch(javax.mail.AuthenticationFailedException rejected){throw rejected;}
+                catch(MessagingException|java.io.IOException disconnected){closeBodyReader();if(closing||sessionLogin!=owner)return;if(generation!=bodySerial){bodyReply(owner,request,generation,new JSONObject());return;}result=bodyConnection(owner).body(name,uid,validity);}
+                bodyReply(owner,request,generation,result);
+            }catch(Exception unavailable){closeBodyReader();bodyReply(owner,request,generation,new JSONObjectSafe().putValue("error","Не удалось прочитать письмо. Проверьте сеть и повторите загрузку."));}});
+        }
         @JavascriptInterface public void searchPage(String name,String query,int offset,String snapshot,String request){
             if(name==null||name.length()>2048||query==null||query.length()>200||query.matches("(?s).*\\p{Cntrl}.*")||offset<0){failure(request,"Проверьте поисковый запрос.");return;}
             SavedAccounts.Login owner=sessionLogin;worker.execute(()->{try{if(owner==null||sessionLogin!=owner)return;calendarReply(owner,request,readWithReconnect(()->reader.page(name,offset,snapshot,query)));}catch(Exception e){if(sessionLogin==owner)readFailure(request,e,"Поиск не выполнен. Проверьте сеть или попробуйте другой запрос.");}});
@@ -621,5 +643,5 @@ public final class MainActivity extends Activity {
     @Override protected void onResume(){super.onResume();resumed=true;NativeUi.bars(this);if(web!=null)web.evaluateJavascript("window.systemThemeChanged&&window.systemThemeChanged()",null);startWatch();BackgroundMailService.reconcile(this,true);}
     @Override protected void onPause(){resumed=false;stopWatch();super.onPause();}
     @Override public void onBackPressed(){if(web!=null){web.evaluateJavascript("window.appBack&&window.appBack()",null);}else if(loginScreen&&hasSavedAccounts){showAccounts();}else super.onBackPressed();}
-    @Override protected void onDestroy(){closing=true;stopWatch();draftWorker.shutdownNow();calendarWorker.shutdownNow();directoryWorker.execute(universityDirectory::close);directoryWorker.shutdown();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();gemini.cancel();super.onDestroy();}
+    @Override protected void onDestroy(){closing=true;++bodySerial;stopWatch();bodyWorker.execute(this::closeBodyReader);bodyWorker.shutdown();draftWorker.shutdownNow();calendarWorker.shutdownNow();directoryWorker.execute(universityDirectory::close);directoryWorker.shutdown();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();gemini.cancel();super.onDestroy();}
 }

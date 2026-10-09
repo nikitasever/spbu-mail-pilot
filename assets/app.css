@@ -139,6 +139,15 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .file-chip { display:flex; align-items:center; gap:10px; width:100%; text-align:left; margin:10px 0; padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--surface); font-size:13px; }
 #mail-v2 .file-chip span { min-width:0; flex:1; overflow-wrap:anywhere; }
 #mail-v2 .attachment-actions { padding:8px 0 12px; border-bottom:1px solid var(--line); }
+#mail-v2 .attachment-card { margin:12px 0; padding:16px; border:1px solid var(--line); border-radius:18px; background:var(--surface); }
+#mail-v2 .attachment-title { display:flex; align-items:flex-start; gap:12px; margin-bottom:14px; }
+#mail-v2 .attachment-title > div { min-width:0; flex:1; }
+#mail-v2 .attachment-title strong { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; overflow-wrap:anywhere; font-size:15px; }
+#mail-v2 .attachment-title span { display:block; margin-top:4px; font-size:12px; opacity:.7; }
+#mail-v2 .attachment-primary { display:flex; gap:8px; flex-wrap:wrap; }
+#mail-v2 .attachment-primary button { flex:1; min-width:105px; display:flex; align-items:center; justify-content:center; gap:8px; }
+#mail-v2 .attachment-more { margin-top:12px; }
+#mail-v2 .attachment-more summary { cursor:pointer; font-size:13px; opacity:.8; padding:8px 0; }
 #mail-v2 .form-message { color:var(--warn); font-size:13px; }
 #mail-v2 .list-item { padding:18px 0; border-bottom:1px solid var(--line); }
 #mail-v2 .list-item:last-child { border-bottom:0; }

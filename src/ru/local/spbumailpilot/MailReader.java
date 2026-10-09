@@ -28,6 +28,7 @@ final class MailReader implements AutoCloseable {
     private long generation;
     private UidPages pages,filePages;
     private String pagingQuery="",fileFolder;private long fileValidity,fileGeneration;
+    private final java.util.LinkedHashMap<String,JSONObject> downloadedFiles=new java.util.LinkedHashMap<>();
     void connect(String host, int port, String user, String password) throws Exception {
         Properties props = new Properties();
         props.setProperty("mail.imaps.ssl.checkserveridentity", "true");
@@ -184,8 +185,10 @@ final class MailReader implements AutoCloseable {
         if (!Long.toString(validity).equals(expectedValidity)) throw new MessagingException("UID validity changed");
         Message m = ((UIDFolder) inbox).getMessageByUID(Long.parseLong(uid));
         if (m == null || m.isExpunged()) throw new MessagingException("Message unavailable");
+        FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add(FetchProfile.Item.FLAGS);profile.add(FetchProfile.Item.CONTENT_INFO);profile.add("Message-ID");
+        inbox.fetch(new Message[]{m},profile);
         JSONArray files = new JSONArray();
-        String text = extract(m, files, 0, "root");
+        String text = extract(m, files, 0, "root",100000);
         JSONObject info=header(m);String[] messageIds=m.getHeader("Message-ID");if(messageIds!=null&&messageIds.length>0)info.put("messageId",messageIds[0]);
         return new JSONObject().put("uid", uid).put("text", text).put("attachments", files).put("message", info).put("phones",new JSONArray(PhoneNumbers.find(text)));
     }
@@ -212,34 +215,33 @@ final class MailReader implements AutoCloseable {
         if(chosen==null)throw new MessagingException("Sent folder not found");
         message.setFlag(Flags.Flag.SEEN,true);chosen.appendMessages(new Message[]{message});
     }
-    private String extract(Part part, JSONArray files, int depth, String path) throws Exception {
+    private String extract(Part part, JSONArray files, int depth, String path,int budget) throws Exception {
         if (depth > 12) return "";
         String name = part.getFileName();
         if (name != null || Part.ATTACHMENT.equalsIgnoreCase(part.getDisposition())) {
             files.put(new JSONObject().put("name", name == null ? "Вложение" : MimeUtility.decodeText(name)).put("size", part.getSize()).put("path",path));
             return ""; // Do not download binary attachment content.
         }
-        if (part.isMimeType("text/plain")) return part.getSize() > 5 * 1024 * 1024 ? "[Текстовая часть слишком большая для тестовой версии]" : limit((String) part.getContent());
+        if (part.isMimeType("text/plain")) return MailText.read(part,budget);
         if (part.isMimeType("text/html")) {
-            if (part.getSize() > 5 * 1024 * 1024) return "[Текстовая часть слишком большая для тестовой версии]";
-            String html = limit((String) part.getContent());
+            String html = MailText.read(part,budget);
             html = html.replaceAll("(?is)<(script|style)\\b[^>]*>.*?</\\1>", "");
             return Html.fromHtml(html, Html.FROM_HTML_MODE_COMPACT).toString();
         }
         if (part.isMimeType("multipart/*")) {
             Multipart multi = (Multipart) part.getContent();
             if (part.isMimeType("multipart/alternative")) {
-                for (int i = 0; i < multi.getCount(); i++) if (multi.getBodyPart(i).isMimeType("text/plain")) return extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)));
-                for (int i = multi.getCount() - 1; i >= 0; i--) if (multi.getBodyPart(i).isMimeType("text/html")) return extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)));
+                for (int i = 0; i < multi.getCount(); i++) if (multi.getBodyPart(i).isMimeType("text/plain")) return extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)),budget);
+                for (int i = multi.getCount() - 1; i >= 0; i--) if (multi.getBodyPart(i).isMimeType("text/html")) return extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)),budget);
             }
             StringBuilder text = new StringBuilder();
-            for (int i = 0; i < multi.getCount() && i < 80 && text.length() < 100000; i++) {
-                String value = extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)));
+            for (int i = 0; i < multi.getCount() && i < 80; i++) {
+                String value = extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)),Math.max(0,budget-text.length()));
                 if (!value.isEmpty()) { if (text.length() > 0) text.append("\n\n"); text.append(value); }
             }
             return limit(text.toString());
         }
-        if (part.isMimeType("message/rfc822")) return extract((Part) part.getContent(), files, depth + 1, AttachmentParts.child(path,"m"));
+        if (part.isMimeType("message/rfc822")) return extract((Part) part.getContent(), files, depth + 1, AttachmentParts.child(path,"m"),budget);
         return "";
     }
     JSONObject attachment(String folder,String uid,String expectedValidity,String path,java.io.File directory)throws Exception{
@@ -247,18 +249,21 @@ final class MailReader implements AutoCloseable {
         if(!Long.toString(validity).equals(expectedValidity))throw new MessagingException("UID validity changed");
         Message message=((UIDFolder)inbox).getMessageByUID(Long.parseLong(uid));
         if(message==null||message.isExpunged())throw new MessagingException("Message unavailable");
+        String cacheKey=new JSONArray().put(folder).put(uid).put(expectedValidity).put(path).put(directory.getAbsolutePath()).toString();
+        JSONObject cached=downloadedFiles.get(cacheKey);if(cached!=null&&new java.io.File(cached.getString("file")).isFile())return new JSONObject(cached.toString());
         Part part=AttachmentParts.resolve(message,path);
         String raw=part.getFileName();String name=AttachmentFiles.safeName(raw==null?"Вложение":MimeUtility.decodeText(raw));
         if(part.getSize()>AttachmentFiles.MAX_BYTES)throw new java.io.IOException("Attachment too large");
         String mime=AttachmentFiles.mime(name,new javax.mail.internet.ContentType(part.getContentType()).getBaseType());
         java.io.File file;
         try(java.io.InputStream input=part.getInputStream()){file=AttachmentFiles.copy(input,directory,name,AttachmentFiles.MAX_BYTES);}
-        return new JSONObject().put("file",file.getAbsolutePath()).put("name",name).put("mime",mime);
+        JSONObject result=new JSONObject().put("file",file.getAbsolutePath()).put("name",name).put("mime",mime);
+        downloadedFiles.put(cacheKey,result);if(downloadedFiles.size()>30)downloadedFiles.remove(downloadedFiles.keySet().iterator().next());return new JSONObject(result.toString());
     }
     private String limit(String value) { return value.length() <= 100000 ? value : value.substring(0, 100000) + "\n[Показана часть текста]"; }
     @Override public void close() {
         try { if (inbox != null && inbox.isOpen()) inbox.close(false); } catch (Exception ignored) { }
         try { if (store != null) store.close(); } catch (Exception ignored) { }
-        inbox = null; store = null;
+        inbox = null; store = null;downloadedFiles.clear();
     }
 }
