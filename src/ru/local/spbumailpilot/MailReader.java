@@ -176,6 +176,7 @@ final class MailReader implements AutoCloseable {
         int start=Math.max(0,messages.size()-3);Message[] recent=messages.subList(start,messages.size()).toArray(new Message[0]);
         FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);if(recent.length>0)inbox.fetch(recent,profile);
         StringBuilder summary=new StringBuilder();for(int i=recent.length-1;i>=0;i--){if(summary.length()>0)summary.append('\n');String subject=recent[i].getSubject();summary.append(subject==null?"Без темы":subject.substring(0,Math.min(180,subject.length())));}
+        if(recent.length>0)result.put("openUid",Long.toString(((UIDFolder)inbox).getUID(recent[recent.length-1])));
         return result.put("uid",high).put("count",messages.size()).put("summary",summary.toString());
     }
     JSONObject body(String name, String uid, String expectedValidity) throws Exception {

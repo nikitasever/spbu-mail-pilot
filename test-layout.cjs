@@ -87,6 +87,13 @@ function bridge(defer){
    for(const width of [320,393,412]){await recipients.setViewportSize({width,height:850});await fits('recipient dropdown '+theme+' '+width,recipients);}
    await recipients.setViewportSize({width:393,height:850});await recipients.screenshot({path:path.join(__dirname,'build/recipients-'+theme+'-0.34.png')});await choice.click();assert.equal(await recipients.locator('[name="to"]').inputValue(),'directory-person@example.invalid');assert.equal(await recipients.evaluate(()=>window.mockSent||0),0);await recipients.locator('[data-action="cancel"]').first().click();
   }
+  const touch=await browser.newPage({viewport:{width:393,height:850},hasTouch:true,isMobile:true});await touch.addInitScript(bridge,false);await touch.goto(origin);
+  for(const theme of ['light','dark']){
+   await touch.evaluate(()=>document.querySelector('#menu [data-route="settings"]').click());await touch.locator('select[data-theme]').selectOption(theme);
+   await touch.evaluate(()=>document.querySelector('#menu [data-route="contacts"]').click());await touch.locator('#contacts-book').tap();await touch.waitForTimeout(120);assert.ok(await touch.locator('#quick-popup').evaluate(e=>e.matches(':modal')),'touch release dismissed dropdown');await touch.locator('[data-action="select-option"]').filter({hasText:'Компания'}).tap();assert.equal(await touch.locator('#contacts-book').inputValue(),'company');assert.equal(await touch.locator('#quick-popup').count(),0);
+   await touch.evaluate(()=>document.querySelector('#menu [data-route="mail"]').click());const bounds=await touch.locator('#mail-folder').boundingBox();await touch.mouse.move(bounds.x+20,bounds.y+20);await touch.mouse.down();assert.equal(await touch.locator('#quick-popup').count(),0,'picker must wait for completed click');await touch.mouse.up();assert.ok(await touch.locator('#quick-popup').evaluate(e=>e.matches(':modal')));await fits('completed touch dropdown '+theme,touch);await touch.keyboard.press('Escape');
+  }
+  console.log('PASS: normal touch opens dropdown until selection; mouse release does not dismiss it, light/dark themes.');
   console.log('PASS: server alias match remains visible; avatar, name and email fit light/dark at 320/393/412px; selecting a recipient does not send mail.');
   console.log('PASS: themed folder dialog opens by touch and closes by Escape; real 42%, ACK-pending 99%, confirmed 100%; attachment panel fits light/dark mobile widths.');
   console.log('PASS: digest selection, excerpts and AI preview fit actual mobile browser.');

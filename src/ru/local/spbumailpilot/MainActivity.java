@@ -61,6 +61,8 @@ public final class MainActivity extends Activity {
     private boolean hasSavedAccounts;
     private boolean loginScreen;
     private boolean pendingTestNotice;
+    private volatile MailNoticeTarget pendingMail;
+    private boolean mailPageReady;
     private volatile long calendarSerial;
     private volatile long digestSerial;
     private final GeminiDigest gemini=new GeminiDigest();
@@ -74,6 +76,7 @@ public final class MainActivity extends Activity {
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         vault = new CredentialVault(this);
         NoticeCenter.channels(this);
+        pendingMail=MailNoticeTarget.parse(getIntent().getStringExtra("openMail"));
         restoreLogin();
     }
     boolean nativeDark(){String mode=local!=null?appearanceMode:getSharedPreferences("appearance",MODE_PRIVATE).getString("theme","system");return AppearancePolicy.dark(AppearancePolicy.mode(mode),(getResources().getConfiguration().uiMode&android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES);}
@@ -154,11 +157,12 @@ public final class MainActivity extends Activity {
         showReconnect("Подключение к сохранённому ящику…",true);
         worker.execute(()->{
             SavedAccounts.Login login;
-            try{login=vault.load();}catch(Exception storage){runOnUiThread(()->showStorageError());return;}
+            try{login=vault.load();MailNoticeTarget target=pendingMail;if(target!=null){SavedAccounts.Login requested=null;for(SavedAccounts.Login saved:vault.list())if(NoticeCenter.scope(saved).equals(target.account)){requested=saved;break;}if(requested!=null){login=requested;vault.save(login);}else pendingMail=null;}}catch(Exception storage){runOnUiThread(()->showStorageError());return;}
             if(login==null){runOnUiThread(this::showAccounts);return;}
+            final SavedAccounts.Login restored=login;
             MailReader next=new MailReader();
             try{next.connect(login.host,login.port,login.user,login.password);if(closing){next.close();return;}attachLogin(next,login);runOnUiThread(this::showMail);}
-            catch(Exception error){next.close();runOnUiThread(()->showReconnect(LoginFailure.describe(error,login.host,login.user,login.password)+"\n\nСохранённый вход остаётся на телефоне.",false));}
+            catch(Exception error){next.close();runOnUiThread(()->showReconnect(LoginFailure.describe(error,restored.host,restored.user,restored.password)+"\n\nСохранённый вход остаётся на телефоне.",false));}
         });
     }
     private void showReconnect(String message,boolean busy) {
@@ -261,7 +265,7 @@ public final class MainActivity extends Activity {
     private void showMail() {
         if (closing || isFinishing()) return;
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);NativeUi.bars(this);
-        web=new WebView(this);WebSettings settings=web.getSettings();settings.setJavaScriptEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setDomStorageEnabled(false);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);settings.setBlockNetworkLoads(true);
+        mailPageReady=false;web=new WebView(this);WebSettings settings=web.getSettings();settings.setJavaScriptEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setDomStorageEnabled(false);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);settings.setBlockNetworkLoads(true);
         web.setHorizontalScrollBarEnabled(false);web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.addJavascriptInterface(new Bridge(),"Pilot");
         web.setWebChromeClient(new WebChromeClient(){
@@ -271,6 +275,7 @@ public final class MainActivity extends Activity {
             }
         });
         web.setWebViewClient(new WebViewClient(){
+            @Override public void onPageFinished(WebView view,String url){if(view!=web||!url.equals("https://mail-pilot.local/assets/index.html"))return;mailPageReady=true;openPendingMail();if(getIntent().getBooleanExtra("openTasks",false)){getIntent().removeExtra("openTasks");web.evaluateJavascript("window.openTasksFromNotification&&window.openTasksFromNotification()",null);}}
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){return true;}
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
                 Uri uri=request.getUrl();String path=uri.getPath();
@@ -348,7 +353,15 @@ public final class MainActivity extends Activity {
         });
     }
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){super.onRequestPermissionsResult(requestCode,permissions,results);if(requestCode==61){if(pendingTestNotice&&NoticeCenter.allowed(this))NoticeCenter.test(this);pendingTestNotice=false;worker.execute(()->{try{NoticeCenter.schedule(this);}catch(Exception ignored){}});}}
-    @Override protected void onNewIntent(android.content.Intent intent){super.onNewIntent(intent);setIntent(intent);if(web!=null&&intent.getBooleanExtra("openTasks",false))web.evaluateJavascript("window.openTasksFromNotification&&window.openTasksFromNotification()",null);}
+    @Override protected void onNewIntent(android.content.Intent intent){super.onNewIntent(intent);setIntent(intent);pendingMail=MailNoticeTarget.parse(intent.getStringExtra("openMail"));if(pendingMail!=null)openPendingMail();else if(web!=null&&mailPageReady&&intent.getBooleanExtra("openTasks",false)){intent.removeExtra("openTasks");web.evaluateJavascript("window.openTasksFromNotification&&window.openTasksFromNotification()",null);}}
+    private void openPendingMail(){
+        final MailNoticeTarget target=pendingMail;if(target==null||web==null||!mailPageReady||sessionLogin==null||closing)return;
+        try{if(NoticeCenter.scope(sessionLogin).equals(target.account)){
+            web.evaluateJavascript("window.openMailFromNotification&&window.openMailFromNotification("+target.reference()+")",accepted->{if("true".equals(accepted)&&pendingMail==target){pendingMail=null;getIntent().removeExtra("openMail");}});return;
+        }}catch(Exception ignored){return;}
+        web.evaluateJavascript("window.prepareNotificationNavigation&&window.prepareNotificationNavigation()",accepted->{if(!"true".equals(accepted)||pendingMail!=target)return;worker.execute(()->{try{SavedAccounts.Login found=null;for(SavedAccounts.Login saved:vault.list())if(NoticeCenter.scope(saved).equals(target.account)){found=saved;break;}final SavedAccounts.Login selected=found;runOnUiThread(()->{if(pendingMail!=target||closing)return;if(selected!=null)connectSaved(selected);else{pendingMail=null;getIntent().removeExtra("openMail");Toast.makeText(this,"Ящик из уведомления больше не сохранён.",Toast.LENGTH_LONG).show();}});}catch(Exception error){runOnUiThread(()->Toast.makeText(this,"Не удалось открыть ящик из уведомления.",Toast.LENGTH_LONG).show());}});});
+    }
+
     private void reply(String request,JSONObject result){try{result.put("request",request);}catch(Exception ignored){}runOnUiThread(()->{if(web!=null&&!closing)web.evaluateJavascript("window.onNativeResult(JSON.parse("+JSONObject.quote(result.toString())+"))",null);});}
     private void failure(String request,String message){reply(request,new JSONObjectSafe().putValue("error",message));}
     private void readFailure(String request,Exception error,String message){failure(request,error instanceof AuthenticationFailedException?"Сервер отклонил сохранённый вход. Откройте «Профиль» → «Сменить аккаунт» и добавьте этот ящик с новым паролем.":message);}

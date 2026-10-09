@@ -53,9 +53,13 @@ final class NoticeCenter {
         tasks(context);
     }
     private static boolean post(Context context,String channel,String tag,String title,String text){
+        return post(context,channel,tag,title,text,null);
+    }
+    private static boolean post(Context context,String channel,String tag,String title,String text,MailNoticeTarget target){
         if(!channelAllowed(context,channel))return false;
         Intent open=new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
         if(channel.equals(TASKS))open.putExtra("openTasks",true);
+        if(target!=null)try{open.setData(android.net.Uri.parse("mailpilot://mail/"+target.account+"/"+target.validity+"/"+target.uid));open.putExtra("openMail",target.encode());}catch(Exception invalid){return false;}
         PendingIntent click=PendingIntent.getActivity(context,channel.equals(TASKS)?2:1,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         Notification publicVersion=new Notification.Builder(context,channel).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle("Почта СПбГУ").setContentText("Новое уведомление").build();
         Notification notice=new Notification.Builder(context,channel).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle(title).setContentText(text).setStyle(new Notification.BigTextStyle().bigText(text)).setContentIntent(click).setAutoCancel(true).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(publicVersion).build();
@@ -99,7 +103,8 @@ final class NoticeCenter {
             JSONObject update=reader.arrivals(oldValidity,oldUid);if(stopped.get())return;
             SavedAccounts.Login active=new CredentialVault(context).load();if(active==null||!active.identity().equals(login.identity())||!enabled(settings(context,active),"mailNotifications"))return;
             int count=update.getInt("count");
-            if(count>0&&!post(context,MAIL,scope(login)+"/mail","Новые письма · "+count,login.user+"\n"+update.optString("summary")))return;
+            MailNoticeTarget target=MailNoticeTarget.parse(new JSONObject().put("account",scope(login)).put("uid",update.optString("openUid")).put("validity",update.getString("validity")).toString());
+            if(count>0&&!post(context,MAIL,scope(login)+"/mail","Новые письма · "+count,login.user+"\n"+update.optString("summary"),target))return;
             record.edit().putString("validity",update.getString("validity")).putLong("uid",update.getLong("uid")).apply();
         }
     }
