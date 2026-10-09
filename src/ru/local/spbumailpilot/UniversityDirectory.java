@@ -11,7 +11,7 @@ import org.json.*;
 final class UniversityDirectory {
     interface Transport {String post(String path,String body)throws Exception;}
     private final Transport transport;
-    private String session="",owner="";
+    private String session="",owner="",canonicalUser="";
     private long expires;
     UniversityDirectory(){this(UniversityDirectory::post);}
     UniversityDirectory(Transport transport){this.transport=transport;}
@@ -76,18 +76,19 @@ final class UniversityDirectory {
         if(!supported(login))throw new IllegalArgumentException();
         if(!owner.equals(login.identity())||System.currentTimeMillis()>expires){close();owner=login.identity();}
             if(session.isEmpty()){
-                String authentication=Base64.getEncoder().encodeToString(("\0"+login.user+"\0"+login.password).getBytes(StandardCharsets.UTF_8));
-                Document response=document(transport.post("/ximsslogin/","<XIMSS><login id=\"login\" method=\"PLAIN\" version=\"6.0\" authData=\""+authentication+"\"/></XIMSS>"));completed(response,"login");
+                String authentication="userName="+URLEncoder.encode(login.user,"UTF-8")+"&password="+URLEncoder.encode(login.password,"UTF-8")+"&version=6.1&errorAsXML=1";
+                Document response=document(transport.post("/ximsslogin/",authentication));
+                NodeList errors=response.getElementsByTagName("response");for(int i=0;i<errors.getLength();i++){Element error=(Element)errors.item(i);if(error.hasAttribute("errorNum")||error.hasAttribute("errorText"))throw new IOException("Сервер отклонил вход в справочник СПбГУ.");}
                 NodeList sessions=response.getElementsByTagName("session");if(sessions.getLength()!=1)throw new IOException("Справочник СПбГУ недоступен.");
                 Element entry=(Element)sessions.item(0);if(entry.getElementsByTagName("x2auth").getLength()>0)throw new IOException("Для справочника требуется дополнительный вход.");
                 session=entry.getAttribute("urlID");if(!session.matches("[A-Za-z0-9_-]{1,160}")){session="";throw new IOException("Некорректный ответ справочника.");}
-                expires=System.currentTimeMillis()+2*60*1000L;
+                canonicalUser=entry.getAttribute("userName");if(canonicalUser.isEmpty())canonicalUser=login.user;expires=System.currentTimeMillis()+2*60*1000L;
             }
 
     }
     private Document command(String xml)throws Exception{return document(transport.post("/Session/"+session+"/sync","<XIMSS>"+xml+"</XIMSS>"));}
     synchronized JSONArray search(SavedAccounts.Login login,String value)throws Exception{
-        String text=query(value);try{connect(login);return people(command(directoryCommand("",filter(text),20,null)));}catch(Exception failure){close();throw failure;}
+        String text=query(value);try{connect(login);return people(command(directoryCommand(companyBase(preferences()),filter(text),20,null)));}catch(Exception failure){close();throw failure;}
     }
     static String directoryCommand(String base,String filter,int limit,String cookie){
         return "<listDirectory id=\"directory\" baseDN=\""+xml(base)+"\" scope=\"sub\" limit=\""+limit+"\" sortField=\"cn\""+(cookie==null?"":" cookie=\""+xml(cookie)+"\"")+(filter.isEmpty()?"":" filter=\""+xml(filter)+"\"")+"><field>mail</field><field>cn</field><field>displayName</field><field>ou</field></listDirectory>";
@@ -102,7 +103,7 @@ final class UniversityDirectory {
             if(book.equals("personal"))return personal(preference(prefs,"ContactsBox"),query,cookie);
             String base=companyBase(prefs),filter=query.trim().isEmpty()?"":filter(query.trim());
             if(book.equals("team")){
-                String user=login.user.split("@",2)[0];Document own=command(directoryCommand(base,"(uid="+escapedFilter(user)+")",1,null));completed(own,"directory");NodeList records=own.getElementsByTagName("directoryData");String department=records.getLength()==1?field((Element)records.item(0),"ou"):"";
+                String user=canonicalUser.split("@",2)[0];Document own=command(directoryCommand(base,"(uid="+escapedFilter(user)+")",1,null));completed(own,"directory");NodeList records=own.getElementsByTagName("directoryData");String department=records.getLength()==1?field((Element)records.item(0),"ou"):"";
                 if(department.isEmpty())throw new IOException("Сервер не указал подразделение для команды.");
                 filter="(&"+filter+"(ou="+escapedFilter(department)+"))";
             }
@@ -129,11 +130,11 @@ final class UniversityDirectory {
     static void addPerson(JSONArray people,String name,String raw)throws Exception{
         try{for(javax.mail.internet.InternetAddress address:javax.mail.internet.InternetAddress.parse(raw,false)){String email=address.getAddress();if(email!=null&&email.length()<=254&&email.matches("[^\\s<>@]+@[^\\s<>@]+"))people.put(new JSONObject().put("email",email).put("sender",name.isEmpty()?address.getPersonal()==null?email:address.getPersonal():name));}}catch(javax.mail.internet.AddressException ignored){}
     }
-    synchronized void close(){String previous=session;session="";owner="";expires=0;if(!previous.isEmpty())try{transport.post("/Session/"+previous+"/sync","<XIMSS><bye id=\"bye\"/></XIMSS>");}catch(Exception ignored){}}
+    synchronized void close(){String previous=session;session="";owner="";canonicalUser="";expires=0;if(!previous.isEmpty())try{transport.post("/Session/"+previous+"/sync","<XIMSS><bye id=\"bye\"/></XIMSS>");}catch(Exception ignored){}}
     private static String post(String path,String body)throws Exception{
         if(!path.equals("/ximsslogin/")&&!path.matches("/Session/[A-Za-z0-9_-]{1,160}/sync"))throw new IllegalArgumentException();
         HttpURLConnection connection=(HttpURLConnection)new URL("https://mail.spbu.ru"+path).openConnection();
-        connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(8000);connection.setReadTimeout(8000);connection.setRequestMethod("POST");connection.setDoOutput(true);connection.setRequestProperty("Content-Type","text/xml; charset=utf-8");
+        connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(8000);connection.setReadTimeout(8000);connection.setRequestMethod("POST");connection.setDoOutput(true);connection.setRequestProperty("Content-Type",path.equals("/ximsslogin/")?"application/x-www-form-urlencoded; charset=utf-8":"text/xml; charset=utf-8");
         byte[] bytes=body.getBytes(StandardCharsets.UTF_8);connection.setFixedLengthStreamingMode(bytes.length);
         try{try(OutputStream output=connection.getOutputStream()){output.write(bytes);}if(connection.getResponseCode()!=200)throw new IOException("Справочник СПбГУ недоступен.");
             try(InputStream input=connection.getInputStream();ByteArrayOutputStream output=new ByteArrayOutputStream()){byte[] buffer=new byte[4096];int count;while((count=input.read(buffer))!=-1){if(output.size()+count>512*1024)throw new IOException("Ответ справочника слишком большой.");output.write(buffer,0,count);}return output.toString("UTF-8");}

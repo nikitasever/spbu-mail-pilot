@@ -206,7 +206,7 @@ final class MailReader implements AutoCloseable {
             if(folder instanceof IMAPFolder)for(String attribute:((IMAPFolder)folder).getAttributes())if(attribute.equalsIgnoreCase("\\Sent"))chosen=folder;
             if(chosen!=null)break;
         }
-        if(chosen==null)for(String candidate:new String[]{"Sent","Sent Items","Sent Messages","Отправленные"}){Folder folder=store.getFolder(candidate);if(folder.exists()){chosen=folder;break;}}
+        if(chosen==null)for(String candidate:new String[]{"Sent","Sent Items","Sent Messages","Отправленное","Отправленные"}){Folder folder=store.getFolder(candidate);if(folder.exists()){chosen=folder;break;}}
         if(chosen==null)throw new MessagingException("Sent folder not found");
         message.setFlag(Flags.Flag.SEEN,true);chosen.appendMessages(new Message[]{message});
     }
