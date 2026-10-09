@@ -474,6 +474,16 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public boolean saveState(String json){SharedPreferences destination=local;if(destination==null||json==null||json.length()>2000000)return false;try{JSONObject next=new JSONObject(json),previous=new JSONObject(destination.getString("state","{}"));boolean reminders=!java.util.Objects.equals(String.valueOf(previous.opt("tasks")),String.valueOf(next.opt("tasks")))||!java.util.Objects.equals(String.valueOf(previous.opt("settings")),String.valueOf(next.opt("settings")));if(!destination.edit().putString("state",json).commit())return false;if(!AiPolicy.enabled(json)){++digestSerial;gemini.cancel();}JSONObject style=next.optJSONObject("settings");appearanceMode=AppearancePolicy.mode(style==null?"system":style.optString("theme","system"));if(reminders)worker.execute(()->{try{NoticeCenter.schedule(MainActivity.this);}catch(Exception ignored){}});return true;}catch(Exception ignored){return false;}}
         @JavascriptInterface public boolean notificationsAllowed(){return NoticeCenter.allowed(MainActivity.this);}
         @JavascriptInterface public boolean directoryAvailable(){return UniversityDirectory.supported(sessionLogin);}
+        @JavascriptInterface public void contactsPage(String book,String query,String cookie,String request){
+            SavedAccounts.Login owner=sessionLogin;long generation=++directorySerial;
+            if(!UniversityDirectory.supported(owner)){failure(request,"Серверные адресные книги доступны для почты СПбГУ.");return;}
+            directoryWorker.execute(()->{
+                JSONObject result;
+                try{if(closing||sessionLogin!=owner||generation!=directorySerial)result=new JSONObject().put("cancelled",true);else result=universityDirectory.page(owner,book,query,cookie);}
+                catch(Exception unavailable){result=new JSONObjectSafe().putValue("error","Не удалось получить адресную книгу СПбГУ. Проверьте сеть и доступ к справочнику на сервере.");}
+                final JSONObject response=result;runOnUiThread(()->{if(!closing&&sessionLogin==owner&&web!=null)reply(request,response);});
+            });
+        }
         @JavascriptInterface public void searchRecipients(String query,String request){
             try{UniversityDirectory.query(query);}catch(Exception invalid){failure(request,"Введите не менее двух символов имени или адреса.");return;}
             SavedAccounts.Login owner=sessionLogin;long generation=++directorySerial;
