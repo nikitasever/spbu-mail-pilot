@@ -3,18 +3,23 @@ import hashlib,json,os,pathlib,re,shutil,subprocess,tempfile,urllib.request,xml.
 ROOT=pathlib.Path(__file__).resolve().parent
 REPO='nikitasever/spbu-mail-pilot-updates'
 def run(*args,**kw):subprocess.run(args,check=True,**kw)
+
+def github(path):
+    headers={'Accept':'application/vnd.github+json','User-Agent':'spbu-mail-pilot-publisher'}
+    if os.environ.get('GH_TOKEN'):headers['Authorization']='Bearer '+os.environ['GH_TOKEN']
+    return urllib.request.urlopen(urllib.request.Request('https://api.github.com/'+path,headers=headers),timeout=30)
 def main():
     manifest=ET.parse(ROOT/'AndroidManifest.xml').getroot();prefix='{http://schemas.android.com/apk/res/android}'
     name=manifest.attrib[prefix+'versionName'];code=int(manifest.attrib[prefix+'versionCode']);tag='v'+name
     if not re.fullmatch(r'[0-9]+(?:\.[0-9]+){1,3}',name):raise ValueError('Invalid version name')
     try:
-        urllib.request.urlopen('https://api.github.com/repos/'+REPO+'/releases/tags/'+tag).close();print('Version already published; keeping it immutable.');return
+        github('repos/'+REPO+'/releases/tags/'+tag).close();print('Version already published; keeping it immutable.');return
     except urllib.error.HTTPError as error:
         if error.code!=404:raise
     apk=ROOT/'build/spbu-mail-pilot.apk'
     with tempfile.TemporaryDirectory(prefix='apk-publish-') as temporary:
         directory=pathlib.Path(temporary);key=directory/'deploy-key';key.write_text(os.environ['UPDATE_DEPLOY_KEY'].replace('\r','').strip()+'\n');key.chmod(0o600)
-        hosts=directory/'known_hosts';meta=json.load(urllib.request.urlopen('https://api.github.com/meta'));hosts.write_text(''.join('github.com '+k+'\n' for k in meta['ssh_keys']))
+        hosts=directory/'known_hosts';meta=json.load(github('meta'));hosts.write_text(''.join('github.com '+k+'\n' for k in meta['ssh_keys']))
         env={**os.environ,'GIT_SSH_COMMAND':f'ssh -i "{key}" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="{hosts}"'}
         checkout=directory/'release';run('git','clone','git@github.com:'+REPO+'.git',str(checkout),env=env)
         assets=checkout/'dist';assets.mkdir(exist_ok=True);filename='spbu-mail-pilot-'+name+'.apk';shutil.copyfile(apk,assets/filename)

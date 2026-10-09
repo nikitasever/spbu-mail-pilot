@@ -24,6 +24,9 @@ import javax.mail.MessagingException;
 public final class MainActivity extends Activity {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final ExecutorService calendarWorker=Executors.newSingleThreadExecutor();
+    private final ExecutorService directoryWorker=Executors.newSingleThreadExecutor();
+    private final UniversityDirectory universityDirectory=new UniversityDirectory();
+    private volatile long directorySerial;
     private MailReader reader;
     private CredentialVault vault;
     private volatile SavedAccounts.Login sessionLogin;
@@ -470,6 +473,20 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public String loadState(){return local==null?"{}":local.getString("state","{}");}
         @JavascriptInterface public boolean saveState(String json){SharedPreferences destination=local;if(destination==null||json==null||json.length()>2000000)return false;try{JSONObject next=new JSONObject(json),previous=new JSONObject(destination.getString("state","{}"));boolean reminders=!java.util.Objects.equals(String.valueOf(previous.opt("tasks")),String.valueOf(next.opt("tasks")))||!java.util.Objects.equals(String.valueOf(previous.opt("settings")),String.valueOf(next.opt("settings")));if(!destination.edit().putString("state",json).commit())return false;if(!AiPolicy.enabled(json)){++digestSerial;gemini.cancel();}JSONObject style=next.optJSONObject("settings");appearanceMode=AppearancePolicy.mode(style==null?"system":style.optString("theme","system"));if(reminders)worker.execute(()->{try{NoticeCenter.schedule(MainActivity.this);}catch(Exception ignored){}});return true;}catch(Exception ignored){return false;}}
         @JavascriptInterface public boolean notificationsAllowed(){return NoticeCenter.allowed(MainActivity.this);}
+        @JavascriptInterface public boolean directoryAvailable(){return UniversityDirectory.supported(sessionLogin);}
+        @JavascriptInterface public void searchRecipients(String query,String request){
+            try{UniversityDirectory.query(query);}catch(Exception invalid){failure(request,"Введите не менее двух символов имени или адреса.");return;}
+            SavedAccounts.Login owner=sessionLogin;long generation=++directorySerial;
+            if(!UniversityDirectory.supported(owner)){failure(request,"Справочник доступен для ящика СПбГУ.");return;}
+            directoryWorker.execute(()->{
+                JSONObject result;
+                try{if(closing||sessionLogin!=owner||generation!=directorySerial)result=new JSONObject().put("cancelled",true);else result=new JSONObject().put("people",universityDirectory.search(owner,query));}
+                catch(Exception unavailable){result=new JSONObjectSafe().putValue("error","Не удалось получить справочник СПбГУ. Проверьте сеть; доступ определяется сервером университета.");}
+                final JSONObject response=result;
+                runOnUiThread(()->{if(!closing&&sessionLogin==owner&&web!=null)reply(request,response);});
+            });
+        }
+        @JavascriptInterface public void batterySettings(){runOnUiThread(()->{try{startActivity(new android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName())));}catch(Exception error){Toast.makeText(MainActivity.this,"Откройте настройки приложения → Батарея.",Toast.LENGTH_LONG).show();}});}
         @JavascriptInterface public boolean openTasksRequested(){return getIntent().getBooleanExtra("openTasks",false);}
         @JavascriptInterface public void smtpSettings(){runOnUiThread(()->MainActivity.this.smtpSettings());}
         @JavascriptInterface public void pickAttachments(String request){runOnUiThread(()->{
@@ -559,5 +576,5 @@ public final class MainActivity extends Activity {
     @Override protected void onResume(){super.onResume();resumed=true;NativeUi.bars(this);if(web!=null)web.evaluateJavascript("window.systemThemeChanged&&window.systemThemeChanged()",null);startWatch();}
     @Override protected void onPause(){resumed=false;stopWatch();super.onPause();}
     @Override public void onBackPressed(){if(web!=null){web.evaluateJavascript("window.appBack&&window.appBack()",null);}else if(loginScreen&&hasSavedAccounts){showAccounts();}else super.onBackPressed();}
-    @Override protected void onDestroy(){closing=true;stopWatch();calendarWorker.shutdownNow();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();gemini.cancel();super.onDestroy();}
+    @Override protected void onDestroy(){closing=true;stopWatch();calendarWorker.shutdownNow();directoryWorker.execute(universityDirectory::close);directoryWorker.shutdown();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();gemini.cancel();super.onDestroy();}
 }

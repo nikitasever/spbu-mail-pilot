@@ -55,6 +55,7 @@ jobs:
       - name: Publish update channel
         env:
           UPDATE_DEPLOY_KEY: ${{ secrets.UPDATE_DEPLOY_KEY }}
+          GH_TOKEN: ${{ github.token }}
         run: python cloud_publish.py
       - name: Remove signing material
         if: always()

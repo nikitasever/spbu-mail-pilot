@@ -1,0 +1,30 @@
+package ru.local.spbumailpilot;
+
+import java.util.*;
+import org.json.*;
+
+public final class UniversityDirectoryTest {
+    static void check(boolean value){if(!value)throw new AssertionError();}
+    interface Operation {void run()throws Exception;}
+    static void rejected(Operation operation)throws Exception{try{operation.run();throw new AssertionError();}catch(IllegalArgumentException|java.io.IOException expected){}}
+    public static void main(String[] args)throws Exception{
+        List<String> calls=new ArrayList<>();
+        String found="<XIMSS><directoryData id='directory'><subKey key='cn'>Иван Петров</subKey><subKey key='mail'><subValue>ivan@spbu.ru</subValue><subValue>invalid</subValue></subKey></directoryData><directoryData id='directory'><subKey key='mail'>IVAN@SPBU.RU</subKey></directoryData><response id='directory'/></XIMSS>";
+        UniversityDirectory directory=new UniversityDirectory((path,body)->{calls.add(path+" "+body);if(path.equals("/ximsslogin/"))return "<XIMSS><session urlID='123-test' userName='fixture@spbu.ru'/><response id='login'/></XIMSS>";if(body.contains("<bye"))return "<XIMSS><response id='bye'/></XIMSS>";return found;});
+        SavedAccounts.Login login=new SavedAccounts.Login("mail.spbu.ru",993,"fixture@spbu.ru","test-password");
+        JSONArray result=directory.search(login,"Иван");check(result.length()==1&&result.getJSONObject(0).getString("sender").equals("Иван Петров"));
+        check(calls.size()==2&&calls.get(0).startsWith("/ximsslogin/ ")&&!calls.get(0).contains("test-password"));
+        check(calls.get(1).contains("scope=\"sub\"")&&calls.get(1).contains("limit=\"20\""));
+        directory.search(login,"Петров");check(calls.size()==3);directory.close();check(calls.get(3).contains("<bye"));
+        check(UniversityDirectory.filter("a*)(mail=*)").contains("a\\2a\\29\\28mail=\\2a\\29"));
+        check(UniversityDirectory.xml("<\"&").equals("&lt;&quot;&amp;"));
+        rejected(()->UniversityDirectory.query("a"));rejected(()->UniversityDirectory.query("a\nb"));
+        rejected(()->directory.search(new SavedAccounts.Login("imap.mail.ru",993,"x@mail.ru","fixture"),"user"));
+        rejected(()->UniversityDirectory.document("<!DOCTYPE XIMSS [<!ENTITY leak SYSTEM 'file:///etc/passwd'>]><XIMSS>&leak;</XIMSS>"));
+        rejected(()->UniversityDirectory.people(UniversityDirectory.document("<XIMSS><response id='directory' errorText='secret'/></XIMSS>")));
+        rejected(()->UniversityDirectory.people(UniversityDirectory.document("<XIMSS/>")));
+        UniversityDirectory malformed=new UniversityDirectory((path,body)->"<XIMSS><session urlID='../foreign'/><response id='login'/></XIMSS>");
+        rejected(()->malformed.search(login,"user"));
+        System.out.println("PASS: university directory session/search/logout against fixture, Cyrillic names and subKey arrays, deduplication, limit, filter/XML escaping, unsupported accounts, XXE and malformed/error responses. No real account accessed.");
+    }
+}
