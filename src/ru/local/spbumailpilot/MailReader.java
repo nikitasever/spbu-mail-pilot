@@ -34,7 +34,7 @@ final class MailReader implements AutoCloseable {
         props.setProperty("mail.imaps.connectiontimeout", "15000");
         props.setProperty("mail.imaps.timeout", "20000");
         props.setProperty("mail.imaps.writetimeout", "20000");
-        props.setProperty("mail.imaps.peek", "true");
+        props.setProperty("mail.imaps.peek", "true");props.setProperty("mail.imaps.appendbuffersize","0");
         props.setProperty("mail.imaps.partialfetch", "true");
         props.setProperty("mail.imaps.fetchsize", "65536");
         props.setProperty("mail.imaps.connectionpoolsize", "1");
@@ -199,6 +199,7 @@ final class MailReader implements AutoCloseable {
             return new JSONObject().put("seen",message.isSet(Flags.Flag.SEEN));
         }finally{if(inbox.isOpen())inbox.close(false);inbox=null;}
     }
+    Store draftStore(){return store;}
     void saveSent(javax.mail.internet.MimeMessage message)throws Exception{
         Folder chosen=null;
         for(Folder folder:store.getDefaultFolder().list("*")){

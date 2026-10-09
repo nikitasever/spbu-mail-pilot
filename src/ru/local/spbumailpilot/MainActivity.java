@@ -24,6 +24,7 @@ import javax.mail.MessagingException;
 public final class MainActivity extends Activity {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final ExecutorService calendarWorker=Executors.newSingleThreadExecutor();
+    private final ExecutorService draftWorker=Executors.newSingleThreadExecutor();
     private final ExecutorService directoryWorker=Executors.newSingleThreadExecutor();
     private final UniversityDirectory universityDirectory=new UniversityDirectory();
     private volatile long directorySerial;
@@ -308,6 +309,16 @@ public final class MainActivity extends Activity {
             }catch(Exception error){Toast.makeText(this,"Проверьте сервер, порт и полный адрес отправителя.",Toast.LENGTH_LONG).show();}
         });
     }
+    private void transferReply(SavedAccounts.Login owner,String request,JSONObject result){try{result.put("request",request);}catch(Exception ignored){}runOnUiThread(()->{if(!closing&&sessionLogin==owner&&web!=null)web.evaluateJavascript("window.onNativeResult(JSON.parse("+JSONObject.quote(result.toString())+"))",null);});}
+    private void transferFailure(SavedAccounts.Login owner,String request,String message){transferReply(owner,request,new JSONObjectSafe().putValue("error",message));}
+    private TransferMessage.Progress transferProgress(String request,SavedAccounts.Login owner,String callback){return (stage,bytes,total)->{
+        if(closing||sessionLogin!=owner)throw new java.io.IOException("Transfer cancelled");
+        try{JSONObject data=new JSONObject().put("stage",stage).put("bytes",bytes).put("total",total);runOnUiThread(()->{if(!closing&&sessionLogin==owner&&web!=null)web.evaluateJavascript("window."+callback+"&&window."+callback+"("+JSONObject.quote(request)+","+data+")",null);});}catch(org.json.JSONException ignored){}
+    };}
+    private String draftKey(SavedAccounts.Login owner,String id)throws Exception{
+        if(id==null||!id.matches("[A-Za-z0-9-]{1,100}"))throw new IllegalArgumentException();
+        SharedPreferences keys=getSharedPreferences("draft-keys-"+NoticeCenter.scope(owner),MODE_PRIVATE);String key=keys.getString(id,null);if(key==null){key=java.util.UUID.randomUUID().toString();if(!keys.edit().putString(id,key).commit())throw new java.io.IOException("Cannot store draft key");}return key;
+    }
     private java.io.File uploads(SavedAccounts.Login login)throws Exception{return new java.io.File(getFilesDir(),"outgoing/"+NoticeCenter.scope(login));}
     @Override protected void onActivityResult(int requestCode,int resultCode,android.content.Intent data){
         super.onActivityResult(requestCode,resultCode,data);
@@ -499,6 +510,13 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void batterySettings(){runOnUiThread(()->{try{startActivity(new android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName())));}catch(Exception error){Toast.makeText(MainActivity.this,"Откройте настройки приложения → Батарея.",Toast.LENGTH_LONG).show();}});}
         @JavascriptInterface public boolean openTasksRequested(){return getIntent().getBooleanExtra("openTasks",false);}
         @JavascriptInterface public void smtpSettings(){runOnUiThread(()->MainActivity.this.smtpSettings());}
+        @JavascriptInterface public void syncDraft(String json,String request){
+            if(json==null||json.length()>120000){failure(request,"Черновик слишком большой.");return;}SavedAccounts.Login owner=sessionLogin;if(owner==null){failure(request,"Войдите в ящик.");return;}
+            draftWorker.execute(()->{try{if(closing||sessionLogin!=owner)return;JSONObject draft=new JSONObject(json);String key=draftKey(owner,draft.getString("id"));TransferMessage message=MailSender.draft(owner,draft,uploads(owner));
+                try(MailReader connection=new MailReader()){connection.connect(owner.host,owner.port,owner.user,owner.password);JSONObject saved=ServerDrafts.save(connection.draftStore(),message,key,ServerDrafts.revision(draft),transferProgress(request,owner,"onServerDraftProgress"));
+                    if(!closing&&sessionLogin==owner){transferReply(owner,request,new JSONObject().put("serverDraft",saved).put("saved",true));}}
+            }catch(Exception failed){if(!closing&&sessionLogin==owner)transferFailure(owner,request,"Черновик остался на телефоне. Сервер не подтвердил загрузку: проверьте сеть, размер вложений и папку «Черновики», затем повторите.");}});
+        }
         @JavascriptInterface public void pickAttachments(String request){runOnUiThread(()->{
             if(attachmentPickRequest!=null||sessionLogin==null){failure(request,"Выбор файлов уже открыт.");return;}
             attachmentPickRequest=request;attachmentPickOwner=sessionLogin.identity();
@@ -515,20 +533,22 @@ public final class MainActivity extends Activity {
         });}
         @JavascriptInterface public void send(String json,String request){
             if(json==null||json.length()>120000){failure(request,"Письмо слишком большое.");return;}
+            SavedAccounts.Login login=sessionLogin;if(login==null){failure(request,"Войдите в ящик.");return;}
             if(!sending.compareAndSet(false,true)){failure(request,"Предыдущее письмо ещё отправляется.");return;}
             worker.execute(()->{
                 try{
-                    SavedAccounts.Login login=sessionLogin;if(login==null)throw new IllegalStateException();
+                    if(closing||sessionLogin!=login)return;
                     JSONObject draft=new JSONObject(json);
-                    javax.mail.internet.MimeMessage message=MailSender.send(login,draft,uploads(login));
+                    javax.mail.internet.MimeMessage message=MailSender.send(login,draft,uploads(login),transferProgress(request,login,"onSendProgress"));
                     String warning="";
                     try{reader.saveSent(message);}catch(Exception copy){warning="Письмо отправлено, но копию в папке «Отправленные» сохранить не удалось. Не отправляйте его повторно.";}
-                    reply(request,new JSONObject().put("sent",true).put("warning",warning));
+                    try{String key=getSharedPreferences("draft-keys-"+NoticeCenter.scope(login),MODE_PRIVATE).getString(draft.optString("id"),null);if(key!=null)ServerDrafts.remove(reader.draftStore(),key);}catch(Exception retained){warning+=(warning.isEmpty()?"":"\n")+"Письмо отправлено; серверный черновик удалить не удалось.";}
+                    transferReply(login,request,new JSONObject().put("sent",true).put("warning",warning));
                     org.json.JSONArray attachments=draft.optJSONArray("attachments");if(attachments!=null)for(int i=0;i<attachments.length();i++){try{MailSender.file(uploads(login),attachments.getJSONObject(i).getString("token")).delete();}catch(Exception ignored){}}
-                }catch(MailSender.Uncertain unknown){try{reply(request,new JSONObject().put("uncertain",true).put("error","Связь оборвалась во время отправки: результат неизвестен. Проверьте ящик адресата перед повторной отправкой. Черновик сохранён."));}catch(Exception ignored){}}
-                catch(javax.mail.AuthenticationFailedException auth){failure(request,"SMTP отклонил вход. Проверьте настройки отправки и пароль аккаунта. Черновик сохранён.");}
-                catch(IllegalArgumentException|javax.mail.internet.AddressException invalid){failure(request,"Проверьте полные адреса получателей и поля письма. Черновик сохранён.");}
-                catch(Exception error){failure(request,"Не удалось отправить письмо. Проверьте сеть и настройки SMTP. Черновик сохранён.");}
+                }catch(MailSender.Uncertain unknown){try{transferReply(login,request,new JSONObject().put("uncertain",true).put("error","Связь оборвалась во время отправки: результат неизвестен. Проверьте ящик адресата перед повторной отправкой. Черновик сохранён."));}catch(Exception ignored){}}
+                catch(javax.mail.AuthenticationFailedException auth){transferFailure(login,request,"SMTP отклонил вход. Проверьте настройки отправки и пароль аккаунта. Черновик сохранён.");}
+                catch(IllegalArgumentException|javax.mail.internet.AddressException invalid){transferFailure(login,request,"Проверьте полные адреса получателей и поля письма. Черновик сохранён.");}
+                catch(Exception error){transferFailure(login,request,"Не удалось отправить письмо. Проверьте сеть и настройки SMTP. Черновик сохранён.");}
                 finally{sending.set(false);}
             });
         }
@@ -586,5 +606,5 @@ public final class MainActivity extends Activity {
     @Override protected void onResume(){super.onResume();resumed=true;NativeUi.bars(this);if(web!=null)web.evaluateJavascript("window.systemThemeChanged&&window.systemThemeChanged()",null);startWatch();}
     @Override protected void onPause(){resumed=false;stopWatch();super.onPause();}
     @Override public void onBackPressed(){if(web!=null){web.evaluateJavascript("window.appBack&&window.appBack()",null);}else if(loginScreen&&hasSavedAccounts){showAccounts();}else super.onBackPressed();}
-    @Override protected void onDestroy(){closing=true;stopWatch();calendarWorker.shutdownNow();directoryWorker.execute(universityDirectory::close);directoryWorker.shutdown();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();gemini.cancel();super.onDestroy();}
+    @Override protected void onDestroy(){closing=true;stopWatch();draftWorker.shutdownNow();calendarWorker.shutdownNow();directoryWorker.execute(universityDirectory::close);directoryWorker.shutdown();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();gemini.cancel();super.onDestroy();}
 }

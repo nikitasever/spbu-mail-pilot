@@ -20,7 +20,7 @@ final class OutgoingMail {
         if(recipients.length+copies.length+hidden.length>50)throw new IllegalArgumentException("Too many recipients");
         if(subject==null||subject.length()>500||subject.indexOf('\r')>=0||subject.indexOf('\n')>=0)throw new IllegalArgumentException("Invalid subject");
         if(body==null||body.length()>100000)throw new IllegalArgumentException("Body too large");
-        MimeMessage message=new MimeMessage(session);message.setFrom(sender[0]);message.setRecipients(Message.RecipientType.TO,recipients);message.setRecipients(Message.RecipientType.CC,copies);message.setRecipients(Message.RecipientType.BCC,hidden);
+        MimeMessage message=new TransferMessage(session);message.setFrom(sender[0]);message.setRecipients(Message.RecipientType.TO,recipients);message.setRecipients(Message.RecipientType.CC,copies);message.setRecipients(Message.RecipientType.BCC,hidden);
         message.setSubject(subject,"UTF-8");message.setText(body,"UTF-8");message.setSentDate(new Date());
         if(inReplyTo!=null&&!inReplyTo.isEmpty()){
             if(inReplyTo.length()>1000||!inReplyTo.matches("<[^<>\\s]+>"))throw new IllegalArgumentException("Invalid reply header");

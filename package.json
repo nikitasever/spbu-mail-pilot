@@ -2,7 +2,7 @@
   "name": "spbu-mail-pilot-tests",
   "private": true,
   "scripts": {
-    "test": "node test-ui.cjs && node test-pagination.cjs && node test-actions.cjs && node test-calendar.cjs && node test-workspace.cjs && node test-task-visibility.cjs && node test-digest.cjs && node test-sharing.cjs && node test-ai-visibility.cjs && node test-contacts.cjs",
+    "test": "node test-ui.cjs && node test-pagination.cjs && node test-actions.cjs && node test-calendar.cjs && node test-workspace.cjs && node test-task-visibility.cjs && node test-digest.cjs && node test-sharing.cjs && node test-ai-visibility.cjs && node test-contacts.cjs && node test-server-drafts.cjs",
     "test:layout": "node test-layout.cjs"
   },
   "devDependencies": {
