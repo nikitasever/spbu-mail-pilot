@@ -2,9 +2,9 @@
 
 Личный экспериментальный Android-клиент. Неофициальный проект; не продукт СПбГУ.
 
-**Актуальная версия — 0.29 (versionCode 33).**
+**Актуальная версия — 0.30 (versionCode 34).**
 
-[Скачать APK 0.29](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.29/spbu-mail-pilot-0.29.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.29)
+[Скачать APK 0.30](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.30/spbu-mail-pilot-0.30.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.30)
 
 Умная панель Gemini: по открытию анализирует до 20 выбранных писем из загруженного списка и показывает готовую общую сводку, возможные действия, ответы и сроки со ссылками на источники. Текст приветствия свободный; анализ не превращает письма в задачи и не отмечает их прочитанными. Настройки → «Настроить Gemini»: защищённый ввод ключа и зашифрованное хранение в Android Keystore. Тексты передаются Google Gemini только по открытию панели или явному повторному анализу; вложения не передаются. Ключ не включён в APK и репозиторий. Реальный ответ зависит от действительности ключа, квоты и доступности Gemini в регионе.
 

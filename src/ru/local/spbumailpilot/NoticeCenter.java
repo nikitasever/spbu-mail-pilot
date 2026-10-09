@@ -12,6 +12,8 @@ import org.json.*;
 
 final class NoticeCenter {
     static final int JOB=2406;
+    static final String MAIL_CHECK_ACTION="ru.local.spbumailpilot.MAIL_CHECK";
+    private static final long INTERVAL_MS=15*60*1000L;
     private static final String MAIL="mail-arrivals",TASKS="task-deadlines";
     interface Stopped {boolean get();}
     static String scope(SavedAccounts.Login login)throws Exception{
@@ -28,17 +30,19 @@ final class NoticeCenter {
     static boolean allowed(Context context){return (Build.VERSION.SDK_INT<33||context.checkSelfPermission("android.permission.POST_NOTIFICATIONS")==PackageManager.PERMISSION_GRANTED)&&context.getSystemService(NotificationManager.class).areNotificationsEnabled();}
     static boolean channelAllowed(Context context,String id){NotificationChannel channel=context.getSystemService(NotificationManager.class).getNotificationChannel(id);return allowed(context)&&channel!=null&&channel.getImportance()!=NotificationManager.IMPORTANCE_NONE;}
     private static PendingIntent alarm(Context context){return PendingIntent.getBroadcast(context,JOB,new Intent(context,NoticeAlarm.class).setAction("ru.local.spbumailpilot.TASK_DUE"),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);}
+    private static PendingIntent mailAlarm(Context context){return PendingIntent.getBroadcast(context,JOB+1,new Intent(context,NoticeAlarm.class).setAction(MAIL_CHECK_ACTION),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);}
     static void schedule(Context context)throws Exception{
         channels(context);SavedAccounts.Login login=new CredentialVault(context).load();
         SharedPreferences control=context.getSharedPreferences("notice-owner",Context.MODE_PRIVATE);
         String owner=login==null?"":scope(login);
         if(!owner.equals(control.getString("owner",""))){context.getSystemService(NotificationManager.class).cancelAll();control.edit().putString("owner",owner).apply();}
-        JobScheduler scheduler=context.getSystemService(JobScheduler.class);
-        if(login==null){scheduler.cancel(JOB);context.getSystemService(AlarmManager.class).cancel(alarm(context));context.getSystemService(NotificationManager.class).cancelAll();return;}
-        JSONObject options=settings(context,login);
-        if(enabled(options,"mailNotifications")||enabled(options,"taskNotifications")){
-            if(scheduler.getPendingJob(JOB)==null)scheduler.schedule(new JobInfo.Builder(JOB,new ComponentName(context,NoticeJob.class)).setPeriodic(15*60*1000L).setPersisted(true).build());
+        JobScheduler scheduler=context.getSystemService(JobScheduler.class);AlarmManager alarms=context.getSystemService(AlarmManager.class);
+        if(login==null){scheduler.cancel(JOB);alarms.cancel(alarm(context));alarms.cancel(mailAlarm(context));context.getSystemService(NotificationManager.class).cancelAll();return;}
+        JSONObject options=settings(context,login);boolean mailEnabled=enabled(options,"mailNotifications"),taskEnabled=enabled(options,"taskNotifications");
+        if(mailEnabled||taskEnabled){
+            if(scheduler.getPendingJob(JOB)==null)scheduler.schedule(new JobInfo.Builder(JOB,new ComponentName(context,NoticeJob.class)).setPeriodic(INTERVAL_MS).setPersisted(true).build());
         }else scheduler.cancel(JOB);
+        if(mailEnabled)alarms.setInexactRepeating(AlarmManager.RTC_WAKEUP,System.currentTimeMillis()+60*1000L,INTERVAL_MS,mailAlarm(context));else alarms.cancel(mailAlarm(context));
         tasks(context);
     }
     private static boolean post(Context context,String channel,String tag,String title,String text){
@@ -78,7 +82,7 @@ final class NoticeCenter {
         record.edit().putStringSet("tasks",sent).apply();
         if(next!=Long.MAX_VALUE)alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,next,alarm(context));
     }
-    static void mail(Context context,Stopped stopped)throws Exception{
+    static synchronized void mail(Context context,Stopped stopped)throws Exception{
         SavedAccounts.Login login=new CredentialVault(context).load();if(login==null||!enabled(settings(context,login),"mailNotifications")||!channelAllowed(context,MAIL))return;
         SharedPreferences record=context.getSharedPreferences("notices-"+scope(login),Context.MODE_PRIVATE);
         String oldValidity=record.getString("validity",null);long oldUid=record.getLong("uid",0);
