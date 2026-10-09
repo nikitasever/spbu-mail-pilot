@@ -38,6 +38,7 @@ final class NoticeCenter {
         if(scheduler.getPendingJob(JOB+1)==null)scheduler.schedule(new JobInfo.Builder(JOB+1,new ComponentName(context,NoticeJob.class)).setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setMinimumLatency(0).setBackoffCriteria(30000,JobInfo.BACKOFF_POLICY_EXPONENTIAL).build());
     }
     static void schedule(Context context)throws Exception{
+        BackgroundMailService.reconcile(context,false);
         channels(context);SavedAccounts.Login login=new CredentialVault(context).load();
         SharedPreferences control=context.getSharedPreferences("notice-owner",Context.MODE_PRIVATE);
         String owner=login==null?"":scope(login);

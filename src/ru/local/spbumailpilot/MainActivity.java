@@ -102,7 +102,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(NativeUi.context(this,false));scroll.setFillViewport(true);scroll.setBackgroundColor(NativeUi.paper(this));
         LinearLayout box=new LinearLayout(NativeUi.context(this,false));box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(28),dp(24),dp(24));scroll.addView(box);setContentView(scroll);
         TextView heading=text("Рабочая почта",29,0xff29262e);heading.setTypeface(null,Typeface.BOLD);box.addView(heading);
-        box.addView(text("Тестовая версия 0.20 · реальный ящик",14,0xff8051b1));
+        box.addView(text("Тестовая версия 0.38 · реальный ящик",14,0xff8051b1));
         box.addView(text("Вход сохранится на этом телефоне в зашифрованном виде. Переключайте ящики без повторного ввода пароля.",15,0xff726d7c));
         box.addView(text("Почтовый сервис",14,0xff726d7c));
         Spinner provider=new Spinner(NativeUi.context(this,false));provider.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"СПбГУ","Mail.ru","Другая почта"}));box.addView(provider);
@@ -286,7 +286,7 @@ public final class MainActivity extends Activity {
             }
         });
         setContentView(web);web.loadUrl("https://mail-pilot.local/assets/index.html");
-        watchFolder="INBOX";startWatch();
+        watchFolder="INBOX";startWatch();BackgroundMailService.reconcile(this,resumed);
         requestNoticePermission();
     }
     private void requestNoticePermission(){
@@ -352,7 +352,7 @@ public final class MainActivity extends Activity {
             }catch(Exception error){for(java.io.File file:created)file.delete();if(sessionLogin!=importOwner||closing)return;failure(request,"Не удалось прикрепить файлы. Выберите до 10 файлов размером до 100 МБ каждый.");}
         });
     }
-    @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){super.onRequestPermissionsResult(requestCode,permissions,results);if(requestCode==61){if(pendingTestNotice&&NoticeCenter.allowed(this))NoticeCenter.test(this);pendingTestNotice=false;worker.execute(()->{try{NoticeCenter.schedule(this);}catch(Exception ignored){}});}}
+    @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){super.onRequestPermissionsResult(requestCode,permissions,results);if(requestCode==61){BackgroundMailService.reconcile(this,resumed);if(pendingTestNotice&&NoticeCenter.allowed(this))NoticeCenter.test(this);pendingTestNotice=false;worker.execute(()->{try{NoticeCenter.schedule(this);}catch(Exception ignored){}});}}
     @Override protected void onNewIntent(android.content.Intent intent){super.onNewIntent(intent);setIntent(intent);pendingMail=MailNoticeTarget.parse(intent.getStringExtra("openMail"));if(pendingMail!=null)openPendingMail();else if(web!=null&&mailPageReady&&intent.getBooleanExtra("openTasks",false)){intent.removeExtra("openTasks");web.evaluateJavascript("window.openTasksFromNotification&&window.openTasksFromNotification()",null);}}
     private void openPendingMail(){
         final MailNoticeTarget target=pendingMail;if(target==null||web==null||!mailPageReady||sessionLogin==null||closing)return;
@@ -495,7 +495,9 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public boolean systemDark(){return (getResources().getConfiguration().uiMode&android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;}
         @JavascriptInterface public String account(){return account;}
         @JavascriptInterface public String loadState(){return local==null?"{}":local.getString("state","{}");}
-        @JavascriptInterface public boolean saveState(String json){SharedPreferences destination=local;if(destination==null||json==null||json.length()>2000000)return false;try{JSONObject next=new JSONObject(json),previous=new JSONObject(destination.getString("state","{}"));boolean reminders=!java.util.Objects.equals(String.valueOf(previous.opt("tasks")),String.valueOf(next.opt("tasks")))||!java.util.Objects.equals(String.valueOf(previous.opt("settings")),String.valueOf(next.opt("settings")));if(!destination.edit().putString("state",json).commit())return false;if(!AiPolicy.enabled(json)){++digestSerial;gemini.cancel();}JSONObject style=next.optJSONObject("settings");appearanceMode=AppearancePolicy.mode(style==null?"system":style.optString("theme","system"));if(reminders)worker.execute(()->{try{NoticeCenter.schedule(MainActivity.this);}catch(Exception ignored){}});return true;}catch(Exception ignored){return false;}}
+        @JavascriptInterface public boolean saveState(String json){SharedPreferences destination=local;if(destination==null||json==null||json.length()>2000000)return false;try{JSONObject next=new JSONObject(json),previous=new JSONObject(destination.getString("state","{}"));boolean reminders=!java.util.Objects.equals(String.valueOf(previous.opt("tasks")),String.valueOf(next.opt("tasks")))||!java.util.Objects.equals(String.valueOf(previous.opt("settings")),String.valueOf(next.opt("settings")));if(!destination.edit().putString("state",json).commit())return false;if(!AiPolicy.enabled(json)){++digestSerial;gemini.cancel();}JSONObject style=next.optJSONObject("settings");appearanceMode=AppearancePolicy.mode(style==null?"system":style.optString("theme","system"));if(reminders)worker.execute(()->{try{NoticeCenter.schedule(MainActivity.this);}catch(Exception ignored){}runOnUiThread(()->BackgroundMailService.reconcile(MainActivity.this,resumed));});return true;}catch(Exception ignored){return false;}}
+        @JavascriptInterface public String backgroundMailStatus(){return BackgroundMailService.status(MainActivity.this);}
+        @JavascriptInterface public void allowBackgroundMail(){runOnUiThread(()->{try{startActivity(new android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,Uri.parse("package:"+getPackageName())));}catch(Exception error){new Bridge().batterySettings();}});}
         @JavascriptInterface public boolean notificationsAllowed(){return NoticeCenter.allowed(MainActivity.this);}
         @JavascriptInterface public boolean directoryAvailable(){return UniversityDirectory.supported(sessionLogin);}
         @JavascriptInterface public void contactsPage(String book,String query,String cookie,String request){
@@ -616,7 +618,7 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void removeUpload(String token){worker.execute(()->{try{if(sessionLogin!=null)MailSender.file(uploads(sessionLogin),token).delete();}catch(Exception ignored){}});}
         @JavascriptInterface public void switchAccount(){runOnUiThread(()->quickAccounts());}
     }
-    @Override protected void onResume(){super.onResume();resumed=true;NativeUi.bars(this);if(web!=null)web.evaluateJavascript("window.systemThemeChanged&&window.systemThemeChanged()",null);startWatch();}
+    @Override protected void onResume(){super.onResume();resumed=true;NativeUi.bars(this);if(web!=null)web.evaluateJavascript("window.systemThemeChanged&&window.systemThemeChanged()",null);startWatch();BackgroundMailService.reconcile(this,true);}
     @Override protected void onPause(){resumed=false;stopWatch();super.onPause();}
     @Override public void onBackPressed(){if(web!=null){web.evaluateJavascript("window.appBack&&window.appBack()",null);}else if(loginScreen&&hasSavedAccounts){showAccounts();}else super.onBackPressed();}
     @Override protected void onDestroy(){closing=true;stopWatch();draftWorker.shutdownNow();calendarWorker.shutdownNow();directoryWorker.execute(universityDirectory::close);directoryWorker.shutdown();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();gemini.cancel();super.onDestroy();}
