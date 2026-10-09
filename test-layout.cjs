@@ -78,6 +78,16 @@ function bridge(defer){
    await transfer.evaluate(()=>window.onServerDraftProgress(window.draftRequest,{stage:'confirming',bytes:10485760,total:10485760}));assert.ok((await transfer.locator('#upload-progress').textContent()).includes('99%'));
    await transfer.evaluate(()=>window.onNativeResult({request:window.draftRequest,saved:true,serverDraft:{uid:'1',key:'fixture'}}));assert.ok((await transfer.locator('#upload-progress').textContent()).includes('100%'));await transfer.locator('[data-action="cancel"]').first().click();
   }
+  const recipients=await browser.newPage({viewport:{width:393,height:850}});await recipients.addInitScript(bridge,false);await recipients.goto(origin);
+  await recipients.evaluate(()=>{Pilot.searchRecipients=(q,r)=>window.onNativeResult({request:r,people:[{sender:'Перепенко — тестовая запись с длинным именем',email:'directory-person@example.invalid'}]});});
+  for(const theme of ['light','dark']){
+   await recipients.evaluate(()=>document.querySelector('#menu [data-route="settings"]').click());await recipients.locator('select[data-theme]').selectOption(theme);
+   await recipients.evaluate(()=>document.querySelector('#menu [data-route="mail"]').click());await recipients.locator('[data-action="compose"]').click();await recipients.locator('[name="to"]').fill('internal-alias');
+   const choice=recipients.locator('[data-action="recipient-choice"]').filter({hasText:'directory-person@example.invalid'});await choice.waitFor();assert.equal(await choice.locator('.avatar').count(),1);
+   for(const width of [320,393,412]){await recipients.setViewportSize({width,height:850});await fits('recipient dropdown '+theme+' '+width,recipients);}
+   await recipients.setViewportSize({width:393,height:850});await recipients.screenshot({path:path.join(__dirname,'build/recipients-'+theme+'-0.34.png')});await choice.click();assert.equal(await recipients.locator('[name="to"]').inputValue(),'directory-person@example.invalid');assert.equal(await recipients.evaluate(()=>window.mockSent||0),0);await recipients.locator('[data-action="cancel"]').first().click();
+  }
+  console.log('PASS: server alias match remains visible; avatar, name and email fit light/dark at 320/393/412px; selecting a recipient does not send mail.');
   console.log('PASS: themed folder dialog opens by touch and closes by Escape; real 42%, ACK-pending 99%, confirmed 100%; attachment panel fits light/dark mobile widths.');
   console.log('PASS: digest selection, excerpts and AI preview fit actual mobile browser.');
   console.log('PASS: hidden task navigation/mail actions with calendar task creation retained in actual browser.');

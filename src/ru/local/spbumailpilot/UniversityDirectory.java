@@ -13,6 +13,8 @@ final class UniversityDirectory {
     private final Transport transport;
     private String session="",owner="",canonicalUser="";
     private long expires;
+    private List<String> searchBases;
+    static final class HttpFailure extends IOException {final int status;HttpFailure(int status){super("Directory HTTP request failed");this.status=status;}}
     UniversityDirectory(){this(UniversityDirectory::post);}
     UniversityDirectory(Transport transport){this.transport=transport;}
     static boolean supported(SavedAccounts.Login login){return login!=null&&"mail.spbu.ru".equalsIgnoreCase(login.host);}
@@ -28,7 +30,7 @@ final class UniversityDirectory {
         for(char character:value.toCharArray())switch(character){case '*':result.append("\\2a");break;case '(':result.append("\\28");break;case ')':result.append("\\29");break;case '\\':result.append("\\5c");break;default:result.append(character);}
         return result.toString();
     }
-    static String filter(String value){String text=escapedFilter(value);return "(|(cn=*"+text+"*)(displayName=*"+text+"*)(mail=*"+text+"*)(uid=*"+text+"*))";}
+    static String filter(String value){String text=escapedFilter(value),user=escapedFilter(value.split("@",2)[0]);return "(|(cn=*"+text+"*)(displayName=*"+text+"*)(mail=*"+text+"*)(uid=*"+user+"*))";}
     static Document document(String xml)throws Exception{
         if(xml.length()>512*1024||java.util.regex.Pattern.compile("(?is)<\\s*!\\s*(DOCTYPE|ENTITY)\\b").matcher(xml).find())throw new IOException("Некорректный ответ справочника.");
         DocumentBuilderFactory factory=DocumentBuilderFactory.newInstance();factory.setExpandEntityReferences(false);
@@ -88,12 +90,35 @@ final class UniversityDirectory {
     }
     private Document command(String xml)throws Exception{return document(transport.post("/Session/"+session+"/sync","<XIMSS>"+xml+"</XIMSS>"));}
     synchronized JSONArray search(SavedAccounts.Login login,String value)throws Exception{
-        String text=query(value);try{connect(login);return people(command(directoryCommand(companyBase(preferences()),filter(text),20,null)));}catch(Exception failure){close();throw failure;}
+        String text=query(value);try{
+            connect(login);
+            if(searchBases==null){Document effective=preferences();Document defaults=command("<prefsRead id=\"defaultBooks\" type=\"default\"><name>DirectoryBooks</name></prefsRead>");completed(defaults,"defaultBooks");searchBases=searchBases(defaults,effective);}
+            if(searchBases.isEmpty())throw new IOException("No searchable directory books");
+            JSONObject request=new JSONObject().put("baseDNs",new JSONArray(searchBases)).put("fields",new JSONArray(Arrays.asList("cn","mail"))).put("filter",filter(text)).put("scope","sub").put("limit",20).put("sortFields",new JSONArray(Arrays.asList("cn"))).put("sortOrder","asc");
+            try{return apiPeople(transport.post("/Session/"+session+"/api/v1/ldap/search",request.toString()));}
+            catch(HttpFailure unavailable){if(unavailable.status!=404&&unavailable.status!=405)throw unavailable;}
+            JSONArray merged=new JSONArray();Set<String> seen=new HashSet<>();
+            for(String base:searchBases){JSONArray found=people(command(directoryCommand(base,filter(text),20,null)));for(int i=0;i<found.length()&&merged.length()<20;i++){JSONObject person=found.getJSONObject(i);if(seen.add(person.getString("email").toLowerCase(Locale.ROOT)))merged.put(person);}}
+            return merged;
+        }catch(Exception failure){close();throw failure;}
+    }
+    static List<String> searchBases(Document defaults,Document effective)throws Exception{
+        Map<String,String> books=new LinkedHashMap<>();
+        for(Document doc:new Document[]{defaults,effective}){NodeList records=doc.getElementsByTagName("DirectoryBooks");if(records.getLength()>1)throw new IOException("Invalid directory books");if(records.getLength()==1)for(Node n=records.item(0).getFirstChild();n!=null;n=n.getNextSibling())if(n instanceof Element&&"subKey".equals(((Element)n).getTagName())){String name=((Element)n).getAttribute("key"),base=n.getTextContent().trim();if(name.length()>200||base.length()>2048||base.matches("(?s).*\\p{Cntrl}.*"))throw new IOException("Invalid directory book");books.put(name,base);}}
+        Set<String> excluded=new HashSet<>();for(String name:new String[]{"DirectoryBooksHideForSearch","DisabledDirectoryBooks"}){NodeList lists=effective.getElementsByTagName(name);for(int i=0;i<lists.getLength();i++){NodeList values=((Element)lists.item(i)).getElementsByTagName("subValue");for(int j=0;j<values.getLength();j++)excluded.add(values.item(j).getTextContent().trim());}}
+        if(books.isEmpty())books.put("$domain$","$");
+        LinkedHashSet<String> result=new LinkedHashSet<>();for(Map.Entry<String,String> book:books.entrySet())if(!excluded.contains(book.getKey()))result.add(book.getValue());if(result.size()>16)throw new IOException("Too many directory books");return new ArrayList<>(result);
+    }
+    static JSONArray apiPeople(String json)throws Exception{
+        if(json.length()>512*1024)throw new IOException("Directory response too large");JSONArray records=new JSONObject(json).getJSONArray("records"),result=new JSONArray();Set<String> seen=new HashSet<>();
+        for(int i=0;i<records.length()&&result.length()<20;i++){JSONObject record=records.getJSONObject(i);Object emails=record.opt("mail");JSONArray addresses=emails instanceof JSONArray?(JSONArray)emails:new JSONArray().put(emails instanceof String?emails:"");String name=record.optString("cn","");if(name.isEmpty())name=record.optString("displayName","");
+            for(int j=0;j<addresses.length()&&result.length()<20;j++){String email=addresses.optString(j);if(email.length()>254||!email.matches("[^\\s<>@]+@[^\\s<>@]+")||!seen.add(email.toLowerCase(Locale.ROOT)))continue;result.put(new JSONObject().put("email",email).put("sender",name.isEmpty()?email:name.substring(0,Math.min(180,name.length()))));}}
+        return result;
     }
     static String directoryCommand(String base,String filter,int limit,String cookie){
         return "<listDirectory id=\"directory\" baseDN=\""+xml(base)+"\" scope=\"sub\" limit=\""+limit+"\" sortField=\"cn\""+(cookie==null?"":" cookie=\""+xml(cookie)+"\"")+(filter.isEmpty()?"":" filter=\""+xml(filter)+"\"")+"><field>mail</field><field>cn</field><field>displayName</field><field>ou</field></listDirectory>";
     }
-    private Document preferences()throws Exception{Document result=command("<prefsRead id=\"books\"><name>DirectoryBooks</name><name>ContactsBox</name></prefsRead>");completed(result,"books");return result;}
+    private Document preferences()throws Exception{Document result=command("<prefsRead id=\"books\"><name>DirectoryBooks</name><name>DirectoryBooksHideForSearch</name><name>DisabledDirectoryBooks</name><name>ContactsBox</name></prefsRead>");completed(result,"books");return result;}
     static String preference(Document doc,String name){NodeList prefs=doc.getElementsByTagName("prefs");if(prefs.getLength()!=1)return "";Element root=(Element)prefs.item(0);for(Node n=root.getFirstChild();n!=null;n=n.getNextSibling())if(n instanceof Element&&name.equals(((Element)n).getTagName()))return n.getTextContent().trim();return "";}
     static String companyBase(Document doc){NodeList books=doc.getElementsByTagName("DirectoryBooks");if(books.getLength()==1){String base=field((Element)books.item(0),"$domain$");if(!base.isEmpty())return base;}return "$";}
     static String pagingCookie(Document doc){String result="";NodeList records=doc.getElementsByTagName("directoryData");for(int i=0;i<records.getLength();i++){Element r=(Element)records.item(i);if("directory".equals(r.getAttribute("id"))&&r.hasAttribute("cookie"))result=r.getAttribute("cookie");}return result;}
@@ -130,13 +155,13 @@ final class UniversityDirectory {
     static void addPerson(JSONArray people,String name,String raw)throws Exception{
         try{for(javax.mail.internet.InternetAddress address:javax.mail.internet.InternetAddress.parse(raw,false)){String email=address.getAddress();if(email!=null&&email.length()<=254&&email.matches("[^\\s<>@]+@[^\\s<>@]+"))people.put(new JSONObject().put("email",email).put("sender",name.isEmpty()?address.getPersonal()==null?email:address.getPersonal():name));}}catch(javax.mail.internet.AddressException ignored){}
     }
-    synchronized void close(){String previous=session;session="";owner="";canonicalUser="";expires=0;if(!previous.isEmpty())try{transport.post("/Session/"+previous+"/sync","<XIMSS><bye id=\"bye\"/></XIMSS>");}catch(Exception ignored){}}
+    synchronized void close(){String previous=session;session="";owner="";canonicalUser="";searchBases=null;expires=0;if(!previous.isEmpty())try{transport.post("/Session/"+previous+"/sync","<XIMSS><bye id=\"bye\"/></XIMSS>");}catch(Exception ignored){}}
     private static String post(String path,String body)throws Exception{
-        if(!path.equals("/ximsslogin/")&&!path.matches("/Session/[A-Za-z0-9_-]{1,160}/sync"))throw new IllegalArgumentException();
+        if(!path.equals("/ximsslogin/")&&!path.matches("/Session/[A-Za-z0-9_-]{1,160}/(?:sync|api/v1/ldap/search)"))throw new IllegalArgumentException();
         HttpURLConnection connection=(HttpURLConnection)new URL("https://mail.spbu.ru"+path).openConnection();
-        connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(8000);connection.setReadTimeout(8000);connection.setRequestMethod("POST");connection.setDoOutput(true);connection.setRequestProperty("Content-Type",path.equals("/ximsslogin/")?"application/x-www-form-urlencoded; charset=utf-8":"text/xml; charset=utf-8");
+        connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(8000);connection.setReadTimeout(8000);connection.setRequestMethod("POST");connection.setDoOutput(true);connection.setRequestProperty("Content-Type",path.equals("/ximsslogin/")?"application/x-www-form-urlencoded; charset=utf-8":path.endsWith("/ldap/search")?"application/json; charset=utf-8":"text/xml; charset=utf-8");
         byte[] bytes=body.getBytes(StandardCharsets.UTF_8);connection.setFixedLengthStreamingMode(bytes.length);
-        try{try(OutputStream output=connection.getOutputStream()){output.write(bytes);}if(connection.getResponseCode()!=200)throw new IOException("Справочник СПбГУ недоступен.");
+        try{try(OutputStream output=connection.getOutputStream()){output.write(bytes);}int status=connection.getResponseCode();if(status!=200)throw new HttpFailure(status);
             try(InputStream input=connection.getInputStream();ByteArrayOutputStream output=new ByteArrayOutputStream()){byte[] buffer=new byte[4096];int count;while((count=input.read(buffer))!=-1){if(output.size()+count>512*1024)throw new IOException("Ответ справочника слишком большой.");output.write(buffer,0,count);}return output.toString("UTF-8");}
         }finally{connection.disconnect();}
     }

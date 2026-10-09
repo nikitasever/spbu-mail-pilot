@@ -321,3 +321,10 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .select-options button span:first-child {min-width:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 #mail-v2 .select-options button[aria-pressed="true"] {background:var(--tint);color:var(--brand);font-weight:600;}
 #mail-v2 .select-check {flex:0 0 24px;font-size:20px;color:var(--brand);}
+
+#mail-v2 #recipient-suggestions {max-height:340px;overflow-y:auto;overscroll-behavior:contain;border-radius:18px;}
+#mail-v2 .recipient-choice {flex-direction:row;align-items:center;gap:12px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:var(--surface);padding:14px;}
+#mail-v2 .recipient-choice .avatar {flex:none;}
+#mail-v2 .recipient-details {min-width:0;display:grid;gap:4px;}
+#mail-v2 .recipient-details strong {font-size:14px;line-height:1.4;overflow-wrap:anywhere;}
+#mail-v2 .recipient-details small {font-size:12px;}
