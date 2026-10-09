@@ -51,7 +51,7 @@ final class UniversityDirectory {
         List<String> result=new ArrayList<>();
         for(Node node=record.getFirstChild();node!=null;node=node.getNextSibling())if(node instanceof Element){
             Element field=(Element)node;
-            if("subKey".equals(field.getTagName())&&name.equalsIgnoreCase(field.getAttribute("key"))){
+            if(("subKey".equals(field.getTagName())&&name.equalsIgnoreCase(field.getAttribute("key")))||name.equalsIgnoreCase(field.getAttribute("name"))||name.equalsIgnoreCase(field.getTagName())){
                 NodeList values=field.getElementsByTagName("subValue");
                 if(values.getLength()==0)result.add(field.getTextContent().trim());else for(int index=0;index<values.getLength();index++)result.add(values.item(index).getTextContent().trim());
             }
@@ -120,16 +120,17 @@ final class UniversityDirectory {
     }
     private Document preferences()throws Exception{Document result=command("<prefsRead id=\"books\"><name>DirectoryBooks</name><name>DirectoryBooksHideForSearch</name><name>DisabledDirectoryBooks</name><name>ContactsBox</name></prefsRead>");completed(result,"books");return result;}
     static String preference(Document doc,String name){NodeList prefs=doc.getElementsByTagName("prefs");if(prefs.getLength()!=1)return "";Element root=(Element)prefs.item(0);for(Node n=root.getFirstChild();n!=null;n=n.getNextSibling())if(n instanceof Element&&name.equals(((Element)n).getTagName()))return n.getTextContent().trim();return "";}
-    static String companyBase(Document doc){NodeList books=doc.getElementsByTagName("DirectoryBooks");if(books.getLength()==1){String base=field((Element)books.item(0),"$domain$");if(!base.isEmpty())return base;}return "$";}
+    static String companyBase(Document doc){NodeList books=doc.getElementsByTagName("DirectoryBooks");if(books.getLength()==1){String base=field((Element)books.item(0),"$domain$");if(!base.isEmpty())return base;}return "$domain$";}
     static String pagingCookie(Document doc){String result="";NodeList records=doc.getElementsByTagName("directoryData");for(int i=0;i<records.getLength();i++){Element r=(Element)records.item(i);if("directory".equals(r.getAttribute("id"))&&r.hasAttribute("cookie"))result=r.getAttribute("cookie");}return result;}
     synchronized JSONObject page(SavedAccounts.Login login,String book,String query,String cookie)throws Exception{
         if(!Arrays.asList("personal","team","company").contains(book)||query==null||query.length()>120||query.matches("(?s).*\\p{Cntrl}.*")||cookie==null||cookie.length()>4096||cookie.matches("(?s).*\\p{Cntrl}.*"))throw new IllegalArgumentException();
         try{connect(login);Document prefs=preferences();
             if(book.equals("personal"))return personal(preference(prefs,"ContactsBox"),query,cookie);
-            String base=companyBase(prefs),filter=query.trim().isEmpty()?"":filter(query.trim());
+            Document defaults=command("<prefsRead id=\"defaultBooks\" type=\"default\"><name>DirectoryBooks</name></prefsRead>");completed(defaults,"defaultBooks");
+            String base=companyBase(prefs);if(base.equals("$domain$"))base=companyBase(defaults);String filter=query.trim().isEmpty()?"":filter(query.trim());
             if(book.equals("team")){
                 String user=canonicalUser.split("@",2)[0];Document own=command(directoryCommand(base,"(uid="+escapedFilter(user)+")",1,null));completed(own,"directory");NodeList records=own.getElementsByTagName("directoryData");String department=records.getLength()==1?field((Element)records.item(0),"ou"):"";
-                if(department.isEmpty())throw new IOException("Сервер не указал подразделение для команды.");
+                if(department.isEmpty())return new JSONObject().put("people",new JSONArray()).put("cookie","").put("hasMore",false).put("notice","В справочнике не указано ваше подразделение. Выберите «Компания», чтобы найти пользователей СПбГУ.");
                 filter="(&"+filter+"(ou="+escapedFilter(department)+"))";
             }
             Document result=command(directoryCommand(base,filter,50,cookie));JSONArray people=people(result,50);String next=pagingCookie(result);
