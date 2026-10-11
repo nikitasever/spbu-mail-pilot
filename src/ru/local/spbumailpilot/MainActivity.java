@@ -282,7 +282,7 @@ public final class MainActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient(){
             @Override public boolean onJsConfirm(WebView view,String url,String message,JsResult result){
                 if(closing||isFinishing()){result.cancel();return true;}
-                NativeUi.dialog(MainActivity.this).setTitle("Подтверждение").setMessage(message).setPositiveButton("Отключить",(dialog,which)->result.confirm()).setNegativeButton("Отмена",(dialog,which)->result.cancel()).setOnCancelListener(dialog->result.cancel()).show();return true;
+                NativeUi.dialog(MainActivity.this).setTitle("Подтверждение").setMessage(message).setPositiveButton(message.startsWith("Изменения не сохранены.")?"Выйти без сохранения":"Отключить",(dialog,which)->result.confirm()).setNegativeButton("Отмена",(dialog,which)->result.cancel()).setOnCancelListener(dialog->result.cancel()).show();return true;
             }
         });
         web.setWebViewClient(new WebViewClient(){
@@ -617,6 +617,11 @@ public final class MainActivity extends Activity {
         });}
         @JavascriptInterface public boolean geminiReady(){return new AiVault(MainActivity.this).configured();}
         @JavascriptInterface public void cancelDigest(){++digestSerial;gemini.cancel();}
+        @JavascriptInterface public void previews(String folder,String json,String request){
+            final org.json.JSONArray refs;
+            try{if(folder==null||folder.length()>2048||folder.contains("\r")||folder.contains("\n"))throw new IllegalArgumentException();refs=DigestBatch.references(json);if(refs.length()>5)throw new IllegalArgumentException();}catch(Exception invalid){failure(request,"Некорректные параметры превью.");return;}
+            SavedAccounts.Login owner=sessionLogin;worker.execute(()->{try{if(owner==null||closing||sessionLogin!=owner)return;calendarReply(owner,request,readWithReconnect(()->reader.previews(folder,refs)));}catch(Exception unavailable){if(sessionLogin==owner)calendarReply(owner,request,new JSONObject());}});
+        }
         @JavascriptInterface public void digestBodies(String folder,String json,String request){digestBatch(folder,json,request,false);}
         @JavascriptInterface public void smartDigest(String folder,String json,String request){if(!aiEnabled()){failure(request,"Нейроанализ отключён в настройках этого ящика.");return;}digestBatch(folder,json,request,true);}
         private void digestBatch(String folder,String json,String request,boolean smart){
@@ -645,3 +650,4 @@ public final class MainActivity extends Activity {
     @Override public void onBackPressed(){if(web!=null){web.evaluateJavascript("window.appBack&&window.appBack()",null);}else if(loginScreen&&hasSavedAccounts){showAccounts();}else super.onBackPressed();}
     @Override protected void onDestroy(){closing=true;++bodySerial;stopWatch();bodyWorker.execute(this::closeBodyReader);bodyWorker.shutdown();draftWorker.shutdownNow();calendarWorker.shutdownNow();directoryWorker.execute(universityDirectory::close);directoryWorker.shutdown();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();gemini.cancel();super.onDestroy();}
 }
+
