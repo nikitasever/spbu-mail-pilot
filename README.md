@@ -2,9 +2,11 @@
 
 Личный экспериментальный Android-клиент. Неофициальный проект; не продукт СПбГУ.
 
-**Актуальная версия — 0.41 (versionCode 45).**
+**Актуальная версия — 0.42 (versionCode 46).**
 
-[Скачать APK 0.41](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.41/spbu-mail-pilot-0.41.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.41)
+[Скачать APK 0.42](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.42/spbu-mail-pilot-0.42.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.42)
+
+В 0.42 календарь получил режимы «Неделя» и «Повестка» на 14 дней, сохранение выбранного режима и загрузку соседнего месяца для периода на границе. Фон выходных стал легче.
 
 В 0.41 добавлены превью видимых писем, фильтры по загруженному списку, компактные черновики и предупреждение при выходе из изменённой формы. Для повреждённого имени доступен исходный From; причина кракозябр пока не устранена.
 

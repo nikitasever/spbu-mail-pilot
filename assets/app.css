@@ -185,7 +185,7 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .calendar-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:4px; }
 #mail-v2 .weekday { text-align:center; font-size:11px; color:var(--muted); padding:9px 0 13px; }
 #mail-v2 .calendar-cell { min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; border:0; border-radius:11px; min-height:54px; padding:5px 0; gap:3px; font-size:14px; background:transparent; }
-#mail-v2 .calendar-cell.weekend { background:light-dark(#f5f9f8,#1e2824); }
+#mail-v2 .calendar-cell.weekend { background:light-dark(#faf9fc,#1c1a21); }
 #mail-v2 .calendar-cell.outside { color:var(--muted); opacity:.55; }
 #mail-v2 .calendar-cell[aria-pressed="true"] { background:light-dark(#edf4ff,#23344a); box-shadow:inset 0 0 0 1px light-dark(#bdd7fc,#486586); color:var(--cal-blue); }
 #mail-v2 .day-number { display:flex; justify-content:center; align-items:center; width:28px; height:28px; border-radius:9px; }
@@ -357,3 +357,15 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .inbox-drafts summary i, #mail-v2 .inbox-drafts summary svg { width:18px; height:18px; }
 #mail-v2 .row-summary.mail-preview { font-size:12px; }
 #mail-v2 .raw-header { white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; font-size:12px; }
+
+#mail-v2 .calendar-modes { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+#mail-v2 .calendar-modes button { flex:1; min-width:80px; padding:10px 8px; font-size:12px; border-radius:20px; }
+#mail-v2 .calendar-modes button[aria-pressed="true"] { background:var(--tint); border-color:var(--brand); }
+#mail-v2 .calendar-period-caption { color:var(--muted); font-size:12px; margin:18px 0 8px; }
+#mail-v2 .calendar-period-day { border-top:1px solid var(--line); padding:12px 0; }
+#mail-v2 .calendar-period-day h3 { margin:0; }
+#mail-v2 .calendar-period-day h3 button { padding:8px 0; text-align:left; font-weight:600; font-size:14px; }
+#mail-v2 .calendar-period-day .agenda-item { padding:12px 0; gap:8px; }
+#mail-v2 .calendar-period-day .agenda-time { flex-basis:72px; }
+#mail-v2 .calendar-period-day .agenda-content { padding-left:8px; }
+#mail-v2 .calendar-period-day .agenda-content h4 { overflow-wrap:anywhere; }
