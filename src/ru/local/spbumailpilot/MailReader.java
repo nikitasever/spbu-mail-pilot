@@ -214,16 +214,30 @@ final class MailReader implements AutoCloseable {
         if(recent.length>0)result.put("openUid",Long.toString(((UIDFolder)inbox).getUID(recent[recent.length-1])));
         return result.put("uid",high).put("count",messages.size()).put("summary",summary.toString());
     }
+    JSONObject previews(String name,JSONArray refs)throws Exception {
+        if(refs.length()>5)throw new IllegalArgumentException("Too many previews");
+        openFolder(name);JSONArray items=new JSONArray();
+        for(int i=0;i<refs.length();i++) {
+            JSONObject ref=refs.getJSONObject(i);
+            if(!Long.toString(validity).equals(ref.getString("validity")))continue;
+            Message message=((UIDFolder)inbox).getMessageByUID(Long.parseLong(ref.getString("uid")));
+            if(message==null||message.isExpunged())continue;
+            if(message instanceof com.sun.mail.imap.IMAPMessage)((com.sun.mail.imap.IMAPMessage)message).setPeek(true);
+            try {items.put(new JSONObject().put("uid",ref.getString("uid")).put("validity",ref.getString("validity")).put("text",MailPreview.read(message)));}
+            catch(Exception unavailable) { /* A preview failure must not hide the mail list. */ }
+        }
+        return new JSONObject().put("items",items);
+    }
     JSONObject body(String name, String uid, String expectedValidity) throws Exception {
         openFolder(name);
         if (!Long.toString(validity).equals(expectedValidity)) throw new MessagingException("UID validity changed");
         Message m = ((UIDFolder) inbox).getMessageByUID(Long.parseLong(uid));
         if (m == null || m.isExpunged()) throw new MessagingException("Message unavailable");
-        FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add(FetchProfile.Item.FLAGS);profile.add(FetchProfile.Item.CONTENT_INFO);profile.add("Message-ID");
+        FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add(FetchProfile.Item.FLAGS);profile.add(FetchProfile.Item.CONTENT_INFO);profile.add("Message-ID");profile.add("From");
         inbox.fetch(new Message[]{m},profile);
         JSONArray files = new JSONArray();
         String text = extract(m, files, 0, "root",100000);
-        JSONObject info=header(m);String[] messageIds=m.getHeader("Message-ID");if(messageIds!=null&&messageIds.length>0)info.put("messageId",messageIds[0]);
+        JSONObject info=header(m);String[] rawFrom=m.getHeader("From");if(rawFrom!=null&&rawFrom.length>0)info.put("rawFrom",rawFrom[0]);String[] messageIds=m.getHeader("Message-ID");if(messageIds!=null&&messageIds.length>0)info.put("messageId",messageIds[0]);
         return new JSONObject().put("uid", uid).put("text", text).put("attachments", files).put("message", info).put("phones",new JSONArray(PhoneNumbers.find(text)));
     }
     JSONObject seen(String name,String uid,String expectedValidity,boolean seen)throws Exception{
