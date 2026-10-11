@@ -15,7 +15,11 @@ final class MailText {
         try(Reader reader=new InputStreamReader(part.getInputStream(),charset)){
             StringBuilder text=new StringBuilder();char[] buffer=new char[4096];
             while(text.length()<maximum){int count=reader.read(buffer,0,Math.min(buffer.length,maximum-text.length()));if(count<0)return text.toString();text.append(buffer,0,count);}
-            return text.toString()+(reader.read()<0?"":"\n[Показана часть текста]");
+            int next=reader.read();
+            // The bound is in UTF-16 units; never display half of a valid code point.
+            if(next>=0&&Character.isLowSurrogate((char)next)&&text.length()>0&&Character.isHighSurrogate(text.charAt(text.length()-1)))text.setLength(text.length()-1);
+            return text.toString()+(next<0?"":"\n[Показана часть текста]");
         }
     }
 }
+

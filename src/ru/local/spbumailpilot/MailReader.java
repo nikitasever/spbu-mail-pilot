@@ -98,6 +98,8 @@ final class MailReader implements AutoCloseable {
         FetchProfile profile = new FetchProfile();
         profile.add(FetchProfile.Item.ENVELOPE);
         profile.add(FetchProfile.Item.FLAGS);
+        // JavaMail fetches BODYSTRUCTURE in this batch, without downloading bodies.
+        profile.add(FetchProfile.Item.CONTENT_INFO);
         profile.add(UIDFolder.FetchProfileItem.UID);
         if (messages.length > 0) inbox.fetch(messages, profile);
         for (int i = messages.length - 1; i >= 0; --i) {
@@ -151,8 +153,40 @@ final class MailReader implements AutoCloseable {
             format.setTimeZone(TimeZone.getTimeZone("Europe/Moscow"));
             obj.put("date", date == null ? "" : format.format(date));
             obj.put("seen", m.isSet(Flags.Flag.SEEN));
+            Boolean attachments = attachmentPresence(m);
+            if (attachments != null) obj.put("hasAttachments", attachments);
             return obj;
     }
+    /** null means the MIME structure could not be inspected completely. */
+    static Boolean attachmentPresence(Part part) {
+        try { return attachmentPresence(part, 0, new int[]{500}); }
+        catch (Exception unavailable) { return null; }
+    }
+    private static Boolean attachmentPresence(Part part, int depth, int[] remaining) throws Exception {
+        if (depth > 12 || remaining[0]-- <= 0) return null;
+        String disposition = part.getDisposition();
+        if (Part.ATTACHMENT.equalsIgnoreCase(disposition)) return true;
+        // Embedded images decorate HTML; they should not advertise a downloadable document.
+        if (Part.INLINE.equalsIgnoreCase(disposition) && part.isMimeType("image/*")) return false;
+        if (part.getFileName() != null) return true;
+        // A forwarded message is itself an attachment. Never decode its RFC822 body here.
+        if (part.isMimeType("message/rfc822")) return true;
+        if (!part.isMimeType("multipart/*")) return false;
+        // On IMAP parts this creates IMAPMultipartDataSource from the prefetched BODYSTRUCTURE.
+        // It visits child metadata, never getInputStream()/text or binary content.
+        Object content = part.getContent();
+        if (!(content instanceof Multipart)) return null;
+        Multipart multipart = (Multipart) content;
+        boolean unknown = false;
+        for (int i = 0; i < multipart.getCount(); i++) {
+            Boolean found = attachmentPresence(multipart.getBodyPart(i), depth + 1, remaining);
+            if (Boolean.TRUE.equals(found)) return true;
+            if (found == null) unknown = true;
+            if (remaining[0] <= 0) return null;
+        }
+        return unknown ? null : false;
+    }
+
     private JSONArray recipients(Message message) throws Exception {
         JSONArray result=new JSONArray();
         Message.RecipientType[] types={Message.RecipientType.TO,Message.RecipientType.CC,Message.RecipientType.BCC};
@@ -260,10 +294,16 @@ final class MailReader implements AutoCloseable {
         JSONObject result=new JSONObject().put("file",file.getAbsolutePath()).put("name",name).put("mime",mime);
         downloadedFiles.put(cacheKey,result);if(downloadedFiles.size()>30)downloadedFiles.remove(downloadedFiles.keySet().iterator().next());return new JSONObject(result.toString());
     }
-    private String limit(String value) { return value.length() <= 100000 ? value : value.substring(0, 100000) + "\n[Показана часть текста]"; }
+    private String limit(String value) {
+        if(value.length()<=100000)return value;
+        int end=100000;
+        if(Character.isHighSurrogate(value.charAt(end-1))&&Character.isLowSurrogate(value.charAt(end)))end--;
+        return value.substring(0,end)+"\n[Показана часть текста]";
+    }
     @Override public void close() {
         try { if (inbox != null && inbox.isOpen()) inbox.close(false); } catch (Exception ignored) { }
         try { if (store != null) store.close(); } catch (Exception ignored) { }
         inbox = null; store = null;downloadedFiles.clear();
     }
 }
+
