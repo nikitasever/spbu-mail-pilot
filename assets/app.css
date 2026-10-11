@@ -219,12 +219,14 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .day-popup-list { min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:0 20px; }
 #mail-v2 .agenda-item { display:flex; align-items:flex-start; gap:14px; padding:18px 0; border-bottom:1px solid var(--line); }
 #mail-v2 .agenda-item:last-child { border-bottom:0; }
-#mail-v2 .agenda-time { flex:0 0 52px; font-size:12px; font-weight:550; color:var(--muted); padding-top:2px; }
+#mail-v2 .agenda-time { flex:0 0 82px; overflow-wrap:anywhere; font-size:12px; font-weight:550; color:var(--muted); padding-top:2px; }
 #mail-v2 .agenda-content { min-width:0; flex:1; padding-left:12px; border-left:3px solid var(--cal-blue); }
 #mail-v2 .agenda-item.task .agenda-content { border-color:var(--brand); }
 #mail-v2 .agenda-item.event .agenda-content { border-color:var(--cal-green); }
 #mail-v2 .agenda-content h4 { font-size:15px; line-height:1.4; }
 #mail-v2 .agenda-content p { font-size:13px; }
+#mail-v2 .agenda-location { display:flex; align-items:flex-start; gap:6px; overflow-wrap:anywhere; }
+#mail-v2 .agenda-location svg { width:16px; height:16px; flex-shrink:0; margin-top:2px; }
 #mail-v2 .agenda-content .agenda-source { font-size:11px; color:var(--muted); margin:5px 0; }
 #mail-v2 .agenda-content .inline-actions button { font-size:11px; padding:8px 3px; }
 #mail-v2 .calendar-empty { padding:36px 8px; text-align:center; color:var(--muted); font-size:13px; }
@@ -299,7 +301,7 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .contact-options summary::-webkit-details-marker { display:none; }
 #mail-v2 .contact-options[open] > div { position:absolute; right:0; top:44px; z-index:5; width:230px; max-width:70vw; padding:6px; border:1px solid var(--line); border-radius:12px; background:var(--paper); box-shadow:0 6px 24px #0002; }
 #mail-v2 .contact-options button { display:block; width:100%; border:0; text-align:left; }
-#mail-v2 .contact-add { display:flex; align-items:center; gap:8px; width:fit-content; margin:24px 20px 0 auto; position:sticky; bottom:90px; box-shadow:0 4px 16px #0002; }
+#mail-v2 .contact-add { display:flex; align-items:center; gap:8px; width:fit-content; min-height:44px; margin:24px 20px 0 auto; box-shadow:0 4px 16px #0002; }
 #mail-v2 .contact-error,#mail-v2 .contact-empty { margin:16px 20px; }
 #mail-v2 .contact-error { color:var(--warn); }
 #mail-v2 .contact-error button { display:block; margin-top:8px; }
@@ -344,3 +346,4 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .calendar-search-result{display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:left;width:100%;margin:8px 0;padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow-wrap:anywhere;}
 #mail-v2 .calendar-search-result strong{font-size:15px;}
 #mail-v2 .calendar-search-result small,#mail-v2 .calendar-result-date{font-size:12px;color:var(--muted);}
+
