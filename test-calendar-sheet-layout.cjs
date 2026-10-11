@@ -24,6 +24,7 @@ function bridge(large){
     const sizes=elements.map(el=>[el,parseFloat(getComputedStyle(el).fontSize)]);
     for(const [el,size] of sizes)el.style.fontSize=(size*2)+'px';
    });
+   assert.ok(await popup.evaluate(e=>e.scrollWidth<=e.clientWidth),'dialog horizontal overflow');
    const list=popup.locator('.day-popup-list');
    // Expand descriptions to exercise unusually long days, not just many short rows.
    await list.locator('details').evaluateAll(items=>items.forEach(e=>e.open=true));

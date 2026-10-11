@@ -49,10 +49,23 @@ async function measure(page, label, includeMore) {
         window.onNativeResult({request,people,cookie:page?'':'next',hasMore:!page});
       };
     });
+    await page.addScriptTag({content:fs.readFileSync(path.join(root,'assets/lucide.min.js'),'utf8')});
     await page.addScriptTag({content:fs.readFileSync(path.join(root,'assets/app.js'),'utf8')});
+    await page.locator('.folder-menu summary').click();
     await page.locator('[data-route="contacts"]').click();
     // Approximate text scaling without doubling viewport, padding or icons.
     // Android system font-scale still needs verification on a device.
+    async function checkAddress(label) {
+      const email=page.locator('.directory-row .directory-person small').last();
+      await email.scrollIntoViewIfNeeded();
+      const geometry=await email.evaluate(el=>{
+        const r=el.getBoundingClientRect(),nav=document.querySelector('.bottom').getBoundingClientRect();
+        const hit=document.elementFromPoint(r.left+Math.min(5,r.width/2),r.top+Math.min(5,r.height/2));
+        return {top:r.top,bottom:r.bottom,visibleBottom:Math.min(innerHeight,nav.top),hit:hit===el||el.contains(hit)};
+      });
+      assert.ok(geometry.top>=0&&geometry.bottom<=geometry.visibleBottom+1,label+': last address not fully reachable '+JSON.stringify(geometry));
+      assert.ok(geometry.hit,label+': last address covered');
+    }
     async function enlargeText() {
       await page.evaluate(() => {
         const elements=[...document.querySelectorAll('#mail-v2 *')].filter(el=>el instanceof HTMLElement);
@@ -62,11 +75,13 @@ async function measure(page, label, includeMore) {
       });
     }
     await enlargeText();
+    await checkAddress('page1');
     await page.evaluate(() => scrollTo(0,document.documentElement.scrollHeight));
     await measure(page,'320px / text 200% / page 1',true);
 
     await page.locator('[data-action="contacts-more"]').click();
     await enlargeText();
+    await checkAddress('page2');
     await page.evaluate(() => scrollTo(0,document.documentElement.scrollHeight));
     await measure(page,'320px / text 200% / page 2',false);
 
