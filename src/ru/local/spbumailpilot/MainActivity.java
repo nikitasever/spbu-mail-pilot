@@ -13,6 +13,7 @@ import android.webkit.*;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import org.json.JSONObject;
+import org.json.JSONArray;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -38,6 +39,9 @@ public final class MainActivity extends Activity {
     private WebView web;
     private SharedPreferences local;
     private String account = "";
+    private volatile boolean offlineSession;
+    private volatile SavedAccounts.Login offlineCandidate;
+    private volatile OfflineMailStore offlineMail;
     private volatile String appearanceMode="system";
     private volatile boolean closing;
     private volatile boolean resumed;
@@ -49,7 +53,7 @@ public final class MainActivity extends Activity {
     private void stopWatch(){if(mailWatch!=null)mailWatch.close();mailWatch=null;watchOwner=null;if(watchUpdate!=null)watchHandler.removeCallbacks(watchUpdate);watchUpdate=null;}
     private void startWatch(){
         SavedAccounts.Login owner=sessionLogin;
-        if(!resumed||closing||web==null||owner==null){stopWatch();return;}
+        if(!resumed||closing||offlineSession||web==null||owner==null){stopWatch();return;}
         if(mailWatch!=null&&watchOwner==owner&&watchedFolder.equals(watchFolder))return;
         stopWatch();watchOwner=owner;watchedFolder=watchFolder;String folder=watchFolder;
         final MailWatch[] token=new MailWatch[1];
@@ -72,6 +76,8 @@ public final class MainActivity extends Activity {
     private final GeminiDigest gemini=new GeminiDigest();
     private final java.util.concurrent.atomic.AtomicBoolean sending=new java.util.concurrent.atomic.AtomicBoolean();
     private String attachmentPickRequest,attachmentPickOwner;
+    private String batchRequest;private SavedAccounts.Login batchOwner;private java.util.List<BulkAttachments.Ref> batchRefs;
+    private final java.util.concurrent.atomic.AtomicBoolean batchBusy=new java.util.concurrent.atomic.AtomicBoolean(),batchCancel=new java.util.concurrent.atomic.AtomicBoolean();
     private String exportRequest,exportOwner;private java.io.File exportFile;
     private int dp(int v) { return (int)(v * getResources().getDisplayMetrics().density); }
     @Override public void onCreate(Bundle state) {
@@ -154,8 +160,9 @@ public final class MainActivity extends Activity {
             SharedPreferences previous=getSharedPreferences(oldScope,MODE_PRIVATE);
             if(previous.contains("state"))local.edit().putString("state",previous.getString("state","{}")).apply();
         }
-        loadAppearance();reader=next;account=login.user;sessionLogin=login;
-        try{NoticeCenter.seed(this,login,next);NoticeCenter.schedule(this);}catch(Exception notices){}
+        loadAppearance();reader=next;account=login.user;sessionLogin=login;offlineSession=false;offlineCandidate=login;try{offlineMail=new OfflineMailStore(this,login);}catch(Exception unavailable){offlineMail=null;}
+        try{NoticeCenter.seed(this,login,next);}catch(Exception seed){}
+        try{NoticeCenter.schedule(this);}catch(Exception notices){}
     }
     private void restoreLogin() {
         if(closing||isFinishing())return;
@@ -165,9 +172,10 @@ public final class MainActivity extends Activity {
             try{login=vault.load();MailNoticeTarget target=pendingMail;if(target!=null){SavedAccounts.Login requested=null;for(SavedAccounts.Login saved:vault.list())if(NoticeCenter.scope(saved).equals(target.account)){requested=saved;break;}if(requested!=null){login=requested;vault.save(login);}else pendingMail=null;}}catch(Exception storage){runOnUiThread(()->showStorageError());return;}
             if(login==null){runOnUiThread(this::showAccounts);return;}
             final SavedAccounts.Login restored=login;
+            if(!hasNetwork())try{if(NoticeCenter.settings(this,login)==null||NoticeCenter.settings(this,login).optBoolean("offlineMail",true)){offlineCandidate=login;runOnUiThread(()->openOffline(restored));return;}}catch(Exception ignored){}
             MailReader next=new MailReader();
             try{next.connect(login.host,login.port,login.user,login.password);if(closing){next.close();return;}attachLogin(next,login);runOnUiThread(this::showMail);}
-            catch(Exception error){next.close();runOnUiThread(()->showReconnect(LoginFailure.describe(error,restored.host,restored.user,restored.password)+"\n\nСохранённый вход остаётся на телефоне.",false));}
+            catch(Exception error){next.close();offlineCandidate=restored;runOnUiThread(()->showReconnect(LoginFailure.describe(error,restored.host,restored.user,restored.password)+"\n\nСохранённый вход остаётся на телефоне.",false));}
         });
     }
     private void showReconnect(String message,boolean busy) {
@@ -178,6 +186,7 @@ public final class MainActivity extends Activity {
         box.addView(text("Рабочая почта",29,0xff29262e));box.addView(text(message,16,0xff726d7c));
         if(busy){box.addView(new ProgressBar(NativeUi.context(this,false)));}else{
             Button retry=NativeUi.button(this,false);retry.setText("Повторить подключение");retry.setOnClickListener(v->restoreLogin());box.addView(retry);
+            if(offlineCandidate!=null){Button cached=NativeUi.button(this,true);cached.setText("Открыть сохранённую почту");cached.setOnClickListener(v->openOffline(offlineCandidate));box.addView(cached);}
             Button exit=NativeUi.button(this,false);exit.setText("Аккаунты / другой ящик");exit.setOnClickListener(v->leaveAccount());box.addView(exit);
         }
         setContentView(box);
@@ -197,7 +206,7 @@ public final class MainActivity extends Activity {
         if(closing||isFinishing())return;
         showReconnect("Сохранённые аккаунты не удалось прочитать. Они не удалены. Можно повторить попытку или сбросить сохранённые входы и добавить ящики заново.",false);
         LinearLayout box=(LinearLayout)((android.view.ViewGroup)findViewById(android.R.id.content)).getChildAt(0);
-        Button reset=NativeUi.button(this,false);reset.setText("Сбросить сохранённые входы");reset.setOnClickListener(v->NativeUi.dialog(this).setMessage("Удалить сохранённые данные входа всех аккаунтов? Задачи и заметки останутся.").setPositiveButton("Удалить",(dialog,which)->worker.execute(()->{try{vault.clear();runOnUiThread(this::showLogin);}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"Не удалось удалить сохранённые входы.",Toast.LENGTH_LONG).show());}})).setNegativeButton("Отмена",null).show());box.addView(reset);
+        Button reset=NativeUi.button(this,false);reset.setText("Сбросить сохранённые входы");reset.setOnClickListener(v->NativeUi.dialog(this).setMessage("Удалить сохранённые данные входа всех аккаунтов? Задачи и заметки останутся.").setPositiveButton("Удалить",(dialog,which)->worker.execute(()->{try{vault.clear();NoticeCenter.schedule(this);runOnUiThread(this::showLogin);}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"Не удалось удалить сохранённые входы.",Toast.LENGTH_LONG).show());}})).setNegativeButton("Отмена",null).show());box.addView(reset);
     }
     private void showAccounts(){
         if(closing||isFinishing())return;
@@ -214,13 +223,20 @@ public final class MainActivity extends Activity {
                     box.addView(text("Ваши аккаунты",29,0xff29262e));box.addView(text("Выберите ящик. Пароли сохранены в зашифрованном виде. Задачи и заметки у каждого аккаунта свои.",15,0xff726d7c));
                     for(SavedAccounts.Login login:saved){
                         LinearLayout choose=NativeUi.accountRow(this,login,false);choose.setOnClickListener(v->connectSaved(login));box.addView(choose,new LinearLayout.LayoutParams(-1,-2));
-                        Button remove=NativeUi.button(this,false);remove.setText("Удалить сохранённый аккаунт");remove.setOnClickListener(v->NativeUi.dialog(this).setMessage("Удалить сохранённый вход для "+login.user+"? Подключения календарей будут удалены с телефона; события сервера, задачи и заметки останутся.").setPositiveButton("Удалить",(dialog,which)->worker.execute(()->{try{new CalendarBook(this,login).clear();vault.remove(login);runOnUiThread(this::showAccounts);}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"Не удалось удалить аккаунт.",Toast.LENGTH_LONG).show());}})).setNegativeButton("Отмена",null).show());box.addView(remove);
+                        Button remove=NativeUi.button(this,false);remove.setText("Удалить сохранённый аккаунт");remove.setOnClickListener(v->NativeUi.dialog(this).setMessage("Удалить сохранённый вход для "+login.user+"? Подключения календарей будут удалены с телефона; события сервера, задачи и заметки останутся.").setPositiveButton("Удалить",(dialog,which)->worker.execute(()->{try{new CalendarBook(this,login).clear();vault.remove(login);NoticeCenter.schedule(this);runOnUiThread(this::showAccounts);}catch(Exception e){runOnUiThread(()->Toast.makeText(this,"Не удалось удалить аккаунт.",Toast.LENGTH_LONG).show());}})).setNegativeButton("Отмена",null).show());box.addView(remove);
                     }
                     Button add=NativeUi.button(this,false);add.setText("Добавить другой аккаунт");add.setOnClickListener(v->showLogin());box.addView(add,new LinearLayout.LayoutParams(-1,dp(56)));setContentView(scroll);
                 });
             }catch(Exception error){runOnUiThread(this::showStorageError);}
         });
     }
+    private boolean hasNetwork(){try{android.net.ConnectivityManager manager=getSystemService(android.net.ConnectivityManager.class);android.net.Network network=manager.getActiveNetwork();android.net.NetworkCapabilities capabilities=network==null?null:manager.getNetworkCapabilities(network);return capabilities!=null&&capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET);}catch(Exception unknown){return true;}}
+    private boolean offlineEnabled(){try{JSONObject settings=new JSONObject(local==null?"{}":local.getString("state","{}")).optJSONObject("settings");return settings==null||settings.optBoolean("offlineMail",true);}catch(Exception error){return false;}}
+    private void openOffline(SavedAccounts.Login login){
+        if(login==null)return;showReconnect("Открываем сохранённую почту…",true);worker.execute(()->{try{boolean remembered=false;for(SavedAccounts.Login saved:vault.list())if(saved.identity().equals(login.identity()))remembered=true;if(!remembered)throw new IllegalStateException();stopWatch();if(reader!=null)reader.close();vault.save(login);attachLogin(new MailReader(),login);offlineSession=true;if(!offlineEnabled())throw new IllegalStateException();runOnUiThread(this::showMail);}catch(Exception error){runOnUiThread(()->showReconnect("Не удалось открыть сохранённую почту. Проверьте настройки офлайн-доступа или подключитесь к серверу.",false));}});
+    }
+    private JSONObject offlinePage(String folder,int offset,String snapshot,String query){try{return offlineEnabled()&&offlineMail!=null?offlineMail.page(folder,offset,snapshot,query):null;}catch(Exception invalid){return null;}}
+    private JSONObject offlineBody(String folder,String uid,String validity){try{return offlineEnabled()&&offlineMail!=null?offlineMail.body(folder,uid,validity):null;}catch(Exception invalid){return null;}}
     private void connectSaved(SavedAccounts.Login login){
         ++digestSerial;
         stopWatch();watchFolder="INBOX";
@@ -229,9 +245,10 @@ public final class MainActivity extends Activity {
         if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}
         worker.execute(()->{
             if(reader!=null)reader.close();reader=null;sessionLogin=null;local=null;account="";
+            if(!hasNetwork())try{if(NoticeCenter.settings(this,login)==null||NoticeCenter.settings(this,login).optBoolean("offlineMail",true)){offlineCandidate=login;runOnUiThread(()->openOffline(login));return;}}catch(Exception ignored){}
             MailReader next=new MailReader();
             try{next.connect(login.host,login.port,login.user,login.password);if(closing){next.close();return;}vault.save(login);attachLogin(next,login);runOnUiThread(this::showMail);}
-            catch(Exception error){next.close();runOnUiThread(()->{showAccounts();NativeUi.dialog(this).setTitle("Не удалось открыть ящик").setMessage(LoginFailure.describe(error,login.host,login.user,login.password)).setPositiveButton("Понятно",null).show();});}
+            catch(Exception error){next.close();offlineCandidate=login;runOnUiThread(()->showReconnect(LoginFailure.describe(error,login.host,login.user,login.password)+"\n\nМожно открыть сохранённую почту.",false));}
         });
     }
     private void quickAccounts(){
@@ -265,6 +282,7 @@ public final class MainActivity extends Activity {
     }
     private interface ReadOperation {JSONObject run() throws Exception;}
     private JSONObject readWithReconnect(ReadOperation operation) throws Exception {
+        if(offlineSession)throw new java.io.IOException("Offline session");
         try{return operation.run();}catch(Exception disconnected){
             if(!(disconnected instanceof MessagingException)&&!(disconnected instanceof java.io.IOException))throw disconnected;
             if(sessionLogin==null||reader==null)throw disconnected;
@@ -286,7 +304,7 @@ public final class MainActivity extends Activity {
             }
         });
         web.setWebViewClient(new WebViewClient(){
-            @Override public void onPageFinished(WebView view,String url){if(view!=web||!url.equals("https://mail-pilot.local/assets/index.html"))return;mailPageReady=true;openPendingMail();if(getIntent().getBooleanExtra("openTasks",false)){getIntent().removeExtra("openTasks");web.evaluateJavascript("window.openTasksFromNotification&&window.openTasksFromNotification()",null);}}
+            @Override public void onPageFinished(WebView view,String url){if(view!=web||!url.equals("https://mail-pilot.local/assets/index.html"))return;mailPageReady=true;resumePendingNavigation();}
             @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){return true;}
             @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
                 Uri uri=request.getUrl();String path=uri.getPath();
@@ -325,6 +343,21 @@ public final class MainActivity extends Activity {
             }catch(Exception error){Toast.makeText(this,"Проверьте сервер, порт и полный адрес отправителя.",Toast.LENGTH_LONG).show();}
         });
     }
+    private void runAttachmentBatch(SavedAccounts.Login owner,String request,java.util.List<BulkAttachments.Ref> refs,Uri tree){
+        java.util.function.BooleanSupplier stopped=()->batchCancel.get()||closing||sessionLogin!=owner;
+        java.io.File directory=new java.io.File(getCacheDir(),"batch-"+java.util.UUID.randomUUID().toString());
+        long[] last={0};int[] completed={-1};JSONObject response;
+        try{
+            BulkAttachments.Result result=BulkAttachments.run(refs,(ref,cancel,progress)->{BulkAttachments.check(cancel);JSONObject downloaded;try{downloaded=reader.attachment(ref.folder,ref.uid,ref.validity,ref.path,directory,cancel,progress);}catch(javax.mail.MessagingException|java.io.IOException disconnected){BulkAttachments.check(cancel);reader.close();reader.connect(owner.host,owner.port,owner.user,owner.password);BulkAttachments.check(cancel);downloaded=reader.attachment(ref.folder,ref.uid,ref.validity,ref.path,directory,cancel,progress);}return new BulkAttachments.Download(new java.io.File(downloaded.getString("file")),downloaded.getString("name"),downloaded.getString("mime"),true);},new SafAttachmentDestination(getContentResolver(),tree),stopped,(done,total,name,stage,bytes,size)->{
+                long now=android.os.SystemClock.elapsedRealtime();if(done==completed[0]&&!stage.equals("finished")&&now-last[0]<150)return;last[0]=now;completed[0]=done;
+                try{JSONObject update=new JSONObject().put("request",request).put("completed",done).put("total",total).put("name",name).put("stage",stage).put("bytes",bytes).put("size",size);runOnUiThread(()->{if(web!=null&&!closing&&sessionLogin==owner)web.evaluateJavascript("window.onBatchProgress&&window.onBatchProgress("+update.toString()+")",null);});}catch(Exception ignored){}
+            });
+            JSONArray failures=new JSONArray();for(BulkAttachments.Failure failed:result.failures)failures.put(new JSONObject().put("name",failed.name).put("reason",failed.reason).put("folder",failed.ref.folder).put("uid",failed.ref.uid).put("validity",failed.ref.validity).put("path",failed.ref.path));
+            response=new JSONObject().put("total",result.total).put("saved",result.saved).put("cancelled",result.cancelled).put("failures",failures);
+        }catch(Exception error){response=new JSONObjectSafe().putValue("error","Не удалось скачать вложения в выбранную папку. Проверьте доступ, сеть и свободное место; завершённые файлы сохранены.");}
+        finally{java.io.File[] temporary=directory.listFiles();if(temporary!=null)for(java.io.File file:temporary)file.delete();directory.delete();batchBusy.set(false);}
+        transferReply(owner,request,response);
+    }
     private void transferReply(SavedAccounts.Login owner,String request,JSONObject result){try{result.put("request",request);}catch(Exception ignored){}runOnUiThread(()->{if(!closing&&sessionLogin==owner&&web!=null)web.evaluateJavascript("window.onNativeResult(JSON.parse("+JSONObject.quote(result.toString())+"))",null);});}
     private void transferFailure(SavedAccounts.Login owner,String request,String message){transferReply(owner,request,new JSONObjectSafe().putValue("error",message));}
     private TransferMessage.Progress transferProgress(String request,SavedAccounts.Login owner,String callback){return (stage,bytes,total)->{
@@ -338,6 +371,8 @@ public final class MainActivity extends Activity {
     private java.io.File uploads(SavedAccounts.Login login)throws Exception{return new java.io.File(getFilesDir(),"outgoing/"+NoticeCenter.scope(login));}
     @Override protected void onActivityResult(int requestCode,int resultCode,android.content.Intent data){
         super.onActivityResult(requestCode,resultCode,data);
+        if(requestCode==74&&batchRequest!=null){String request=batchRequest;SavedAccounts.Login owner=batchOwner;java.util.List<BulkAttachments.Ref> refs=batchRefs;batchRequest=null;batchOwner=null;batchRefs=null;if(owner==null||sessionLogin!=owner){batchCancel.set(true);batchBusy.set(false);return;}if(resultCode!=RESULT_OK||data==null||data.getData()==null||batchCancel.get()){batchBusy.set(false);transferReply(owner,request,new JSONObjectSafe().putValue("cancelled",true));return;}Uri tree=data.getData();worker.execute(()->runAttachmentBatch(owner,request,refs,tree));return;}
+
         if(requestCode==73&&exportRequest!=null){String request=exportRequest,owner=exportOwner;java.io.File file=exportFile;exportRequest=null;exportOwner=null;exportFile=null;
             SavedAccounts.Login login=sessionLogin;if(login==null||!login.identity().equals(owner))return;
             if(resultCode!=RESULT_OK||data==null||data.getData()==null){try{reply(request,new JSONObject().put("cancelled",true));}catch(Exception ignored){}return;}
@@ -364,7 +399,8 @@ public final class MainActivity extends Activity {
         });
     }
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){super.onRequestPermissionsResult(requestCode,permissions,results);if(requestCode==61){BackgroundMailService.reconcile(this,resumed);if(pendingTestNotice&&NoticeCenter.allowed(this))NoticeCenter.test(this);pendingTestNotice=false;worker.execute(()->{try{NoticeCenter.schedule(this);}catch(Exception ignored){}});}}
-    @Override protected void onNewIntent(android.content.Intent intent){super.onNewIntent(intent);setIntent(intent);pendingMail=MailNoticeTarget.parse(intent.getStringExtra("openMail"));if(pendingMail!=null)openPendingMail();else if(web!=null&&mailPageReady&&intent.getBooleanExtra("openTasks",false)){intent.removeExtra("openTasks");web.evaluateJavascript("window.openTasksFromNotification&&window.openTasksFromNotification()",null);}}
+    @Override protected void onNewIntent(android.content.Intent intent){super.onNewIntent(intent);setIntent(intent);pendingMail=MailNoticeTarget.parse(intent.getStringExtra("openMail"));resumePendingNavigation();}
+    private void resumePendingNavigation(){if(!resumed||closing||web==null||!mailPageReady)return;if(pendingMail!=null){openPendingMail();return;}if(getIntent().getBooleanExtra("openTasks",false))web.evaluateJavascript("window.openTasksFromNotification&&window.openTasksFromNotification()",accepted->{if("true".equals(accepted))getIntent().removeExtra("openTasks");});}
     private void openPendingMail(){
         final MailNoticeTarget target=pendingMail;if(target==null||web==null||!mailPageReady||sessionLogin==null||closing)return;
         try{if(NoticeCenter.scope(sessionLogin).equals(target.account)){
@@ -455,7 +491,7 @@ public final class MainActivity extends Activity {
             finally{runOnUiThread(picker::dismiss);}});
         });
     }
-    private static final class JSONObjectSafe extends JSONObject { JSONObjectSafe putValue(String key,String value){try{put(key,value);}catch(Exception ignored){}return this;} }
+    private static final class JSONObjectSafe extends JSONObject { JSONObjectSafe putValue(String key,Object value){try{put(key,value);}catch(Exception ignored){}return this;} }
     private boolean aiEnabled(){SharedPreferences state=local;return state!=null&&AiPolicy.enabled(state.getString("state","{}"));}
     public final class Bridge {
         @JavascriptInterface public String launcherIcon(){return getSharedPreferences("launcher",MODE_PRIVATE).getString("icon","spbu");}
@@ -541,6 +577,7 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public boolean openTasksRequested(){return getIntent().getBooleanExtra("openTasks",false);}
         @JavascriptInterface public void smtpSettings(){runOnUiThread(()->MainActivity.this.smtpSettings());}
         @JavascriptInterface public void syncDraft(String json,String request){
+            if(offlineSession){failure(request,"Нет подключения. Черновик сохранён на телефоне.");return;}
             if(json==null||json.length()>120000){failure(request,"Черновик слишком большой.");return;}SavedAccounts.Login owner=sessionLogin;if(owner==null){failure(request,"Войдите в ящик.");return;}
             draftWorker.execute(()->{try{if(closing||sessionLogin!=owner)return;JSONObject draft=new JSONObject(json);String key=draftKey(owner,draft.getString("id"));TransferMessage message=MailSender.draft(owner,draft,uploads(owner));
                 try(MailReader connection=new MailReader()){connection.connect(owner.host,owner.port,owner.user,owner.password);JSONObject saved=ServerDrafts.save(connection.draftStore(),message,key,ServerDrafts.revision(draft),transferProgress(request,owner,"onServerDraftProgress"));
@@ -575,7 +612,7 @@ public final class MainActivity extends Activity {
         });}
         @JavascriptInterface public void seen(String name,String uid,String validity,boolean seen,String request){
             if(name==null||name.length()>2048||uid==null||validity==null||!uid.matches("[0-9]{1,20}")||!validity.matches("[0-9]{1,20}")){failure(request,"Некорректное письмо.");return;}
-            worker.execute(()->{try{reply(request,readWithReconnect(()->reader.seen(name,uid,validity,seen)));}catch(Exception error){readFailure(request,error,"Не удалось сохранить статус прочтения. Проверьте сеть и повторите действие.");}});
+            SavedAccounts.Login owner=sessionLogin;OfflineMailStore cache=offlineMail;worker.execute(()->{if(owner==null||sessionLogin!=owner)return;try{JSONObject result=readWithReconnect(()->reader.seen(name,uid,validity,seen));if(sessionLogin==owner&&offlineEnabled()&&cache!=null)try{cache.seen(name,uid,validity,result.getBoolean("seen"));}catch(Exception ignored){}transferReply(owner,request,result);}catch(Exception error){if(sessionLogin==owner)readFailure(request,error,"Не удалось сохранить статус прочтения. Проверьте сеть и повторите действие.");}});
         }
         @JavascriptInterface public void dial(String number,String request){runOnUiThread(()->{
             try{String value=PhoneNumbers.normalize(number);startActivity(new android.content.Intent(android.content.Intent.ACTION_DIAL,Uri.fromParts("tel",value,null)));reply(request,new JSONObject().put("dialed",true).put("number",value));}
@@ -583,6 +620,7 @@ public final class MainActivity extends Activity {
         });}
         @JavascriptInterface public boolean appVisible(){return resumed&&!closing;}
         @JavascriptInterface public void send(String json,String request){
+            if(offlineSession){failure(request,"Подключитесь к серверу перед отправкой. Черновик сохранён на телефоне.");return;}
             if(!resumed||closing){failure(request,"Окно приложения закрыто. Письмо сохранено в черновиках.");return;}
             if(json==null||json.length()>120000){failure(request,"Письмо слишком большое.");return;}
             SavedAccounts.Login login=sessionLogin;if(login==null){failure(request,"Войдите в ящик.");return;}
@@ -606,23 +644,34 @@ public final class MainActivity extends Activity {
         }
         @JavascriptInterface public void notificationSettings(){runOnUiThread(()->{android.content.Intent settings=new android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,getPackageName());startActivity(settings);});}
         @JavascriptInterface public void testNotification(){runOnUiThread(()->{if(!NoticeCenter.allowed(MainActivity.this)){pendingTestNotice=true;getSharedPreferences("notification-permission",MODE_PRIVATE).edit().putBoolean("requested",false).apply();requestNoticePermission();}else NoticeCenter.test(MainActivity.this);});}
-        @JavascriptInterface public void folders(String request){worker.execute(()->{try{reply(request,readWithReconnect(()->new JSONObject().put("folders",reader.folders())));}catch(Exception e){readFailure(request,e,"Не удалось получить папки. Проверьте сеть/VPN и повторите загрузку.");}});}
-        @JavascriptInterface public void page(String name,int offset,String snapshot,String request){if(name==null||name.length()>2048||name.contains("\r")||name.contains("\n")||offset<0){failure(request,"Некорректные параметры списка.");return;}worker.execute(()->{try{reply(request,readWithReconnect(()->reader.page(name,offset,snapshot)));}catch(Exception e){readFailure(request,e,"Не удалось загрузить письма. Повторите попытку; если список изменился, нажмите обновление.");}});}
+        @JavascriptInterface public void continuePendingNavigation(){runOnUiThread(()->resumePendingNavigation());}
+        @JavascriptInterface public boolean offlineMode(){return offlineSession;}
+        @JavascriptInterface public void reconnectMailbox(String request){final SavedAccounts.Login owner=sessionLogin;worker.execute(()->{if(owner==null||closing||sessionLogin!=owner)return;MailReader next=new MailReader();try{next.connect(owner.host,owner.port,owner.user,owner.password);if(closing||sessionLogin!=owner){next.close();return;}if(reader!=null)reader.close();reader=next;offlineSession=false;reply(request,new JSONObject().put("connected",true));runOnUiThread(()->{startWatch();BackgroundMailService.reconcile(MainActivity.this,resumed);});}catch(Exception error){next.close();if(sessionLogin==owner)readFailure(request,error,"Не удалось подключиться. Сохранённая почта и черновики остаются доступными.");}});}
+        @JavascriptInterface public void clearOfflineMail(String request){final SavedAccounts.Login owner=sessionLogin;runOnUiThread(()->{if(owner==null||sessionLogin!=owner)return;NativeUi.dialog(MainActivity.this).setTitle("Удалить сохранённую почту?").setMessage("Удалятся только офлайн-копии писем этого ящика. Письма на сервере, черновики и календарь останутся.").setNegativeButton("Отмена",(dialog,which)->reply(request,new JSONObjectSafe().putValue("cancelled",true))).setPositiveButton("Удалить",(dialog,which)->worker.execute(()->{if(sessionLogin!=owner)return;try{if(offlineMail!=null)offlineMail.clear();else OfflineMailStore.delete(MainActivity.this,owner);offlineMail=new OfflineMailStore(MainActivity.this,owner);reply(request,new JSONObject().put("cleared",true));}catch(Exception error){failure(request,"Не удалось очистить сохранённую почту.");}})).show();});}
+        @JavascriptInterface public void downloadAttachments(String json,String request){
+            if(offlineSession){failure(request,"Подключитесь к серверу для скачивания вложений.");return;}final SavedAccounts.Login owner=sessionLogin;if(owner==null||json==null||json.length()>200000||!batchBusy.compareAndSet(false,true)){failure(request,"Завершите текущее скачивание или повторите выбор вложений.");return;}
+            try{JSONArray array=new JSONArray(json);if(array.length()<1||array.length()>BulkAttachments.MAX_FILES)throw new IllegalArgumentException();java.util.List<BulkAttachments.Ref> refs=new java.util.ArrayList<>();for(int i=0;i<array.length();i++){JSONObject ref=array.getJSONObject(i);refs.add(new BulkAttachments.Ref(ref.getString("folder"),ref.getString("uid"),ref.getString("validity"),ref.getString("path")));}batchCancel.set(false);runOnUiThread(()->{if(closing||sessionLogin!=owner){batchBusy.set(false);return;}batchRequest=request;batchOwner=owner;batchRefs=refs;android.content.Intent pick=new android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION|android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION);try{startActivityForResult(pick,74);}catch(Exception error){batchRequest=null;batchOwner=null;batchRefs=null;batchBusy.set(false);failure(request,"Не найден системный выбор папки.");}});}catch(Exception invalid){batchBusy.set(false);failure(request,"Проверьте выбранные вложения (не более 500 файлов).");}
+        }
+        @JavascriptInterface public void cancelAttachmentBatch(){batchCancel.set(true);}
+        @JavascriptInterface public void folders(String request){final SavedAccounts.Login owner=sessionLogin;worker.execute(()->{if(owner==null||sessionLogin!=owner)return;try{transferReply(owner,request,readWithReconnect(()->new JSONObject().put("folders",reader.folders())));}catch(Exception e){try{if(offlineEnabled()&&offlineMail!=null&&offlineMail.available()&&!(e instanceof AuthenticationFailedException)){transferReply(owner,request,offlineMail.folders());return;}}catch(Exception ignored){}readFailure(request,e,"Не удалось получить папки. Подключитесь к серверу или откройте сохранённую папку.");}});}
+        @JavascriptInterface public void page(String name,int offset,String snapshot,String request){if(name==null||name.length()>2048||name.contains("\r")||name.contains("\n")||offset<0){failure(request,"Некорректные параметры списка.");return;}final SavedAccounts.Login owner=sessionLogin;worker.execute(()->{if(owner==null||sessionLogin!=owner)return;try{if(offlineSession||(snapshot!=null&&snapshot.startsWith("offline:"))){JSONObject cached=offlinePage(name,offset,snapshot,"");if(cached==null)throw new java.io.IOException("No saved page");transferReply(owner,request,cached);return;}JSONObject result=readWithReconnect(()->reader.page(name,offset,snapshot));if(offlineEnabled()&&offlineMail!=null)try{offlineMail.savePage(name,offset,result);}catch(Exception cacheFailure){}if(sessionLogin==owner)transferReply(owner,request,result);}catch(Exception e){if(sessionLogin!=owner)return;JSONObject cached=e instanceof AuthenticationFailedException?null:offlinePage(name,offset,snapshot,"");if(cached!=null){transferReply(owner,request,cached);return;}readFailure(request,e,"В этой папке нет доступной сохранённой страницы. Подключитесь к серверу или обновите список.");}});}
         @JavascriptInterface public void body(String name,String uid,String validity,String request){
             if(name==null||name.length()>2048||name.contains("\r")||name.contains("\n")||uid==null||validity==null||!uid.matches("[0-9]{1,20}")||!validity.matches("[0-9]{1,20}")){failure(request,"Некорректный идентификатор письма.");return;}
-            SavedAccounts.Login owner=sessionLogin;long generation=++bodySerial;
+            SavedAccounts.Login owner=sessionLogin;final OfflineMailStore bodyCacheStore=offlineMail;long generation=++bodySerial;
             bodyWorker.execute(()->{try{
                 if(owner==null||closing||sessionLogin!=owner)return;if(generation!=bodySerial){bodyReply(owner,request,generation,new JSONObject());return;}
                 JSONObject result;
+                if(offlineSession){result=offlineBody(name,uid,validity);if(result==null)throw new java.io.IOException("No saved body");bodyReply(owner,request,generation,result);return;}
                 try{result=bodyConnection(owner).body(name,uid,validity);}
                 catch(javax.mail.AuthenticationFailedException rejected){throw rejected;}
                 catch(MessagingException|java.io.IOException disconnected){closeBodyReader();if(closing||sessionLogin!=owner)return;if(generation!=bodySerial){bodyReply(owner,request,generation,new JSONObject());return;}result=bodyConnection(owner).body(name,uid,validity);}
+                if(sessionLogin==owner&&offlineEnabled()&&bodyCacheStore!=null)try{bodyCacheStore.saveBody(name,uid,validity,result);}catch(Exception cacheFailure){}
                 bodyReply(owner,request,generation,result);
-            }catch(Exception unavailable){closeBodyReader();bodyReply(owner,request,generation,new JSONObjectSafe().putValue("error","Не удалось прочитать письмо. Проверьте сеть и повторите загрузку."));}});
+            }catch(Exception unavailable){closeBodyReader();if(sessionLogin!=owner)return;JSONObject cached=unavailable instanceof AuthenticationFailedException?null:offlineBody(name,uid,validity);bodyReply(owner,request,generation,cached!=null?cached:new JSONObjectSafe().putValue("error","Текст этого письма ещё не сохранён. Подключитесь к серверу и откройте его."));}});
         }
         @JavascriptInterface public void searchPage(String name,String query,int offset,String snapshot,String request){
             if(name==null||name.length()>2048||query==null||query.length()>200||query.matches("(?s).*\\p{Cntrl}.*")||offset<0){failure(request,"Проверьте поисковый запрос.");return;}
-            SavedAccounts.Login owner=sessionLogin;worker.execute(()->{try{if(owner==null||sessionLogin!=owner)return;calendarReply(owner,request,readWithReconnect(()->reader.page(name,offset,snapshot,query)));}catch(Exception e){if(sessionLogin==owner)readFailure(request,e,"Поиск не выполнен. Проверьте сеть или попробуйте другой запрос.");}});
+            SavedAccounts.Login owner=sessionLogin;worker.execute(()->{try{if(owner==null||sessionLogin!=owner)return;if(offlineSession||(snapshot!=null&&snapshot.startsWith("offline:"))){JSONObject cached=offlinePage(name,offset,snapshot,query);if(cached==null)throw new java.io.IOException("No saved search");calendarReply(owner,request,cached);}else calendarReply(owner,request,readWithReconnect(()->reader.page(name,offset,snapshot,query)));}catch(Exception e){if(sessionLogin==owner){JSONObject cached=e instanceof AuthenticationFailedException?null:offlinePage(name,offset,snapshot,query);if(cached!=null)calendarReply(owner,request,cached);else readFailure(request,e,"Поиск по сохранённым письмам недоступен. Подключитесь к серверу.");}}});
         }
         @JavascriptInterface public void filesPage(String name,String query,int offset,String snapshot,String request){
             if(name==null||name.length()>2048||query==null||query.length()>200||offset<0){failure(request,"Проверьте запрос поиска файлов.");return;}
@@ -671,9 +720,9 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void removeUpload(String token){worker.execute(()->{try{if(sessionLogin!=null)MailSender.file(uploads(sessionLogin),token).delete();}catch(Exception ignored){}});}
         @JavascriptInterface public void switchAccount(){runOnUiThread(()->quickAccounts());}
     }
-    @Override protected void onResume(){super.onResume();resumed=true;NativeUi.bars(this);if(web!=null)web.evaluateJavascript("window.systemThemeChanged&&window.systemThemeChanged()",null);startWatch();BackgroundMailService.reconcile(this,true);}
+    @Override protected void onResume(){super.onResume();resumed=true;NativeUi.bars(this);if(web!=null)web.evaluateJavascript("window.systemThemeChanged&&window.systemThemeChanged()",null);startWatch();BackgroundMailService.reconcile(this,true);resumePendingNavigation();}
     @Override protected void onPause(){resumed=false;if(web!=null)web.evaluateJavascript("window.sendWindowHidden&&window.sendWindowHidden()",null);stopWatch();super.onPause();}
     @Override public void onBackPressed(){if(web!=null){web.evaluateJavascript("window.appBack&&window.appBack()",null);}else if(loginScreen&&hasSavedAccounts){showAccounts();}else super.onBackPressed();}
-    @Override protected void onDestroy(){closing=true;++bodySerial;stopWatch();bodyWorker.execute(this::closeBodyReader);bodyWorker.shutdown();draftWorker.shutdownNow();calendarWorker.shutdownNow();directoryWorker.execute(universityDirectory::close);directoryWorker.shutdown();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();gemini.cancel();super.onDestroy();}
+    @Override protected void onDestroy(){closing=true;batchCancel.set(true);++bodySerial;stopWatch();bodyWorker.execute(this::closeBodyReader);bodyWorker.shutdown();draftWorker.shutdownNow();calendarWorker.shutdownNow();directoryWorker.execute(universityDirectory::close);directoryWorker.shutdown();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();gemini.cancel();super.onDestroy();}
 }
 

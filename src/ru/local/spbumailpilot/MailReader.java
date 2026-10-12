@@ -109,7 +109,7 @@ final class MailReader implements AutoCloseable {
         }
         int next = pages.next(offset);
         return new JSONObject().put("messages", result).put("total", pages.size()).put("nextOffset", next)
-                .put("hasMore", next < pages.size()).put("snapshot", Long.toString(generation)).put("folder", name);
+                .put("hasMore", next < pages.size()).put("snapshot", Long.toString(generation)).put("folder", name).put("validity",Long.toString(validity));
     }
     JSONObject files(String name,int offset,String snapshot,String query)throws Exception{
         openFolder(name);
@@ -210,8 +210,8 @@ final class MailReader implements AutoCloseable {
         for(Message message:found)if(message!=null&&!message.isExpunged()){messages.add(message);high=Math.max(high,((UIDFolder)inbox).getUID(message));}
         int start=Math.max(0,messages.size()-3);Message[] recent=messages.subList(start,messages.size()).toArray(new Message[0]);
         FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);if(recent.length>0)inbox.fetch(recent,profile);
-        StringBuilder summary=new StringBuilder();for(int i=recent.length-1;i>=0;i--){if(summary.length()>0)summary.append('\n');String subject=recent[i].getSubject();summary.append(subject==null?"Без темы":subject.substring(0,Math.min(180,subject.length())));}
-        if(recent.length>0)result.put("openUid",Long.toString(((UIDFolder)inbox).getUID(recent[recent.length-1])));
+        StringBuilder summary=new StringBuilder();for(int i=recent.length-1;i>=0;i--){if(summary.length()>0)summary.append('\n');Address[] from=recent[i].getFrom();String name="",email="";if(from!=null&&from.length>0){if(from[0] instanceof InternetAddress){InternetAddress address=(InternetAddress)from[0];name=address.getPersonal();email=address.getAddress();}else name=from[0].toString();}String sender=MailNotificationText.sender(name,email),subject=MailNotificationText.clean(recent[i].getSubject(),"Без темы",180);summary.append(sender).append(" · ").append(subject);if(i==recent.length-1)result.put("sender",sender).put("email",email).put("subject",subject).put("openUid",Long.toString(((UIDFolder)inbox).getUID(recent[i])));}
+
         return result.put("uid",high).put("count",messages.size()).put("summary",summary.toString());
     }
     JSONObject previews(String name,JSONArray refs)throws Exception {
@@ -293,6 +293,10 @@ final class MailReader implements AutoCloseable {
         return "";
     }
     JSONObject attachment(String folder,String uid,String expectedValidity,String path,java.io.File directory)throws Exception{
+        return attachment(folder,uid,expectedValidity,path,directory,()->false,bytes->{});
+    }
+    JSONObject attachment(String folder,String uid,String expectedValidity,String path,java.io.File directory,java.util.function.BooleanSupplier cancelled,java.util.function.LongConsumer progress)throws Exception{
+        BulkAttachments.check(cancelled);
         openFolder(folder);
         if(!Long.toString(validity).equals(expectedValidity))throw new MessagingException("UID validity changed");
         Message message=((UIDFolder)inbox).getMessageByUID(Long.parseLong(uid));
@@ -304,7 +308,10 @@ final class MailReader implements AutoCloseable {
         if(part.getSize()>AttachmentFiles.MAX_BYTES)throw new java.io.IOException("Attachment too large");
         String mime=AttachmentFiles.mime(name,new javax.mail.internet.ContentType(part.getContentType()).getBaseType());
         java.io.File file;
-        try(java.io.InputStream input=part.getInputStream()){file=AttachmentFiles.copy(input,directory,name,AttachmentFiles.MAX_BYTES);}
+        try(java.io.InputStream input=part.getInputStream();java.io.InputStream cancellable=new java.io.FilterInputStream(input){
+            public int read()throws java.io.IOException{BulkAttachments.check(cancelled);return super.read();}
+            public int read(byte[] bytes,int offset,int length)throws java.io.IOException{BulkAttachments.check(cancelled);return in.read(bytes,offset,length);}
+        }){file=AttachmentFiles.copy(cancellable,directory,name,AttachmentFiles.MAX_BYTES,progress);}
         JSONObject result=new JSONObject().put("file",file.getAbsolutePath()).put("name",name).put("mime",mime);
         downloadedFiles.put(cacheKey,result);if(downloadedFiles.size()>30)downloadedFiles.remove(downloadedFiles.keySet().iterator().next());return new JSONObject(result.toString());
     }

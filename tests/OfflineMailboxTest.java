@@ -1,0 +1,18 @@
+package ru.local.spbumailpilot;
+import org.json.*;
+import javax.crypto.KeyGenerator;
+import java.util.Arrays;
+public final class OfflineMailboxTest {
+ static void check(boolean v){if(!v)throw new AssertionError();}
+ static JSONObject header(int uid,String validity)throws Exception{return new JSONObject().put("uid",String.valueOf(uid)).put("validity",validity).put("folder","INBOX").put("sender","Иван").put("subject","Документы "+uid).put("email","from@spbu.ru");}
+ static JSONObject page(int start,int count,String validity)throws Exception{JSONArray items=new JSONArray();for(int i=start;i<start+count;i++)items.put(header(i,validity));return new JSONObject().put("messages",items).put("validity",validity);}
+ public static void main(String[] args)throws Exception{
+  OfflineMailbox cache=new OfflineMailbox();cache.page("INBOX",0,page(1,50,"7"));cache.page("INBOX",50,page(51,50,"7"));JSONObject first=cache.page("INBOX",0,"","");check(first.getBoolean("offline")&&first.getInt("total")==100&&first.getJSONArray("messages").getJSONObject(0).getString("uid").equals("100"));check(cache.page("INBOX",50,first.getString("snapshot"),"").getJSONArray("messages").length()==50);check(cache.page("INBOX",50,"wrong","")==null);check(cache.page("INBOX",0,"","Документы 99").getInt("total")==1);check(cache.page("Archive",0,"","")==null);
+  JSONObject body=new JSONObject().put("message",header(99,"7")).put("text","Сохранённый текст").put("attachments",new JSONArray().put(new JSONObject().put("name","План.pdf").put("path","1")));cache.body("INBOX","99","7",body);JSONObject copied=cache.body("INBOX","99","7");check(copied.getBoolean("offline"));copied.put("text","changed");check(cache.body("INBOX","99","7").getString("text").equals("Сохранённый текст"));check(!body.has("offline"));
+  cache.seen("INBOX","99","7",true);check(cache.body("INBOX","99","7").getJSONObject("message").getBoolean("seen"));check(cache.page("INBOX",0,"","").getJSONArray("messages").getJSONObject(1).getBoolean("seen"));
+  OfflineMailbox restored=new OfflineMailbox(cache.data);check(restored.body("INBOX","99","7")!=null);restored.page("INBOX",0,page(1,1,"8"));check(restored.body("INBOX","99","7")==null);restored.body("INBOX","99","7",body);check(restored.body("INBOX","99","7")==null);check(restored.page("INBOX",0,"","").getInt("total")==1);
+  cache.page("INBOX",0,page(1,250,"7"));check(cache.page("INBOX",0,"","").getInt("total")==200);for(int i=1;i<=55;i++)cache.body("INBOX",String.valueOf(i),"7",new JSONObject().put("message",header(i,"7")).put("text","x"));check(cache.data.getJSONObject("bodies").length()==50);for(int i=0;i<12;i++)cache.page("Folder"+i,0,page(1,1,"7"));check(cache.folders().length()<=10);
+  KeyGenerator generator=KeyGenerator.getInstance("AES");generator.init(256);javax.crypto.SecretKey key=generator.generateKey();byte[] plain="Личная почта".getBytes("UTF-8"),encrypted=OfflineMailStore.crypt(true,key,"account-a",plain);check(Arrays.equals(plain,OfflineMailStore.crypt(false,key,"account-a",encrypted)));boolean rejected=false;try{OfflineMailStore.crypt(false,key,"account-b",encrypted);}catch(Exception expected){rejected=true;}check(rejected);encrypted[encrypted.length-1]^=1;rejected=false;try{OfflineMailStore.crypt(false,key,"account-a",encrypted);}catch(Exception expected){rejected=true;}check(rejected);
+  System.out.println("PASS: bounded offline header/body copies, search/snapshot isolation, UIDVALIDITY invalidation, model reload, no source mutation, authenticated encryption/tamper and account separation.");
+ }
+}
