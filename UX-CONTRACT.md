@@ -121,3 +121,7 @@ npm test покрывает существующие сценарии и три 
 ## Размер чтения 0.50.1
 
 Reader-scopedstyles не перекрывают userlargepreference: body17→21px, sender16→18px. Checkbox throughrealSettings is verified in actualChromium with toggling both ways, nohorizontaloverflow. Compactactions retain44pxtargets. Existing 0.50 domains unchanged.
+
+## Прогресс вложений 0.50.2
+
+Shared batch popup for reader and Files: SVG circle with percentage processed/total (including failed files, not a claim of saved bytes), explicit processed counter, current ordinal/name, download/save stage and observed bytes. Unknown byte totals remain unknown; no estimated percent or speed/ETA. Name comes from the requested attachment metadata while the native stream has no name; escaped/textContent only. Completion shows saved/failed separately; cancelled ring retains processed fraction. Stable DOM updates preserve Cancel focus; Back/Escape cancellation and failed-only retry remain unchanged. Display metadata never changes native folder/UIDVALIDITY/UID/path identity. Source: screenshot feedback and existing BulkAttachments.Observer contract.
