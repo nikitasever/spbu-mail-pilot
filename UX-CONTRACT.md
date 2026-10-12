@@ -117,3 +117,7 @@ npm test покрывает существующие сценарии и три 
 - Calendar day adds one-day range/prev-next/search, existingweek/month/agenda remain. Startscreen peraccount, maildefault unless chosen. Event/mail link is explicitlocalrelationship, no task/servereventmutation; datepicker reuses platform-owneddatefield and quick-popup. Save rollback/dedupedref/folderUIDVALIDITY, picker stalegeneration, one modal, unlink preservesobjects. Openingmailfromevent returns to samecalendarcontext on Back, including AndroidBack; notifications clear formercalendarreturnstate.
 - Source contracts: MainActivity.attachLogin/Bridge/credentialscope; MailReader.page/body/arrivals; CalendarBook/CalDav occurrenceid/timezone; existingLocalState save/rollback. Fields not supplied by server are not invented.
 - Checks: OfflineMailboxTest, MailNotificationTextTest, AccountMailChecksTest, BulkAttachmentsTest; test-milestone.cjs, test-calendar-mail-links.cjs, test-milestone-layout.cjs and allprior Java/JS/browser suites. No actualuser mail used in fixtures. Real-device Keystore/SAF/notification/keyboard/background OSbehavior requires deviceverification separately.
+
+## Размер чтения 0.50.1
+
+Reader-scopedstyles не перекрывают userlargepreference: body17→21px, sender16→18px. Checkbox throughrealSettings is verified in actualChromium with toggling both ways, nohorizontaloverflow. Compactactions retain44pxtargets. Existing 0.50 domains unchanged.

@@ -437,3 +437,6 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .batch-popup button { min-height:44px; }
 #mail-v2 .files-batch-actions { margin-bottom:18px; }
 @media(max-width:400px) { #mail-v2 .calendar-modes button { flex-basis:calc(50% - 6px); } }
+/* Keep the existing reading-size preference effective in the new reader. */
+#mail-v2 .text-size-large .reader .reader-body { font-size:21px; }
+#mail-v2 .text-size-large .reader-sender .sender-name { font-size:18px; }
