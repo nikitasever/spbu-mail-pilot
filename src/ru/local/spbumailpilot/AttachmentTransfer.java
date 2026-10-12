@@ -14,15 +14,20 @@ final class AttachmentTransfer {
         else if(part instanceof MimeMessage){MimeMessage body=(MimeMessage)part;try{encoding=body.getEncoding();total=part.getSize();raw=body.getRawInputStream();}catch(MessagingException unavailable){encoding=null;total=-1;raw=part.getInputStream();}}
         else raw=part.getInputStream();
         final long expected=total;
-        try(InputStream counted=new FilterInputStream(raw){
-            long bytes;
-            private void report(int n)throws IOException{if(n>0){bytes+=n;if(bytes>AttachmentFiles.MAX_BYTES*2)throw new IOException("Attachment transfer too large");progress.update(bytes,expected>=bytes?expected:-1);}}
+        final long[] transferred={0};File output=null;boolean complete=false;
+        try{
+          try(InputStream counted=new FilterInputStream(raw){
+            private void report(int n)throws IOException{if(n>0){transferred[0]+=n;if(transferred[0]>AttachmentFiles.MAX_BYTES*2)throw new IOException("Attachment transfer too large");progress.update(transferred[0],expected>=transferred[0]?expected:-1);}}
             public int read()throws IOException{BulkAttachments.check(cancelled);int n=in.read();report(n<0?0:1);return n;}
             public int read(byte[] buffer,int offset,int length)throws IOException{BulkAttachments.check(cancelled);int n=in.read(buffer,offset,length);report(n);return n;}
         }){
             progress.update(0,total);
             InputStream decoded=encoding==null?counted:MimeUtility.decode(counted,encoding);
-            return AttachmentFiles.copy(decoded,directory,name,AttachmentFiles.MAX_BYTES);
-        }
+            output=AttachmentFiles.copy(decoded,directory,name,AttachmentFiles.MAX_BYTES);
+            BulkAttachments.check(cancelled);
+            if(expected>=0&&transferred[0]<expected)throw new EOFException("Incomplete attachment transfer");
+          }
+          complete=true;return output;
+        }finally{if(!complete&&output!=null)output.delete();}
     }
 }

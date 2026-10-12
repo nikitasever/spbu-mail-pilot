@@ -20,10 +20,13 @@ final class AttachmentFiles {
     static File copy(InputStream input,File directory,String name,long limit,java.util.function.LongConsumer progress)throws Exception{
         if(!directory.isDirectory()&&!directory.mkdirs())throw new IOException("Cannot create attachment cache");
         File output=File.createTempFile("mail-","-"+safeName(name),directory);boolean complete=false;
-        try(OutputStream stream=new FileOutputStream(output)){
+        try{
+          try(OutputStream stream=new FileOutputStream(output)){
             byte[] buffer=new byte[32768];long size=0;int read;
             while((read=input.read(buffer))!=-1){size+=read;if(size>limit)throw new IOException("Attachment too large");stream.write(buffer,0,read);progress.accept(size);}
-            complete=true;return output;
+          }
+          complete=true;return output;
         }finally{if(!complete)output.delete();}
     }
 }
+
