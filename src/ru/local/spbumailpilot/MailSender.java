@@ -27,7 +27,7 @@ final class MailSender {
     }
     static MimeMessage message(Session session,SavedAccounts.Login login,JSONObject draft,java.io.File directory)throws Exception{
         MimeMessage message=OutgoingMail.build(session,login.from,draft.optString("to"),draft.optString("cc"),draft.optString("bcc"),draft.optString("subject"),draft.optString("body"),draft.optString("inReplyTo"));
-        attach(message,draft,directory);return message;
+        MailThreadHeaders.reply(message,draft.optString("inReplyTo"),draft.optJSONArray("references"));attach(message,draft,directory);return message;
     }
     static TransferMessage draft(SavedAccounts.Login login,JSONObject draft,java.io.File directory)throws Exception{
         String subject=draft.optString("subject"),body=draft.optString("body"),reply=draft.optString("inReplyTo");
@@ -35,7 +35,7 @@ final class MailSender {
         if(!reply.isEmpty()&&(reply.length()>1000||!reply.matches("<[^<>\\s]+>")))throw new IllegalArgumentException("Invalid reply header");
         TransferMessage message=new TransferMessage(Session.getInstance(new java.util.Properties()));message.setFrom(new InternetAddress(login.from));message.setSubject(draft.optString("subject"),"UTF-8");message.setText(draft.optString("body"),"UTF-8");
         for(String field:new String[]{"to","cc","bcc"})try{message.setRecipients(field.equals("to")?Message.RecipientType.TO:field.equals("cc")?Message.RecipientType.CC:Message.RecipientType.BCC,OutgoingMail.addresses(draft.optString(field),false));}catch(Exception incomplete){}
-        if(!reply.isEmpty()){message.setHeader("In-Reply-To",reply);message.setHeader("References",reply);}attach(message,draft,directory);message.saveChanges();return message;
+        if(!reply.isEmpty()){message.setHeader("In-Reply-To",reply);message.setHeader("References",reply);}MailThreadHeaders.reply(message,reply,draft.optJSONArray("references"));attach(message,draft,directory);message.saveChanges();return message;
     }
     static void attach(MimeMessage message,JSONObject draft,java.io.File directory)throws Exception{
         org.json.JSONArray files=draft.optJSONArray("attachments");
@@ -47,3 +47,4 @@ final class MailSender {
         }
     }
 }
+

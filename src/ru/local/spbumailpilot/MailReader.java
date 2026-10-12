@@ -100,7 +100,7 @@ final class MailReader implements AutoCloseable {
         profile.add(FetchProfile.Item.FLAGS);
         // JavaMail fetches BODYSTRUCTURE in this batch, without downloading bodies.
         profile.add(FetchProfile.Item.CONTENT_INFO);
-        profile.add(UIDFolder.FetchProfileItem.UID);
+        profile.add(UIDFolder.FetchProfileItem.UID);MailThreadHeaders.fetch(profile);
         if (messages.length > 0) inbox.fetch(messages, profile);
         for (int i = messages.length - 1; i >= 0; --i) {
             Message m = messages[i];
@@ -116,7 +116,7 @@ final class MailReader implements AutoCloseable {
         if(offset==0){filePages=new UidPages(uidSnapshot());fileFolder=name;fileValidity=validity;fileGeneration++;}
         else if(filePages==null||!name.equals(fileFolder)||fileValidity!=validity||!Long.toString(fileGeneration).equals(snapshot))throw new MessagingException("File snapshot changed");
         long[] uids=filePages.page(offset);Message[] found=uids.length==0?new Message[0]:((UIDFolder)inbox).getMessagesByUID(uids);
-        FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add(FetchProfile.Item.CONTENT_INFO);profile.add(UIDFolder.FetchProfileItem.UID);if(found.length>0)inbox.fetch(found,profile);
+        FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add(FetchProfile.Item.CONTENT_INFO);profile.add(UIDFolder.FetchProfileItem.UID);MailThreadHeaders.fetch(profile);if(found.length>0)inbox.fetch(found,profile);
         JSONArray result=new JSONArray();for(int i=found.length-1;i>=0;i--){Message message=found[i];if(message==null||message.isExpunged())continue;
             JSONArray entries=AttachmentIndex.list(message,query);JSONObject info=header(message);
             for(int j=0;j<entries.length();j++){JSONObject entry=entries.getJSONObject(j);entry.put("message",info);result.put(entry);}
@@ -145,7 +145,7 @@ final class MailReader implements AutoCloseable {
                     name = address.getPersonal() == null ? email : address.getPersonal();
                 } else name = from[0].toString();
             }
-            obj.put("sender", name); obj.put("email", email);
+            obj.put("sender", name); obj.put("email", email);MailThreadHeaders.add(m,obj);
             Address[] reply=m.getReplyTo();obj.put("replyTo",reply!=null&&reply.length>0&&reply[0] instanceof InternetAddress?((InternetAddress)reply[0]).getAddress():email);
             obj.put("recipients", recipients(m));
             Date date = m.getReceivedDate(); if (date == null) date = m.getSentDate();
@@ -233,11 +233,11 @@ final class MailReader implements AutoCloseable {
         if (!Long.toString(validity).equals(expectedValidity)) throw new MessagingException("UID validity changed");
         Message m = ((UIDFolder) inbox).getMessageByUID(Long.parseLong(uid));
         if (m == null || m.isExpunged()) throw new MessagingException("Message unavailable");
-        FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add(FetchProfile.Item.FLAGS);profile.add(FetchProfile.Item.CONTENT_INFO);profile.add("Message-ID");profile.add("From");
+        FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add(FetchProfile.Item.FLAGS);profile.add(FetchProfile.Item.CONTENT_INFO);MailThreadHeaders.fetch(profile);profile.add("From");
         inbox.fetch(new Message[]{m},profile);
         JSONArray files = new JSONArray();
         String text = extract(m, files, 0, "root",100000);
-        JSONObject info=header(m);String[] rawFrom=m.getHeader("From");if(rawFrom!=null&&rawFrom.length>0)info.put("rawFrom",rawFrom[0]);String[] messageIds=m.getHeader("Message-ID");if(messageIds!=null&&messageIds.length>0)info.put("messageId",messageIds[0]);
+        JSONObject info=header(m);String[] rawFrom=m.getHeader("From");if(rawFrom!=null&&rawFrom.length>0)info.put("rawFrom",rawFrom[0]);
         return new JSONObject().put("uid", uid).put("text", text).put("attachments", files).put("message", info).put("phones",new JSONArray(PhoneNumbers.find(text)));
     }
     JSONObject seen(String name,String uid,String expectedValidity,boolean seen)throws Exception{

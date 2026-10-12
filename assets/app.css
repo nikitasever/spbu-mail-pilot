@@ -377,3 +377,9 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .contact-card-email { color:var(--muted); user-select:text; }
 #mail-v2 .contact-card-actions { display:flex; flex-direction:column; gap:8px; }
 #mail-v2 .contact-card-actions button { margin:0; overflow-wrap:anywhere; }
+
+#mail-v2 .thread-count { display:flex; flex-wrap:wrap; align-items:center; gap:5px; color:var(--brand); font-size:11px; line-height:1.5; margin-top:5px; }
+#mail-v2 .thread-count svg { width:14px; height:14px; }
+#mail-v2 .thread-head { padding:16px 20px; border-bottom:1px solid var(--line); }
+#mail-v2 .thread-head h3 { overflow-wrap:anywhere; margin:0 0 8px; }
+#mail-v2 .thread-view>.note { margin:16px 20px; }
