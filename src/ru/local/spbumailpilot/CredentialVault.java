@@ -17,7 +17,8 @@ import java.util.ArrayList;
 final class CredentialVault {
     private static final String ALIAS = "spbu-mail-session-v1";
     private final SharedPreferences prefs;
-    CredentialVault(Context context) { prefs=context.getSharedPreferences("remembered-login",Context.MODE_PRIVATE); }
+    private final Context context;
+    CredentialVault(Context context) { this.context=context.getApplicationContext();prefs=context.getSharedPreferences("remembered-login",Context.MODE_PRIVATE); }
     private SecretKey key(boolean create) throws Exception {
         KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
         if(store.containsAlias(ALIAS)) return (SecretKey)store.getKey(ALIAS,null);
@@ -66,10 +67,12 @@ final class CredentialVault {
     SavedAccounts.Login load()throws Exception{return read().active();}
     ArrayList<SavedAccounts.Login> list()throws Exception{return read().list();}
     void deactivate()throws Exception{SavedAccounts accounts=read();accounts.deactivate();write(accounts);}
-    void remove(SavedAccounts.Login login)throws Exception{SavedAccounts accounts=read();accounts.remove(login);if(accounts.list().isEmpty())clear();else write(accounts);}
+    void remove(SavedAccounts.Login login)throws Exception{OfflineMailStore.delete(context,login);SavedAccounts accounts=read();accounts.remove(login);if(accounts.list().isEmpty())clear();else write(accounts);}
     void clear() throws Exception {
+        OfflineMailStore.deleteAll(context);
         if(!prefs.edit().clear().commit())throw new IllegalStateException("Cannot remove login");
         KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
         if(store.containsAlias(ALIAS))store.deleteEntry(ALIAS);
     }
 }
+
