@@ -10,7 +10,7 @@ import java.util.*;
 final class ServerDrafts {
     static final String KEY="X-Spbu-Pilot-Draft",REV="X-Spbu-Pilot-Revision";
     static String revision(JSONObject draft)throws Exception{
-        StringBuilder content=new StringBuilder();for(String name:new String[]{"to","cc","bcc","subject","body","inReplyTo","attachments"}){String value=draft.optString(name);content.append(name).append(':').append(value.length()).append(':').append(value);}
+        StringBuilder content=new StringBuilder();for(String name:new String[]{"to","cc","bcc","subject","body","inReplyTo","references","attachments"}){String value=draft.optString(name);content.append(name).append(':').append(value.length()).append(':').append(value);}
         return AppUpdater.hex(MessageDigest.getInstance("SHA-256").digest(content.toString().getBytes(StandardCharsets.UTF_8)));
     }
     static Folder folder(Store store)throws Exception{

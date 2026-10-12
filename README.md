@@ -2,9 +2,11 @@
 
 Личный экспериментальный Android-клиент. Неофициальный проект; не продукт СПбГУ.
 
-**Актуальная версия — 0.43 (versionCode 47).**
+**Актуальная версия — 0.44 (versionCode 48).**
 
-[Скачать APK 0.43](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.43/spbu-mail-pilot-0.43.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.43)
+[Скачать APK 0.44](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.44/spbu-mail-pilot-0.44.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.44)
+
+В 0.44 связанные письма объединяются в цепочки по Message-ID/References/In-Reply-To, с учётом непрочитанных и вложений. Группируются только загруженные письма текущей папки; отключение доступно в настройках. Ответ сохраняет предшествующие References.
 
 В 0.43 удаление задач, заметок и событий требует подтверждения; серверный черновик удаляется по точной ссылке с сохранением локальной копии при ошибке. Добавлена карточка контакта с письмом, звонком и копированием адреса.
 
