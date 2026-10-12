@@ -69,3 +69,12 @@ npm test покрывает существующие сценарии и три 
 ## Поправка ответа 0.45
 
 Письмо может иметь References, но не иметь корректного собственного Message-ID. В таком случае replycomposer сохраняет адрес/тему/текст, но не переносит References без parent: отправка остаётся возможной. Не выдумывается идентификатор исходного письма. Regressionfixture проверяет этот случай.
+
+## Отмена отправки 0.46
+
+- По умолчанию после submit сохранённый черновик ждёт10секунд перед вызовом native send. Поле recipients/title/body/references/attachments фиксируется snapshotом; readonlyполя и блокировка действий исключают изменение ожидающего письма. Вложения/серверный draft должны закончить текущую передачу до submit.
+- Явная кнопка Отменить отправку и AndroidBack во время ожидания возвращают composer без SMTPзапроса; сохранённая копия остаётся. Native onPause вызывает cancellationhook. Documenthidden и проверка native appVisible на deadline закрывают гонку сворачивания. Native send отказывает закрытому/неактивному окну до запуска worker. Уже начатая отправка продолжается как раньше и не объявляется отменённой.
+- Таймер использует monotonic performance.now; fallbackDateтолько для bridge/browserбезPerformance. Каждыйtick изменяет только текст времени, сохраняя UndoDOM/focus/press. Один таймер/защита личности snapshotа исключают старые callbackи и повторные submit.
+- Это задержка до SMTP, не отзыв доставленного письма и не фоновая/запланированная отправка. Убийство процесса до expiry оставляет черновик без отправки. При ошибке native send черновик сохранён; очистка только после sent:true.
+- Настройка per-account Отмена отправки(10секунд) включена по умолчанию; optout посылает немедленно. Для старого bridge без appVisible сохраняется прежняя немедленная отправка.
+- Проверки: test-undo-send.cjs(9/10секунд, undo/Back, clockjump, doublesubmit, stale timer, nativefail/retry, successcleanup, pause/deadlinevisibility, optout), test-undo-send-layout.cjs(realChromium/clock, keyboardundo/focus,320/393px/текст200%).

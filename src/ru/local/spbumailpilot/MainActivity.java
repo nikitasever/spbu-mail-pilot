@@ -40,7 +40,7 @@ public final class MainActivity extends Activity {
     private String account = "";
     private volatile String appearanceMode="system";
     private volatile boolean closing;
-    private boolean resumed;
+    private volatile boolean resumed;
     private MailWatch mailWatch;
     private SavedAccounts.Login watchOwner;
     private String watchedFolder="INBOX",watchFolder="INBOX";
@@ -581,7 +581,9 @@ public final class MainActivity extends Activity {
             try{String value=PhoneNumbers.normalize(number);startActivity(new android.content.Intent(android.content.Intent.ACTION_DIAL,Uri.fromParts("tel",value,null)));reply(request,new JSONObject().put("dialed",true).put("number",value));}
             catch(IllegalArgumentException error){failure(request,"Укажите полный телефонный номер.");}catch(Exception error){failure(request,"На устройстве не найдено приложение для звонков.");}
         });}
+        @JavascriptInterface public boolean appVisible(){return resumed&&!closing;}
         @JavascriptInterface public void send(String json,String request){
+            if(!resumed||closing){failure(request,"Окно приложения закрыто. Письмо сохранено в черновиках.");return;}
             if(json==null||json.length()>120000){failure(request,"Письмо слишком большое.");return;}
             SavedAccounts.Login login=sessionLogin;if(login==null){failure(request,"Войдите в ящик.");return;}
             if(!sending.compareAndSet(false,true)){failure(request,"Предыдущее письмо ещё отправляется.");return;}
@@ -670,7 +672,7 @@ public final class MainActivity extends Activity {
         @JavascriptInterface public void switchAccount(){runOnUiThread(()->quickAccounts());}
     }
     @Override protected void onResume(){super.onResume();resumed=true;NativeUi.bars(this);if(web!=null)web.evaluateJavascript("window.systemThemeChanged&&window.systemThemeChanged()",null);startWatch();BackgroundMailService.reconcile(this,true);}
-    @Override protected void onPause(){resumed=false;stopWatch();super.onPause();}
+    @Override protected void onPause(){resumed=false;if(web!=null)web.evaluateJavascript("window.sendWindowHidden&&window.sendWindowHidden()",null);stopWatch();super.onPause();}
     @Override public void onBackPressed(){if(web!=null){web.evaluateJavascript("window.appBack&&window.appBack()",null);}else if(loginScreen&&hasSavedAccounts){showAccounts();}else super.onBackPressed();}
     @Override protected void onDestroy(){closing=true;++bodySerial;stopWatch();bodyWorker.execute(this::closeBodyReader);bodyWorker.shutdown();draftWorker.shutdownNow();calendarWorker.shutdownNow();directoryWorker.execute(universityDirectory::close);directoryWorker.shutdown();if(web!=null){web.removeJavascriptInterface("Pilot");web.destroy();web=null;}worker.execute(()->{if(reader!=null)reader.close();sessionLogin=null;});worker.shutdown();gemini.cancel();super.onDestroy();}
 }
