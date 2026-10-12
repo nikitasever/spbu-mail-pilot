@@ -65,3 +65,7 @@ npm test покрывает существующие сценарии и три 
 - Метка применяется только к отдельному письму: longpressгруппы предлагает сначала открыть письмо, без неявного bulkдействия.
 - Ответ переносит References исходного письма, native добавляет непосредственный parent, сохраняет root и последние ancestors(максимум100), складывает строку заголовка и отклоняет инъекции. SMTPи серверный draft используют одинаковую логику; References влияют на revision/fingerprint черновика. Legacydrafts без References сохраняют прежний single-parentзаголовок.
 - Проверки: MailThreadHeadersTest.java, test-mail-threads.cjs, test-mail-threads-layout.cjs(320/393px/landscape/крупныйтекст), плюс существующие Java/JS/Chromiumнаборы.
+
+## Поправка ответа 0.45
+
+Письмо может иметь References, но не иметь корректного собственного Message-ID. В таком случае replycomposer сохраняет адрес/тему/текст, но не переносит References без parent: отправка остаётся возможной. Не выдумывается идентификатор исходного письма. Regressionfixture проверяет этот случай.
