@@ -395,3 +395,13 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .writing-popup h4,#mail-v2 .writing-popup .note { overflow-wrap:anywhere; }
 #mail-v2 .writing-popup textarea { resize:none; width:100%; box-sizing:border-box; }
 #mail-v2 .writing-popup input[aria-invalid="true"],#mail-v2 .writing-popup textarea[aria-invalid="true"] { border-color:var(--brand); outline:2px solid var(--brand); }
+
+/* Loaded-contact index: document scrolling, visible native overflow, shared palette. */
+#mail-v2 .contact-index-hint { margin:12px 20px 4px; }
+#mail-v2 .contact-letter-nav { display:flex; gap:4px; overflow-x:auto; padding:6px 20px; position:sticky; top:0; z-index:2; background:var(--paper); border-bottom:1px solid var(--line); }
+#mail-v2 .contact-letter-nav button { flex:0 0 auto; min-width:44px; min-height:44px; padding:8px; border-color:transparent; }
+#mail-v2 .contact-letter-nav button[aria-pressed="true"] { background:var(--tint); color:var(--brand); border-color:var(--brand); }
+#mail-v2 .contact-letter-heading { padding:12px 20px 8px; margin:0; background:var(--surface); color:var(--muted); font-size:16px; scroll-margin-top:76px; }
+#mail-v2 .contact-letter-heading:focus-visible { outline:2px solid var(--brand); outline-offset:-3px; }
+#mail-v2 .contacts-search .contacts-clear { display:flex; align-items:center; justify-content:center; flex:0 0 44px; min-width:44px; min-height:44px; padding:8px; border:0; background:transparent; color:var(--muted); }
+#mail-v2 .contacts-search .contacts-clear[hidden] { display:none; }
