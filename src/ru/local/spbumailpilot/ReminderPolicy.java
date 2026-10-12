@@ -12,6 +12,12 @@ final class ReminderPolicy {
     static long fireAt(String date,String time,String reminder){String value=option(reminder);if(value.equals("none"))return -1;if(value.equals("auto"))return fireAt(date,time);return deadline(date,time)-Long.parseLong(value)*60000L;}
     static String taskKey(String id,String date,String time,String reminder){String base=id+"/"+date+"/"+(time==null?"":time),value=option(reminder);return value.equals("auto")||(value.equals("60")&&time!=null&&!time.isEmpty())?base:base+"/reminder-"+value;}
     static boolean ready(long fire,long now){return fire<=now&&fire>=now-86400000L;}
+    static boolean ready(String date,String time,String reminder,long now){
+        long fire=fireAt(date,time,reminder);if(fire<0||!ready(fire,now))return false;
+        long expiry=time==null||time.isEmpty()?LocalDate.parse(date).plusDays(1).atStartOfDay(ZoneId.of("Europe/Moscow")).toInstant().toEpochMilli():deadline(date,time);
+        return now<expiry;
+    }
+    static String taskText(String date,String time){return "Срок: "+date+(time==null||time.isEmpty()?" · без времени":" · "+time);}
     static boolean newMail(String previousValidity,long previousUid,String validity,long uid){return previousValidity!=null&&previousValidity.equals(validity)&&uid>previousUid;}
 }
 
