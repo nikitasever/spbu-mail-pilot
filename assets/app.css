@@ -482,3 +482,7 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .draft-delete svg { width:18px; height:18px; }
 #mail-v2 .text-size-large .draft-subject { font-size:18px; }
 #mail-v2 .text-size-large .draft-recipient,#mail-v2 .text-size-large .draft-preview { font-size:15px; }
+
+/* One clear control per search; shared touch targets across mail/files/tasks. */
+#mail-v2 .search-form button { width:44px; min-width:44px; min-height:44px; }
+#mail-v2 .search-form input[type="search"]::-webkit-search-cancel-button { -webkit-appearance:none; }
