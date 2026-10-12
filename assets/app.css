@@ -383,3 +383,8 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .thread-head { padding:16px 20px; border-bottom:1px solid var(--line); }
 #mail-v2 .thread-head h3 { overflow-wrap:anywhere; margin:0 0 8px; }
 #mail-v2 .thread-view>.note { margin:16px 20px; }
+
+#mail-v2 .send-delay { overflow-wrap:anywhere; }
+#mail-v2 .send-delay strong { display:block; font-size:18px; }
+#mail-v2 .send-delay p { color:var(--muted); font-size:13px; margin:8px 0 12px; }
+#mail-v2 .send-delay button { width:100%; margin:0; }
