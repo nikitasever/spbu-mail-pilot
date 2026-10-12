@@ -2,9 +2,11 @@
 
 Личный экспериментальный Android-клиент. Неофициальный проект; не продукт СПбГУ.
 
-**Актуальная версия — 0.46 (versionCode 50).**
+**Актуальная версия — 0.47 (versionCode 51).**
 
-[Скачать APK 0.46](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.46/spbu-mail-pilot-0.46.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.46)
+[Скачать APK 0.47](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.47/spbu-mail-pilot-0.47.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.47)
+
+В 0.47 общее событие календаря можно явно отметить как личную задачу кнопкой «Это моя задача». Напоминание перед сроком настраивается для каждой личной задачи: по умолчанию, за 15/30 минут, час, день или выключено. Общее событие не изменяется.
 
 В 0.46 добавлена отмена отправки: после нажатия письмо ждёт 10 секунд на телефоне. Кнопка отмены возвращает черновик; при сворачивании окна ожидание отменяется. Настройку можно отключить.
 
