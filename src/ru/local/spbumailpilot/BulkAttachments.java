@@ -10,6 +10,7 @@ final class BulkAttachments {
     static final int MAX_FILES=500;
     static final class Ref {
         final String folder,uid,validity,path;
+        long transferSize=-1;
         Ref(String folder,String uid,String validity,String path){
             if(folder==null||folder.isEmpty()||folder.length()>1024||folder.matches("(?s).*[\\p{Cntrl}].*")
                 ||uid==null||!uid.matches("[1-9][0-9]{0,18}")||validity==null||!validity.matches("[1-9][0-9]{0,18}")
@@ -56,14 +57,14 @@ final class BulkAttachments {
             Target target=null;Download downloaded=null;String name="Вложение";boolean complete=false;
             try{
                 final int index=completed;observer.progress(index,refs.size(),name,"download",0,-1);
-                downloaded=downloader.download(ref,cancel,bytes->{if(bytes>AttachmentFiles.MAX_BYTES)throw new IllegalArgumentException("Attachment too large");observer.progress(index,refs.size(),"Вложение","download",bytes,-1);});
+                downloaded=downloader.download(ref,cancel,bytes->{if(bytes>AttachmentFiles.MAX_BYTES*2)throw new IllegalArgumentException("Attachment too large");observer.progress(index,refs.size(),"Вложение","download",bytes,ref.transferSize);});
                 check(cancel);
                 if(downloaded==null||downloaded.file==null||!downloaded.file.isFile()||downloaded.file.length()>AttachmentFiles.MAX_BYTES)throw new IOException("Invalid downloaded attachment");
                 name=uniqueName(downloaded.name,used);target=destination.create(name,downloaded.mime);if(target==null)throw new IOException("Cannot create destination");used.add(name);
                 long size=downloaded.file.length(),bytes=0;observer.progress(index,refs.size(),name,"save",0,size);
                 try(InputStream input=new FileInputStream(downloaded.file);OutputStream output=target.open()){
                     if(output==null)throw new IOException("Cannot open destination");byte[] buffer=new byte[65536];int n;
-                    while((n=input.read(buffer))!=-1){check(cancel);bytes+=n;if(bytes>AttachmentFiles.MAX_BYTES)throw new IOException("Attachment too large");output.write(buffer,0,n);observer.progress(index,refs.size(),name,"save",bytes,size);}
+                    while((n=input.read(buffer))!=-1){check(cancel);bytes+=n;if(bytes>AttachmentFiles.MAX_BYTES*2)throw new IOException("Attachment too large");output.write(buffer,0,n);observer.progress(index,refs.size(),name,"save",bytes,size);}
                     check(cancel);
                 }
                 check(cancel);target.finish();complete=true;saved.add(name);

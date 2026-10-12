@@ -267,7 +267,7 @@ final class MailReader implements AutoCloseable {
         if (depth > 12) return "";
         String name = part.getFileName();
         if (name != null || Part.ATTACHMENT.equalsIgnoreCase(part.getDisposition())) {
-            files.put(new JSONObject().put("name", name == null ? "Вложение" : MimeUtility.decodeText(name)).put("size", part.getSize()).put("path",path));
+            files.put(new JSONObject().put("name", name == null ? "Вложение" : AttachmentNames.decode(name)).put("size", part.getSize()).put("path",path));
             return ""; // Do not download binary attachment content.
         }
         if (part.isMimeType("text/plain")) return MailText.read(part,budget);
@@ -296,6 +296,9 @@ final class MailReader implements AutoCloseable {
         return attachment(folder,uid,expectedValidity,path,directory,()->false,bytes->{});
     }
     JSONObject attachment(String folder,String uid,String expectedValidity,String path,java.io.File directory,java.util.function.BooleanSupplier cancelled,java.util.function.LongConsumer progress)throws Exception{
+        return attachmentMeasured(folder,uid,expectedValidity,path,directory,cancelled,(bytes,total)->progress.accept(bytes));
+    }
+    JSONObject attachmentMeasured(String folder,String uid,String expectedValidity,String path,java.io.File directory,java.util.function.BooleanSupplier cancelled,AttachmentTransfer.Progress progress)throws Exception{
         BulkAttachments.check(cancelled);
         openFolder(folder);
         if(!Long.toString(validity).equals(expectedValidity))throw new MessagingException("UID validity changed");
@@ -304,14 +307,11 @@ final class MailReader implements AutoCloseable {
         String cacheKey=new JSONArray().put(folder).put(uid).put(expectedValidity).put(path).put(directory.getAbsolutePath()).toString();
         JSONObject cached=downloadedFiles.get(cacheKey);if(cached!=null&&new java.io.File(cached.getString("file")).isFile())return new JSONObject(cached.toString());
         Part part=AttachmentParts.resolve(message,path);
-        String raw=part.getFileName();String name=AttachmentFiles.safeName(raw==null?"Вложение":MimeUtility.decodeText(raw));
+        String raw=part.getFileName();String name=AttachmentFiles.safeName(raw==null?"Вложение":AttachmentNames.decode(raw));
         if(part.getSize()>AttachmentFiles.MAX_BYTES)throw new java.io.IOException("Attachment too large");
         String mime=AttachmentFiles.mime(name,new javax.mail.internet.ContentType(part.getContentType()).getBaseType());
         java.io.File file;
-        try(java.io.InputStream input=part.getInputStream();java.io.InputStream cancellable=new java.io.FilterInputStream(input){
-            public int read()throws java.io.IOException{BulkAttachments.check(cancelled);return super.read();}
-            public int read(byte[] bytes,int offset,int length)throws java.io.IOException{BulkAttachments.check(cancelled);return in.read(bytes,offset,length);}
-        }){file=AttachmentFiles.copy(cancellable,directory,name,AttachmentFiles.MAX_BYTES,progress);}
+        file=AttachmentTransfer.copy(part,directory,name,cancelled,progress);
         JSONObject result=new JSONObject().put("file",file.getAbsolutePath()).put("name",name).put("mime",mime);
         downloadedFiles.put(cacheKey,result);if(downloadedFiles.size()>30)downloadedFiles.remove(downloadedFiles.keySet().iterator().next());return new JSONObject(result.toString());
     }
