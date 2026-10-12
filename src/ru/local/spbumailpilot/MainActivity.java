@@ -282,7 +282,7 @@ public final class MainActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient(){
             @Override public boolean onJsConfirm(WebView view,String url,String message,JsResult result){
                 if(closing||isFinishing()){result.cancel();return true;}
-                NativeUi.dialog(MainActivity.this).setTitle("Подтверждение").setMessage(message).setPositiveButton(message.startsWith("Изменения не сохранены.")?"Выйти без сохранения":"Отключить",(dialog,which)->result.confirm()).setNegativeButton("Отмена",(dialog,which)->result.cancel()).setOnCancelListener(dialog->result.cancel()).show();return true;
+                NativeUi.dialog(MainActivity.this).setTitle("Подтверждение").setMessage(message).setPositiveButton(message.startsWith("Изменения не сохранены.")?"Выйти без сохранения":message.startsWith("Удалить ")?"Удалить":"Отключить",(dialog,which)->result.confirm()).setNegativeButton("Отмена",(dialog,which)->result.cancel()).setOnCancelListener(dialog->result.cancel()).show();return true;
             }
         });
         web.setWebViewClient(new WebViewClient(){
@@ -473,6 +473,10 @@ public final class MainActivity extends Activity {
                 runOnUiThread(()->{if(closing||web==null||sessionLogin!=owner)return;try{ShareActions.file(MainActivity.this,new java.io.File(downloaded.getString("file")),downloaded.getString("mime"),downloaded.getString("name"));reply(request,new JSONObject().put("chooserOpened",true));}catch(Exception error){failure(request,"Не удалось открыть меню передачи файла.");}});
             }catch(Exception error){if(sessionLogin==owner)readFailure(request,error,"Не удалось скачать вложение для передачи.");}});
         }
+        @JavascriptInterface public void copyContactEmail(String email,String request){
+            if(email==null||email.length()>254||!email.matches("[^\\s<>@]+@[^\\s<>@]+")){failure(request,"Некорректный адрес.");return;}
+            runOnUiThread(()->{try{android.content.ClipboardManager clipboard=(android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE);clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Адрес контакта",email));reply(request,new JSONObject().put("copied",true));}catch(Exception error){failure(request,"Не удалось скопировать адрес.");}});
+        }
         @JavascriptInterface public void shareAi(String text,boolean copy,String request){
             if(!aiEnabled()){failure(request,"Нейроанализ отключён в настройках этого ящика.");return;}
             if(text==null||text.trim().isEmpty()||text.length()>120000){failure(request,"Текст для ИИ пустой или слишком большой.");return;}
@@ -542,6 +546,26 @@ public final class MainActivity extends Activity {
                 try(MailReader connection=new MailReader()){connection.connect(owner.host,owner.port,owner.user,owner.password);JSONObject saved=ServerDrafts.save(connection.draftStore(),message,key,ServerDrafts.revision(draft),transferProgress(request,owner,"onServerDraftProgress"));
                     if(!closing&&sessionLogin==owner){transferReply(owner,request,new JSONObject().put("serverDraft",saved).put("saved",true));}}
             }catch(Exception failed){if(!closing&&sessionLogin==owner)transferFailure(owner,request,"Черновик остался на телефоне. Сервер не подтвердил загрузку: проверьте сеть, размер вложений и папку «Черновики», затем повторите.");}});
+        }
+        @JavascriptInterface public void deleteServerDraft(String json,String request){
+            SavedAccounts.Login owner=sessionLogin;
+            if(owner==null){failure(request,"Войдите в ящик.");return;}
+            if(json==null||json.length()>4096){transferFailure(owner,request,"Некорректная ссылка на серверный черновик.");return;}
+            draftWorker.execute(()->{try{
+                if(closing||sessionLogin!=owner)return;
+                JSONObject ref=new JSONObject(json);String key=ref.optString("key");
+                SharedPreferences keys=getSharedPreferences("draft-keys-"+NoticeCenter.scope(owner),MODE_PRIVATE);
+                boolean owned=false;for(Object value:keys.getAll().values())if(key.equals(value)){owned=true;break;}
+                if(!owned)throw new ServerDrafts.DeleteRefused("ownership");
+                try(MailReader connection=new MailReader()){
+                    connection.connect(owner.host,owner.port,owner.user,owner.password);
+                    if(closing||sessionLogin!=owner)return;
+                    transferReply(owner,request,ServerDrafts.removeKnown(connection.draftStore(),ref,key));
+                }
+            }catch(ServerDrafts.DeleteRefused refused){
+                String message=refused.reason.equals("uidplus")?"Сервер не поддерживает безопасное удаление одного черновика (UIDPLUS). Черновик сохранён.":"Серверная папка или черновик изменились. Обновите черновик перед удалением; локальная копия сохранена.";
+                transferFailure(owner,request,message);
+            }catch(Exception unavailable){transferFailure(owner,request,"Сервер не подтвердил удаление черновика. Локальная копия сохранена; проверьте сеть и повторите.");}});
         }
         @JavascriptInterface public void pickAttachments(String request){runOnUiThread(()->{
             if(attachmentPickRequest!=null||sessionLogin==null){failure(request,"Выбор файлов уже открыт.");return;}

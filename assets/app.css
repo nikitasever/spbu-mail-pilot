@@ -369,3 +369,11 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .calendar-period-day .agenda-time { flex-basis:72px; }
 #mail-v2 .calendar-period-day .agenda-content { padding-left:8px; }
 #mail-v2 .calendar-period-day .agenda-content h4 { overflow-wrap:anywhere; }
+
+#mail-v2 .directory-person.contact-card-open { border:0; background:transparent; padding:0; margin:0; text-align:left; border-radius:4px; }
+#mail-v2 .contact-card-person { text-align:center; padding:12px 0; overflow-wrap:anywhere; }
+#mail-v2 .contact-card-person .avatar { margin:0 auto 12px; }
+#mail-v2 .contact-card-person h4 { font-size:20px; margin:8px 0; }
+#mail-v2 .contact-card-email { color:var(--muted); user-select:text; }
+#mail-v2 .contact-card-actions { display:flex; flex-direction:column; gap:8px; }
+#mail-v2 .contact-card-actions button { margin:0; overflow-wrap:anywhere; }
