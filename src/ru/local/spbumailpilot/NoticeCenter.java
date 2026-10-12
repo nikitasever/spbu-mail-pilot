@@ -110,8 +110,8 @@ final class NoticeCenter {
                 String reminder=task.optString("reminder","auto");long fire=ReminderPolicy.fireAt(task.getString("date"),task.optString("time"),reminder);if(fire<0)continue;
                 String key=ReminderPolicy.taskKey(task.getString("id"),task.getString("date"),task.optString("time"),reminder);current.add(key);
                 if(fire>now)next=Math.min(next,fire);
-                else if(!sent.contains(key)&&ReminderPolicy.ready(fire,now)){
-                    String text=task.getString("date")+(task.optString("time").isEmpty()?" · срок сегодня":" · до "+task.optString("time"));
+                else if(!sent.contains(key)&&ReminderPolicy.ready(task.getString("date"),task.optString("time"),reminder,now)){
+                    String text=ReminderPolicy.taskText(task.getString("date"),task.optString("time"));
                     if(post(context,TASKS,scope(login)+"/task/"+key,task.optString("title","Срок задачи"),text))sent.add(key);
                 }
             }catch(Exception malformed){}
