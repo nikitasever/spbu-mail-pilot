@@ -78,3 +78,12 @@ npm test покрывает существующие сценарии и три 
 - Это задержка до SMTP, не отзыв доставленного письма и не фоновая/запланированная отправка. Убийство процесса до expiry оставляет черновик без отправки. При ошибке native send черновик сохранён; очистка только после sent:true.
 - Настройка per-account Отмена отправки(10секунд) включена по умолчанию; optout посылает немедленно. Для старого bridge без appVisible сохраняется прежняя немедленная отправка.
 - Проверки: test-undo-send.cjs(9/10секунд, undo/Back, clockjump, doublesubmit, stale timer, nativefail/retry, successcleanup, pause/deadlinevisibility, optout), test-undo-send-layout.cjs(realChromium/clock, keyboardundo/focus,320/393px/текст200%).
+
+## Моя задача из календаря 0.47
+
+- Общее серверное событие не создаёт уведомлений само. «Это моя задача» открывает локальный taskcomposer с title/date/time/location исходного события. Только Save создаёт personaltask/напоминание; Cancel ничего не помечает. Событие остаётся read-only.
+- calendarSource сохраняет calendarId/id/calendarTitle экземпляра. Повторный выбор открывает существующую личную задачу; completedзадача остаётся выполненной. Удаление личной копии снимает пометку. Это личный срок: изменения внешнего события не переопределяют его автоматически.
+- Reminder per-task: auto/15/30/60/1440/none. Autoсохраняет старое поведение: за час до времени, без времени9:00МСК. Для явного lead безtime deadline9:00МСК. Unknownвариант нормализуетсяauto. Noneисключён изalarm/sentset, поэтому старое уведомление отменяется при обновлении.
+- Сохранение задачи пересчитывает существующийNativeNoticeCenter scheduler. Sentkey legacy сохранён дляauto и эквивалентного60минут сtime, предотвращая повторные уведомления после upgrade. Изменениеlead меняетключ; completed/deleted/globallydisabled не напоминаются.
+- Источники других людей не получают personalalarm без явного подтверждения. Androidразрешение и глобальные уведомления задач должны быть включены; используется прежняя системная alarmмодель.
+- Проверки: ReminderPolicyTest.java(customlead/previousday/dateonly/none/legacykeys), test-calendar-my-task.cjs(ownership/cancel/rollback/dedupe/completion), realChromiumtaskReminderpicker320/393px/крупныйтекст.

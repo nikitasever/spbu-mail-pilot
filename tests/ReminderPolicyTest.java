@@ -9,6 +9,19 @@ public class ReminderPolicyTest {
         long deadline=ReminderPolicy.deadline("2026-10-08","12:30");check(deadline==Instant.parse("2026-10-08T09:30:00Z").toEpochMilli());
         check(ReminderPolicy.fireAt("2026-10-08","12:30")==deadline-3600000);
         check(ReminderPolicy.fireAt("2026-10-08","00:15")==Instant.parse("2026-10-07T20:15:00Z").toEpochMilli());
+        check(ReminderPolicy.fireAt("2026-10-08","12:30","15")==deadline-900000);
+        check(ReminderPolicy.fireAt("2026-10-08","12:30","30")==deadline-1800000);
+        check(ReminderPolicy.fireAt("2026-10-08","12:30","60")==deadline-3600000);
+        check(ReminderPolicy.fireAt("2026-10-08","12:30","1440")==deadline-86400000);
+        check(ReminderPolicy.fireAt("2026-10-08","12:30","none")==-1);
+        check(ReminderPolicy.fireAt("2026-10-08","","auto")==Instant.parse("2026-10-08T06:00:00Z").toEpochMilli());
+        check(ReminderPolicy.fireAt("2026-10-08","","15")==Instant.parse("2026-10-08T05:45:00Z").toEpochMilli());
+        check(ReminderPolicy.fireAt("2026-10-08","00:05","15")==Instant.parse("2026-10-07T20:50:00Z").toEpochMilli());
+        check(ReminderPolicy.fireAt("2026-10-08","12:30","bad")==ReminderPolicy.fireAt("2026-10-08","12:30"));
+        check(ReminderPolicy.taskKey("t","2026-10-08","12:30","auto").equals("t/2026-10-08/12:30"));
+        check(ReminderPolicy.taskKey("t","2026-10-08","12:30","60").equals("t/2026-10-08/12:30"));
+        check(!ReminderPolicy.taskKey("t","2026-10-08","","60").equals("t/2026-10-08/"));
+        check(!ReminderPolicy.taskKey("t","2026-10-08","12:30","15").equals(ReminderPolicy.taskKey("t","2026-10-08","12:30","30")));
         check(ReminderPolicy.ready(deadline,deadline));check(!ReminderPolicy.ready(deadline,deadline-1));check(!ReminderPolicy.ready(deadline,deadline+86400001));
         check(!ReminderPolicy.newMail(null,0,"7",1234));check(!ReminderPolicy.newMail("7",1234,"8",1400));
         check(!ReminderPolicy.newMail("7",1234,"7",1234));check(ReminderPolicy.newMail("7",1234,"7",1235));
@@ -16,3 +29,4 @@ public class ReminderPolicyTest {
         System.out.println("PASS: Moscow deadlines, one-hour lead including previous day, stale reminder suppression, first-mail baseline, UIDVALIDITY reset and new UID detection.");
     }
 }
+

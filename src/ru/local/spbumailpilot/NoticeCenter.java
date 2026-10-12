@@ -81,8 +81,8 @@ final class NoticeCenter {
         if(enabled(data.optJSONObject("settings"),"taskNotifications")&&tasks!=null)for(int i=0;i<tasks.length();i++){
             JSONObject task=tasks.optJSONObject(i);if(task==null||task.optBoolean("done")||task.optString("date").isEmpty())continue;
             try{
-                String key=task.getString("id")+"/"+task.getString("date")+"/"+task.optString("time");current.add(key);
-                long fire=ReminderPolicy.fireAt(task.getString("date"),task.optString("time"));
+                String reminder=task.optString("reminder","auto");long fire=ReminderPolicy.fireAt(task.getString("date"),task.optString("time"),reminder);if(fire<0)continue;
+                String key=ReminderPolicy.taskKey(task.getString("id"),task.getString("date"),task.optString("time"),reminder);current.add(key);
                 if(fire>now)next=Math.min(next,fire);
                 else if(!sent.contains(key)&&ReminderPolicy.ready(fire,now)){
                     String text=task.getString("date")+(task.optString("time").isEmpty()?" · срок сегодня":" · до "+task.optString("time"));
@@ -110,3 +110,4 @@ final class NoticeCenter {
         }
     }
 }
+
