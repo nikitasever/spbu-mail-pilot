@@ -388,3 +388,10 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .send-delay strong { display:block; font-size:18px; }
 #mail-v2 .send-delay p { color:var(--muted); font-size:13px; margin:8px 0 12px; }
 #mail-v2 .send-delay button { width:100%; margin:0; }
+
+/* Writing tools keep the accepted palette and the existing scrollable dialog. */
+#mail-v2 .writing-popup .actions,#mail-v2 .writing-popup .inline-actions { flex-wrap:wrap; }
+#mail-v2 .writing-popup button { min-height:44px; }
+#mail-v2 .writing-popup h4,#mail-v2 .writing-popup .note { overflow-wrap:anywhere; }
+#mail-v2 .writing-popup textarea { resize:none; width:100%; box-sizing:border-box; }
+#mail-v2 .writing-popup input[aria-invalid="true"],#mail-v2 .writing-popup textarea[aria-invalid="true"] { border-color:var(--brand); outline:2px solid var(--brand); }
