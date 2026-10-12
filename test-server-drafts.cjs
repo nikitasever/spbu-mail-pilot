@@ -1,11 +1,11 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const {parseHTML}=require('linkedom');
 const {document,window}=parseHTML(fs.readFileSync(__dirname+'/assets/index.html','utf8'));
-let saved={},sent=[],syncs=[],picks=[],removed=[],timers=new Map(),serial=0;
+let failWrites=false;let saved={},sent=[],syncs=[],picks=[],removed=[],timers=new Map(),serial=0;
 window.setTimeout=fn=>{timers.set(++serial,fn);return serial;};window.clearTimeout=id=>timers.delete(id);
 const flush=()=>{const jobs=[...timers.values()];timers.clear();jobs.forEach(fn=>fn());};
 const response=(request,result)=>window.onNativeResult({request,...result});
-const Pilot={account:()=> 'test@example.invalid',loadState:()=>JSON.stringify(saved),saveState:json=>{saved=JSON.parse(json);return true;},folders:r=>response(r,{folders:['INBOX','Черновики']}),page:(folder,offset,snapshot,r)=>response(r,{folder,messages:[],total:0,nextOffset:0,hasMore:false}),pickAttachments:r=>picks.push(r),syncDraft:(json,r)=>syncs.push({draft:JSON.parse(json),request:r}),send:(json,r)=>sent.push({draft:JSON.parse(json),request:r}),removeUpload:t=>removed.push(t)};
+const Pilot={account:()=> 'test@example.invalid',loadState:()=>JSON.stringify(saved),saveState:json=>{if(failWrites)return false;saved=JSON.parse(json);return true;},folders:r=>response(r,{folders:['INBOX','Черновики']}),page:(folder,offset,snapshot,r)=>response(r,{folder,messages:[],total:0,nextOffset:0,hasMore:false}),pickAttachments:r=>picks.push(r),syncDraft:(json,r)=>syncs.push({draft:JSON.parse(json),request:r}),send:(json,r)=>sent.push({draft:JSON.parse(json),request:r}),removeUpload:t=>removed.push(t)};
 vm.runInNewContext(fs.readFileSync(__dirname+'/assets/app.js','utf8'),{document,window,Pilot,lucide:{createIcons(){}},console});
 const root=document.getElementById('mail-v2');
 const click=selector=>{const el=root.querySelector(selector);assert.ok(el,selector);el.dispatchEvent(new window.Event('click',{bubbles:true}));};
@@ -23,3 +23,6 @@ click('[data-action="retry-draft"]');assert.equal(syncs.length,3);click('[data-a
 click('[data-action="edit-draft"]');input('subject','Тест');submit();assert.equal(sent.length,1);flush();assert.equal(syncs.length,3,'no draft save after explicit send');window.onSendProgress(sent[0].request,{stage:'uploading',bytes:50,total:100});assert.ok(root.querySelector('#upload-progress').textContent.includes('50%'));response(sent[0].request,{sent:true});assert.equal(saved.drafts.length,0);
 console.log('PASS: immediate server draft upload, measured percent and ACK cap, no automatic SMTP, coalesced edits, retry retains files, close/stale events safe, explicit send progress and timer cancellation.');
 
+
+click('[data-action="compose"]');input('body','ACK без локального сохранения');click('[data-action="pick-upload"]');response(picks.at(-1),{files:[{token:'retry.pdf',name:'Retry.pdf',size:10}]});click('[data-action="cancel"]');failWrites=true;response(syncs.at(-1).request,{saved:true,serverDraft:{key:'key',uid:'3',revision:'rev3'}});assert.equal(saved.drafts[0].serverDraftUnconfirmed,true);failWrites=false;const count=syncs.length;click('[data-action="edit-draft"]');flush();assert.equal(syncs.length,count+1,'uncertain local ACK persistence retries even when native signature matches');response(syncs.at(-1).request,{saved:true,serverDraft:{key:'key',uid:'3',revision:'rev3'}});assert.equal(saved.drafts[0].serverDraftUnconfirmed,false);assert.equal(saved.drafts[0].serverDraft.uid,'3');
+console.log('PASS: remote upload ACK plus failed local persistence recovers on reopening without changing message content.');

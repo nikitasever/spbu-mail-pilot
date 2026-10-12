@@ -87,7 +87,7 @@
  function syncServerDraft(owner){
   clearDraftTimer(owner);if(typeof Pilot.syncDraft!=='function'||sendBusy||draftDeletions.has(owner))return;const item=local.drafts.find(d=>d.id===owner);if(!item)return;
   const previous=serverTransfers.get(owner);if(previous?.busy){previous.dirty=true;return;}
-  const signature=fingerprint(item);if(previous?.signature===signature&&!previous.error)return;
+  const signature=fingerprint(item);if(previous?.signature===signature&&!previous.error&&!item.serverDraftUnconfirmed)return;
   const files=item.attachments||[];if(!files.length&&!item.serverDraft&&!item.serverDraftAttempted&&!previous)return;
   if(!updateLocal('drafts',items=>items.map(d=>d.id===owner?{...d,serverDraftAttempted:true,serverDraftUnconfirmed:true}:d)))return;if(form==='compose'&&draft?.id===owner){draft.serverDraftAttempted=true;draft.serverDraftUnconfirmed=true;}
   const state={busy:true,signature,name:files.length===1?files[0].name:files.length+' вложений',progress:{stage:'preparing'},error:'',dirty:false,request:null};serverTransfers.set(owner,state);uploadProgress();if(form==='compose'&&draft?.id===owner)root.querySelector('#upload-progress')?.scrollIntoView?.({block:'nearest',behavior:'smooth'});
