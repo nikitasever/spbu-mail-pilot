@@ -724,7 +724,7 @@ public final class MainActivity extends Activity {
         }
         @JavascriptInterface public void watchFolder(String folder){if(folder==null||folder.length()>2048||folder.contains("\r")||folder.contains("\n"))return;runOnUiThread(()->{watchFolder=folder;startWatch();});}
         @JavascriptInterface public void logout(){leaveAccount();}
-        @JavascriptInterface public void removeUpload(String token){worker.execute(()->{try{if(sessionLogin!=null)MailSender.file(uploads(sessionLogin),token).delete();}catch(Exception ignored){}});}
+        @JavascriptInterface public void removeUpload(String token){SavedAccounts.Login owner=sessionLogin;if(owner==null)return;worker.execute(()->{try{MailSender.file(uploads(owner),token).delete();}catch(Exception ignored){}});}
         @JavascriptInterface public void switchAccount(){runOnUiThread(()->quickAccounts());}
     }
     @Override protected void onResume(){super.onResume();resumed=true;NativeUi.bars(this);if(web!=null)web.evaluateJavascript("window.systemThemeChanged&&window.systemThemeChanged()",null);startWatch();BackgroundMailService.reconcile(this,true);resumePendingNavigation();}
