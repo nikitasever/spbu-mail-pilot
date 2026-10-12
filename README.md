@@ -2,9 +2,11 @@
 
 Личный экспериментальный Android-клиент. Неофициальный проект; не продукт СПбГУ.
 
-**Актуальная версия — 0.42 (versionCode 46).**
+**Актуальная версия — 0.43 (versionCode 47).**
 
-[Скачать APK 0.42](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.42/spbu-mail-pilot-0.42.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.42)
+[Скачать APK 0.43](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.43/spbu-mail-pilot-0.43.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.43)
+
+В 0.43 удаление задач, заметок и событий требует подтверждения; серверный черновик удаляется по точной ссылке с сохранением локальной копии при ошибке. Добавлена карточка контакта с письмом, звонком и копированием адреса.
 
 В 0.42 календарь получил режимы «Неделя» и «Повестка» на 14 дней, сохранение выбранного режима и загрузку соседнего месяца для периода на границе. Фон выходных стал легче.
 

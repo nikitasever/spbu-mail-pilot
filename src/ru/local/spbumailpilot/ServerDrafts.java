@@ -35,7 +35,55 @@ final class ServerDrafts {
             return new JSONObject().put("folder",folder.getFullName()).put("uid",String.valueOf(uid)).put("validity",String.valueOf(validity)).put("key",key).put("revision",revision);
         }finally{folder.close(false);}
     }
+    static final class DeleteRefused extends MessagingException {
+        final String reason;
+        DeleteRefused(String reason){super(reason);this.reason=reason;}
+    }
+    interface ScopedExpunge {
+        boolean supported()throws Exception;
+        void remove(Message target)throws Exception;
+    }
+    /** Deletes only the exact, account-owned server reference; never uses broad EXPUNGE. */
+    static JSONObject removeKnown(Store store,JSONObject ref,String ownedKey)throws Exception{
+        validateRemoval(ref,ownedKey);
+        Folder drafts=folder(store);
+        if(!drafts.getFullName().equals(ref.getString("folder")))throw new DeleteRefused("folder");
+        return removeKnown(drafts,ref,ownedKey,new ScopedExpunge(){
+            public boolean supported()throws Exception{
+                return drafts instanceof com.sun.mail.imap.IMAPFolder && Boolean.TRUE.equals(((com.sun.mail.imap.IMAPFolder)drafts).doCommand(protocol->protocol.hasCapability("UIDPLUS")));
+            }
+            public void remove(Message target)throws Exception{
+                ((com.sun.mail.imap.IMAPFolder)drafts).expunge(new Message[]{target});
+            }
+        });
+    }
+    private static void validateRemoval(JSONObject ref,String ownedKey)throws Exception{
+        if(ownedKey==null||!ownedKey.matches("[a-f0-9-]{36}")||!ownedKey.equals(ref.optString("key")))throw new DeleteRefused("ownership");
+        String name=ref.getString("folder"),uid=ref.getString("uid"),validity=ref.getString("validity");
+        if(name.isEmpty()||name.length()>2048||name.matches("(?s).*\\p{Cntrl}.*")||!uid.matches("[0-9]{1,19}")||!validity.matches("[0-9]{1,19}")||Long.parseLong(uid)<=0||Long.parseLong(validity)<=0)throw new IllegalArgumentException("Invalid draft reference");
+        if(ref.has("revision")&&!ref.getString("revision").matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid draft revision");
+    }
+    /** Testable scoped operation; the production adapter only supplies UIDPLUS UID EXPUNGE. */
+    static JSONObject removeKnown(Folder drafts,JSONObject ref,String ownedKey,ScopedExpunge expunge)throws Exception{
+        validateRemoval(ref,ownedKey);
+        if(!drafts.getFullName().equals(ref.getString("folder"))||!(drafts instanceof UIDFolder))throw new DeleteRefused("folder");
+        drafts.open(Folder.READ_WRITE);
+        try{
+            UIDFolder uids=(UIDFolder)drafts;
+            if(uids.getUIDValidity()!=Long.parseLong(ref.getString("validity")))throw new DeleteRefused("validity");
+            long uid=Long.parseLong(ref.getString("uid"));
+            Message target=uids.getMessageByUID(uid);
+            if(target==null||target.isExpunged())return new JSONObject().put("deleted",true).put("alreadyMissing",true);
+            if(uids.getUID(target)!=uid)throw new DeleteRefused("ownership");
+            if(!ours(target,ownedKey)||(ref.has("revision")&&!ref.getString("revision").equals(header(target,REV))))throw new DeleteRefused("ownership");
+            if(!expunge.supported())throw new DeleteRefused("uidplus");
+            target.setFlag(Flags.Flag.DELETED,true);
+            expunge.remove(target);
+            return new JSONObject().put("deleted",true);
+        }finally{if(drafts.isOpen())drafts.close(false);}
+    }
     static void remove(Store store,String key)throws Exception{
         if(key==null||!key.matches("[a-f0-9-]{36}"))return;Folder folder=folder(store);folder.open(Folder.READ_WRITE);try{Message[] candidates=folder.search(new HeaderTerm(KEY,key));if(candidates.length>5000)return;for(Message candidate:candidates)if(ours(candidate,key))candidate.setFlag(Flags.Flag.DELETED,true);}finally{folder.close(false);}
     }
 }
+
