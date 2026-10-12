@@ -16,9 +16,15 @@ final class OfflineMailStore {
     private static final String ALIAS="spbu-mail-offline-v1";
     private final AtomicFile file;private final String owner;private OfflineMailbox mailbox;
     OfflineMailStore(Context context,SavedAccounts.Login login)throws Exception{
-        owner=NoticeCenter.scope(login);synchronized(OfflineMailStore.class){epoch=epochs.containsKey(owner)?epochs.get(owner):0L;epochs.put(owner,epoch);}file=new AtomicFile(path(context,owner));mailbox=new OfflineMailbox();
-        if(file.getBaseFile().exists())try{if(file.getBaseFile().length()>6*1024*1024)throw new IOException("Cache limit");byte[] encrypted=file.readFully();if(encrypted.length>6*1024*1024)throw new IOException("Cache limit");byte[] plain=crypt(false,key(false),owner,encrypted);try{JSONObject envelope=new JSONObject(new String(plain,StandardCharsets.UTF_8));if(!owner.equals(envelope.getString("account")))throw new IOException("Cache owner");mailbox=new OfflineMailbox(envelope.getJSONObject("mail"));}finally{Arrays.fill(plain,(byte)0);}}catch(Exception invalid){mailbox=new OfflineMailbox();}
+        owner=NoticeCenter.scope(login);file=new AtomicFile(path(context,owner));
+        synchronized(OfflineMailStore.class){
+            epoch=epochs.getOrDefault(owner,0L);epochs.put(owner,epoch);mailbox=new OfflineMailbox();
+            File snapshot=committedSnapshot(file.getBaseFile());
+            if(snapshot.exists())try{if(snapshot.length()>6*1024*1024)throw new IOException("Cache limit");byte[] encrypted=file.readFully();if(encrypted.length>6*1024*1024)throw new IOException("Cache limit");byte[] plain=crypt(false,key(false),owner,encrypted);try{JSONObject envelope=new JSONObject(new String(plain,StandardCharsets.UTF_8));if(!owner.equals(envelope.getString("account")))throw new IOException("Cache owner");mailbox=new OfflineMailbox(envelope.getJSONObject("mail"));}finally{Arrays.fill(plain,(byte)0);}}catch(Exception invalid){mailbox=new OfflineMailbox();}
+        }
     }
+    static File committedSnapshot(File base){File backup=new File(base.getPath()+".bak");return backup.exists()?backup:base;}
+
     private static File path(Context context,String owner){return new File(context.getNoBackupFilesDir(),"offline-"+owner+".bin");}
     static synchronized void delete(Context context,SavedAccounts.Login login)throws Exception{String owner=NoticeCenter.scope(login);epochs.put(owner,epochs.getOrDefault(owner,0L)+1);AtomicFile file=new AtomicFile(path(context,owner));file.delete();if(file.getBaseFile().exists())throw new IOException("Cannot clear cache");}
     static synchronized void deleteAll(Context context){for(String owner:new java.util.ArrayList<>(epochs.keySet()))epochs.put(owner,epochs.get(owner)+1);File[] files=context.getNoBackupFilesDir().listFiles();if(files!=null)for(File file:files)if(file.getName().startsWith("offline-account-"))new AtomicFile(file).delete();}
