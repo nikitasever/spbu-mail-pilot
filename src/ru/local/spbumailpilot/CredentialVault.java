@@ -67,9 +67,9 @@ final class CredentialVault {
     SavedAccounts.Login load()throws Exception{return read().active();}
     ArrayList<SavedAccounts.Login> list()throws Exception{return read().list();}
     void deactivate()throws Exception{SavedAccounts accounts=read();accounts.deactivate();write(accounts);}
-    void remove(SavedAccounts.Login login)throws Exception{OfflineMailStore.delete(context,login);SavedAccounts accounts=read();accounts.remove(login);if(accounts.list().isEmpty())clear();else write(accounts);}
+    void remove(SavedAccounts.Login login)throws Exception{ScheduledMail.forget(context,login);OfflineMailStore.delete(context,login);SavedAccounts accounts=read();accounts.remove(login);if(accounts.list().isEmpty())clear();else write(accounts);}
     void clear() throws Exception {
-        OfflineMailStore.deleteAll(context);
+        ScheduledMail.forgetAll(context);OfflineMailStore.deleteAll(context);
         if(!prefs.edit().clear().commit())throw new IllegalStateException("Cannot remove login");
         KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
         if(store.containsAlias(ALIAS))store.deleteEntry(ALIAS);

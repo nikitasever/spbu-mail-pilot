@@ -113,6 +113,14 @@ final class NoticeCenter {
         }catch(Exception unavailable){/* One unavailable mailbox must not suppress other reminders. */}
         if(next!=Long.MAX_VALUE)alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,next,snoozeAlarm(context));
     }
+    static void scheduled(Context c,SavedAccounts.Login login,String id,String state,String subject){try{
+        String channel="scheduled-send";c.getSystemService(NotificationManager.class).createNotificationChannel(new NotificationChannel(channel,"Отправка по расписанию",NotificationManager.IMPORTANCE_DEFAULT));if(!channelAllowed(c,channel))return;
+        String account=scope(login);Intent open=new Intent(c,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP).setData(android.net.Uri.parse("mailpilot://scheduled/"+account+"/"+id)).putExtra("openScheduledAccount",account);
+        PendingIntent click=PendingIntent.getActivity(c,3,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        String title=state.equals("sent")?"Письмо отправлено по расписанию":state.equals("uncertain")?"Результат отправки неизвестен":"Не удалось отправить письмо";
+        Notification hidden=new Notification.Builder(c,channel).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle("Рабочая почта").setContentText("Результат запланированной отправки").build();
+        Notification n=new Notification.Builder(c,channel).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle(title).setContentText(MailNotificationText.clean(subject,"Без темы",300)).setSubText(MailNotificationText.clean(login.user,"",180)).setContentIntent(click).setAutoCancel(true).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(hidden).build();c.getSystemService(NotificationManager.class).notify(account+"/scheduled/"+id,1,n);
+    }catch(Exception unavailable){/* Delivery is recorded even if notifications are disabled. */}}
     static void test(Context context){channels(context);post(context,MAIL,"test","Уведомления включены","Это тестовое уведомление почтового приложения.");}
     static void seed(Context context,SavedAccounts.Login login,MailReader reader)throws Exception{
         SharedPreferences record=context.getSharedPreferences("notices-"+scope(login),Context.MODE_PRIVATE);
