@@ -429,11 +429,16 @@ public final class MainActivity extends Activity {
     private void reply(String request,JSONObject result){try{result.put("request",request);}catch(Exception ignored){}runOnUiThread(()->{if(web!=null&&!closing)web.evaluateJavascript("window.onNativeResult(JSON.parse("+JSONObject.quote(result.toString())+"))",null);});}
     private void failure(String request,String message){reply(request,new JSONObjectSafe().putValue("error",message));}
     private void readFailure(String request,Exception error,String message){failure(request,error instanceof AuthenticationFailedException?"Сервер отклонил сохранённый вход. Откройте «Профиль» → «Сменить аккаунт» и добавьте этот ящик с новым паролем.":message);}
-    private void openAttachmentFile(String request,JSONObject downloaded){
-        if(closing||web==null)return;
+    private void openAttachmentFile(String request,JSONObject downloaded,SavedAccounts.Login owner){
+        if(closing||web==null||sessionLogin!=owner)return;
+        if(!resumed){failure(request,"Файл загружен. Вернитесь к письму и нажмите «Открыть» снова.");return;}
         try{
             java.io.File file=new java.io.File(downloaded.getString("file"));
+            java.io.File base=new java.io.File(getCacheDir(),"attachments").getCanonicalFile();if(!base.equals(file.getCanonicalFile().getParentFile()))throw new java.io.IOException("Invalid attachment location");
             Uri uri=new Uri.Builder().scheme("content").authority(AttachmentProvider.AUTHORITY).appendPath(file.getName()).build();
+            if(PdfPreviewPolicy.pdf(downloaded.optString("name"),downloaded.optString("mime"))){
+                PdfPreviewPolicy.file(base,file.getName());startActivity(new android.content.Intent(this,PdfPreviewActivity.class).setData(uri).putExtra("name",downloaded.getString("name")).putExtra("appearance",appearanceMode));reply(request,new JSONObject().put("opened",true));return;
+            }
             android.content.Intent intent=new android.content.Intent(android.content.Intent.ACTION_VIEW);
             intent.setDataAndType(uri,downloaded.getString("mime"));intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
             intent.setClipData(android.content.ClipData.newRawUri(downloaded.getString("name"),uri));
@@ -709,7 +714,7 @@ public final class MainActivity extends Activity {
         }
         @JavascriptInterface public void attachment(String name,String uid,String validity,String path,String request){
             if(name==null||name.length()>2048||name.contains("\r")||name.contains("\n")||uid==null||validity==null||!uid.matches("[0-9]{1,20}")||!validity.matches("[0-9]{1,20}")||path==null||path.length()>160){failure(request,"Некорректные параметры вложения.");return;}
-            worker.execute(()->{try{JSONObject downloaded=readWithReconnect(()->reader.attachment(name,uid,validity,path,new java.io.File(getCacheDir(),"attachments")));runOnUiThread(()->openAttachmentFile(request,downloaded));}catch(Exception error){readFailure(request,error,"Не удалось скачать вложение. Проверьте сеть и повторите попытку. Максимальный размер файла — 100 МБ.");}});
+            SavedAccounts.Login owner=sessionLogin;worker.execute(()->{try{if(owner==null||sessionLogin!=owner||closing)return;JSONObject downloaded=readWithReconnect(()->reader.attachmentMeasured(name,uid,validity,path,new java.io.File(getCacheDir(),"attachments"),()->closing||sessionLogin!=owner,(bytes,total)->attachmentProgress(owner,request,"download",bytes,total)));runOnUiThread(()->openAttachmentFile(request,downloaded,owner));}catch(Exception error){if(sessionLogin==owner&&!closing)readFailure(request,error,"Не удалось скачать вложение. Проверьте сеть и повторите попытку. Максимальный размер файла — 100 МБ.");}});
         }
         @JavascriptInterface public void geminiSettings(){runOnUiThread(()->{
             final AiVault secret=new AiVault(MainActivity.this);EditText input=new EditText(NativeUi.context(MainActivity.this,true));input.setSingleLine(true);input.setHint("API-ключ Gemini");input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);input.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);input.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(512)});
