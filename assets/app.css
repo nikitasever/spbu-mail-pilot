@@ -486,3 +486,11 @@ html.day-overlay { overflow-y:hidden; }
 /* One clear control per search; shared touch targets across mail/files/tasks. */
 #mail-v2 .search-form button { width:44px; min-width:44px; min-height:44px; }
 #mail-v2 .search-form input[type="search"]::-webkit-search-cancel-button { -webkit-appearance:none; }
+
+/* Local deferred mail reuses the reader and draft rhythm. */
+#mail-v2 .snooze-row{padding:12px 0;border-bottom:1px solid var(--line)}
+#mail-v2 .snooze-open{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;text-align:left;white-space:normal;overflow-wrap:anywhere}
+#mail-v2 .snooze-open span{font-size:13px;color:var(--muted)}
+#mail-v2 [name="snooze-at"]{min-width:0;width:100%;box-sizing:border-box}
+#mail-v2 .snooze-popup .quick-head{position:sticky;top:0;background:var(--paper);z-index:1;padding-block:4px}
+#mail-v2 .snooze-subject{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}

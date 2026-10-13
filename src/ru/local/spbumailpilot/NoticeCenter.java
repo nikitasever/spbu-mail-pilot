@@ -14,7 +14,8 @@ final class NoticeCenter {
     static final int JOB=2406;
     static final String MAIL_CHECK_ACTION="ru.local.spbumailpilot.MAIL_CHECK";
     private static final long INTERVAL_MS=15*60*1000L;
-    private static final String MAIL="mail-arrivals",TASKS="task-deadlines";
+    private static final String MAIL="mail-arrivals",TASKS="task-deadlines",SNOOZE="mail-reminders";
+    static final String SNOOZE_ACTION="ru.local.spbumailpilot.MAIL_REMINDER";
     interface Stopped {boolean get();}
     static String scope(SavedAccounts.Login login)throws Exception{
         byte[] bytes=MessageDigest.getInstance("SHA-256").digest((login.host.toLowerCase(Locale.ROOT)+":"+login.port+":"+login.user.toLowerCase(Locale.ROOT)).getBytes(StandardCharsets.UTF_8));StringBuilder result=new StringBuilder("account-");for(byte b:bytes)result.append(String.format("%02x",b));return result.toString();
@@ -25,6 +26,7 @@ final class NoticeCenter {
     static void channels(Context context){
         NotificationManager manager=context.getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(MAIL,"Новые письма",NotificationManager.IMPORTANCE_DEFAULT));
+        manager.createNotificationChannel(new NotificationChannel(SNOOZE,"Отложенные письма",NotificationManager.IMPORTANCE_DEFAULT));
         manager.createNotificationChannel(new NotificationChannel(TASKS,"Сроки задач",NotificationManager.IMPORTANCE_DEFAULT));
     }
     static boolean allowed(Context context){return (Build.VERSION.SDK_INT<33||context.checkSelfPermission("android.permission.POST_NOTIFICATIONS")==PackageManager.PERMISSION_GRANTED)&&context.getSystemService(NotificationManager.class).areNotificationsEnabled();}
@@ -57,7 +59,7 @@ final class NoticeCenter {
             if(!mailEnabled(context,saved,false))manager.cancel(accountScope+"/mail",1);
         }
         for(String removed:control.getStringSet("accounts",Collections.emptySet()))if(!retained.contains(removed)){
-            manager.cancel(removed+"/mail",1);cancelTasks(context,removed);
+            manager.cancel(removed+"/mail",1);cancelTasks(context,removed);cancelSnoozes(context,removed);
             context.getSharedPreferences("notices-"+removed,Context.MODE_PRIVATE).edit().clear().apply();
         }
         control.edit().putString("owner",owner).putStringSet("accounts",retained).apply();
@@ -68,7 +70,7 @@ final class NoticeCenter {
             if(previous==null||previous.getNetworkType()!=JobInfo.NETWORK_TYPE_ANY)scheduler.schedule(new JobInfo.Builder(JOB,new ComponentName(context,NoticeJob.class)).setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setPeriodic(INTERVAL_MS).setPersisted(true).build());
         }else scheduler.cancel(JOB);
         if(mailEnabled)alarms.setInexactRepeating(AlarmManager.ELAPSED_REALTIME_WAKEUP,android.os.SystemClock.elapsedRealtime()+60*1000L,INTERVAL_MS,mailAlarm(context));else{alarms.cancel(mailAlarm(context));scheduler.cancel(JOB+1);}
-        tasks(context);
+        try{tasks(context);}finally{snoozes(context);}
     }
     private static void cancelTasks(Context context,String accountScope){
         SharedPreferences record=context.getSharedPreferences("notices-"+accountScope,Context.MODE_PRIVATE);
@@ -84,13 +86,32 @@ final class NoticeCenter {
         if(!channelAllowed(context,channel))return false;
         Intent open=new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
         if(channel.equals(TASKS))open.putExtra("openTasks",true);
-        if(target!=null)try{open.setData(android.net.Uri.parse("mailpilot://mail/"+target.account+"/"+target.validity+"/"+target.uid));open.putExtra("openMail",target.encode());}catch(Exception invalid){return false;}
+        if(target!=null)try{open.setData(android.net.Uri.parse("mailpilot://mail/"+target.account+"/"+target.validity+"/"+target.uid+"/"+android.net.Uri.encode(target.folder)));open.putExtra("openMail",target.encode());}catch(Exception invalid){return false;}
         PendingIntent click=PendingIntent.getActivity(context,channel.equals(TASKS)?2:1,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         Notification publicVersion=new Notification.Builder(context,channel).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle("Почта СПбГУ").setContentText("Новое уведомление").build();
-        Notification.Builder builder=new Notification.Builder(context,channel).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle(title).setContentText(text).setStyle(new Notification.BigTextStyle().bigText(text)).setContentIntent(click).setAutoCancel(true).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(publicVersion);
+        Notification.Builder builder=new Notification.Builder(context,channel).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle(title).setContentText(text).setStyle(new Notification.BigTextStyle().bigText(text)).setContentIntent(click).setAutoCancel(true).setOnlyAlertOnce(channel.equals(SNOOZE)).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(publicVersion);
         if(mailbox!=null)builder.setSubText(MailNotificationText.clean(mailbox,"",180));
         Notification notice=builder.build();
         context.getSystemService(NotificationManager.class).notify(tag,1,notice);return true;
+    }
+    private static PendingIntent snoozeAlarm(Context context){return PendingIntent.getBroadcast(context,JOB+2,new Intent(context,NoticeAlarm.class).setAction(SNOOZE_ACTION),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);}
+    private static void cancelSnoozes(Context context,String account){
+        SharedPreferences record=context.getSharedPreferences("notices-"+account,Context.MODE_PRIVATE);
+        for(String key:record.getStringSet("snoozes",Collections.emptySet()))context.getSystemService(NotificationManager.class).cancel(account+"/snooze/"+key,1);
+    }
+    static synchronized void snoozes(Context context)throws Exception{
+        channels(context);AlarmManager alarms=context.getSystemService(AlarmManager.class);alarms.cancel(snoozeAlarm(context));
+        long now=System.currentTimeMillis(),next=Long.MAX_VALUE;
+        for(SavedAccounts.Login login:new CredentialVault(context).list())try{
+            String account=scope(login);JSONObject data=new JSONObject(state(context,login).getString("state","{}"));
+            SharedPreferences record=context.getSharedPreferences("notices-"+account,Context.MODE_PRIVATE);
+            Set<String> sent=new HashSet<>(record.getStringSet("snoozes",Collections.emptySet()));
+            MailSnooze.Plan plan=MailSnooze.plan(data.optJSONArray("snoozedMail"),account,sent,now);next=Math.min(next,plan.next);
+            for(MailSnooze value:plan.due)if(post(context,SNOOZE,account+"/snooze/"+value.key,value.sender,"Отложенное письмо · "+value.subject,value.target,login.user))sent.add(value.key);
+            for(String key:new HashSet<>(sent))if(!plan.current.contains(key)){context.getSystemService(NotificationManager.class).cancel(account+"/snooze/"+key,1);sent.remove(key);}
+            record.edit().putStringSet("snoozes",sent).commit();
+        }catch(Exception unavailable){/* One unavailable mailbox must not suppress other reminders. */}
+        if(next!=Long.MAX_VALUE)alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,next,snoozeAlarm(context));
     }
     static void test(Context context){channels(context);post(context,MAIL,"test","Уведомления включены","Это тестовое уведомление почтового приложения.");}
     static void seed(Context context,SavedAccounts.Login login,MailReader reader)throws Exception{
