@@ -30,7 +30,7 @@ final class ReplyReminderCenter {
             if(due.isEmpty())continue;if(due.size()>20){due=new ArrayList<>(due.subList(0,20));retry=true;}
             try(MailReader reader=new MailReader()){
                 reader.connect(login.host,login.port,login.user,login.password);
-                for(ReplyReminder item:due){if(stopped.get())return true;boolean answered=reader.hasReply(item.messageId,login.user);
+                for(ReplyReminder item:due){if(stopped.get())return true;boolean answered=reader.hasReply(item.messageId,login.user,login.from);
                     // Serialize with schedule; re-read state after network, never commit a cancelled or deleted account.
                     synchronized(ReplyReminderCenter.class){
                         boolean retained=false;for(SavedAccounts.Login current:new CredentialVault(c).list())if(current.identity().equals(login.identity())&&current.password.equals(login.password))retained=true;

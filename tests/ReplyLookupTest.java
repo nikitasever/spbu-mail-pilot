@@ -12,7 +12,7 @@ public final class ReplyLookupTest {
  public static void main(String[] args)throws Exception{
   Session session=Session.getInstance(new Properties());ReadFlagTest.MemoryStore store=new ReadFlagTest.MemoryStore(session);FolderFixture folder=new FolderFixture(store,session);MailReader reader=new MailReader();for(String name:new String[]{"store","inbox"}){java.lang.reflect.Field f=MailReader.class.getDeclaredField(name);f.setAccessible(true);f.set(reader,name.equals("store")?store:folder);}folder.open(Folder.READ_ONLY);
   String id="<source@example.invalid>",own="fixture@example.invalid";
-  folder.values=new Message[]{message(session,own,"In-Reply-To",id)};check(!reader.hasReply(id,own));
+  folder.values=new Message[]{message(session,own,"In-Reply-To",id)};check(!reader.hasReply(id,own));check(!reader.hasReply(id,"fixture",own));
   folder.values=new Message[]{message(session,"other@example.invalid","References","<parent@example.invalid>\r\n "+id)};check(reader.hasReply(id,own));check(!folder.values[0].isSet(Flags.Flag.SEEN));
   folder.values=new Message[]{message(session,"other@example.invalid","In-Reply-To","<SOURCE@example.invalid>")};check(!reader.hasReply(id,own));
   folder.values=new Message[]{message(session,"other@example.invalid","In-Reply-To","<source@example.invalid.extra>")};check(!reader.hasReply(id,own));folder.values=new Message[0];check(!reader.hasReply(id,own));

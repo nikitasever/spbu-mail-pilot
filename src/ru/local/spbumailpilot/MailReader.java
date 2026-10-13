@@ -59,14 +59,15 @@ final class MailReader implements AutoCloseable {
         folderName = name;
         validity = ((UIDFolder) inbox).getUIDValidity();
     }
-    boolean hasReply(String id,String ownAddress)throws Exception{
+    boolean hasReply(String id,String... ownAddresses)throws Exception{
         if(!ReplyReminder.validId(id))throw new MessagingException("Invalid reply identity");
+        java.util.Set<String> own=new java.util.HashSet<>();for(String value:ownAddresses)if(value!=null&&!value.isEmpty())own.add(new InternetAddress(value).getAddress().toLowerCase(Locale.ROOT));
         openFolder("INBOX");
         Message[] candidates=inbox.search(new javax.mail.search.OrTerm(new javax.mail.search.HeaderTerm("In-Reply-To",id),new javax.mail.search.HeaderTerm("References",id)));
         if(candidates.length>2000)throw new MessagingException("Too many reply candidates");
         FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add("In-Reply-To");profile.add("References");inbox.fetch(candidates,profile);
         for(Message candidate:candidates){if(candidate==null||candidate.isExpunged())continue;
-            boolean other=false;Address[] from=candidate.getFrom();if(from!=null)for(Address address:from)if(address instanceof InternetAddress&&!((InternetAddress)address).getAddress().equalsIgnoreCase(ownAddress))other=true;
+            boolean other=false;Address[] from=candidate.getFrom();if(from!=null)for(Address address:from)if(address instanceof InternetAddress&&!own.contains(((InternetAddress)address).getAddress().toLowerCase(Locale.ROOT)))other=true;
             if(!other)continue;
             for(String name:new String[]{"In-Reply-To","References"}){String[] values=candidate.getHeader(name);if(values!=null)for(String value:values)if(ReplyReminder.references(value,id))return true;}
         }return false;
