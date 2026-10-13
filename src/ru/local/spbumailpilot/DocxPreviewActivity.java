@@ -48,6 +48,7 @@ public final class DocxPreviewActivity extends Activity {
         if(!validFile||uri==null){status.setText("Файл недоступен. Вернитесь к письму и откройте вложение снова.");return;}
         try{Intent intent=new Intent(Intent.ACTION_VIEW).setDataAndType(uri,"application/vnd.openxmlformats-officedocument.wordprocessingml.document").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);intent.setClipData(ClipData.newRawUri(title,uri));startActivity(intent);}catch(ActivityNotFoundException missing){status.setText("На телефоне нет просмотрщика DOCX.");}catch(Exception unavailable){status.setText("Не удалось открыть документ в другом приложении.");}
     }
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);AppLock.result(this,request,result);}
     @Override protected void onSaveInstanceState(Bundle saved){super.onSaveInstanceState(saved);saved.putInt("scroll",scroll.getScrollY());}
     @Override protected void onDestroy(){closing=true;text.setText("");worker.shutdown();super.onDestroy();}
 }
