@@ -33,6 +33,7 @@ public final class MainActivity extends Activity {
     private final ExecutorService directoryWorker=Executors.newSingleThreadExecutor();
     private final UniversityDirectory universityDirectory=new UniversityDirectory();
     private volatile long directorySerial;
+    private volatile long advancedSerial;
     private MailReader reader;
     private CredentialVault vault;
     private volatile SavedAccounts.Login sessionLogin;
@@ -714,6 +715,16 @@ public final class MainActivity extends Activity {
                 bodyReply(owner,request,generation,result);
             }catch(Exception unavailable){closeBodyReader();if(sessionLogin!=owner)return;JSONObject cached=unavailable instanceof AuthenticationFailedException?null:offlineBody(name,uid,validity);bodyReply(owner,request,generation,cached!=null?cached:new JSONObjectSafe().putValue("error","Текст этого письма ещё не сохранён. Подключитесь к серверу и откройте его."));}});
         }
+        @JavascriptInterface public void cancelAdvancedSearch(){++advancedSerial;}
+        @JavascriptInterface public void advancedSearchPage(String name,String json,int offset,String snapshot,String request){
+            final SearchQuery.Filters filters;try{if(name==null||name.isEmpty()||name.length()>2048||name.matches("(?s).*\\p{Cntrl}.*")||json==null||json.length()>2000||offset<0)throw new IllegalArgumentException();filters=new SearchQuery.Filters(json);}catch(Exception invalid){failure(request,"Проверьте запрос и диапазон дат.");return;}
+            SavedAccounts.Login owner=sessionLogin;long serial=++advancedSerial;worker.execute(()->{try{
+                if(owner==null||closing||sessionLogin!=owner)return;if(serial!=advancedSerial){calendarReply(owner,request,new JSONObject().put("cancelled",true));return;}
+                if(offlineSession||snapshot!=null&&snapshot.startsWith("offline:")){JSONObject cached=offlinePage(name,offset,snapshot,filters.query);if(cached==null)throw new java.io.IOException("No saved search");filterOfflineFrom(cached,filters.from);calendarReply(owner,request,SearchQuery.filtered(cached,filters));return;}
+                calendarReply(owner,request,readWithReconnect(()->reader.smartPage(name,offset,snapshot,filters)));
+            }catch(Exception unavailable){if(sessionLogin!=owner||closing)return;JSONObject cached=unavailable instanceof AuthenticationFailedException?null:offlinePage(name,offset,snapshot,filters.query);try{if(cached!=null){filterOfflineFrom(cached,filters.from);calendarReply(owner,request,SearchQuery.filtered(cached,filters));return;}}catch(Exception invalid){}readFailure(request,unavailable,"Поиск недоступен. Проверьте подключение и повторите запрос.");}});
+        }
+        private void filterOfflineFrom(JSONObject result,String from)throws Exception{if(from.isEmpty())return;JSONArray out=new JSONArray(),rows=result.getJSONArray("messages");for(int i=0;i<rows.length();i++){JSONObject m=rows.getJSONObject(i);if((m.optString("sender")+" "+m.optString("email")).toLowerCase(java.util.Locale.ROOT).contains(from.toLowerCase(java.util.Locale.ROOT)))out.put(m);}result.put("messages",out);}
         @JavascriptInterface public void searchPage(String name,String query,int offset,String snapshot,String request){
             if(name==null||name.length()>2048||query==null||query.length()>200||query.matches("(?s).*\\p{Cntrl}.*")||offset<0){failure(request,"Проверьте поисковый запрос.");return;}
             SavedAccounts.Login owner=sessionLogin;worker.execute(()->{try{if(owner==null||sessionLogin!=owner)return;if(offlineSession||(snapshot!=null&&snapshot.startsWith("offline:"))){JSONObject cached=offlinePage(name,offset,snapshot,query);if(cached==null)throw new java.io.IOException("No saved search");calendarReply(owner,request,cached);}else calendarReply(owner,request,readWithReconnect(()->reader.page(name,offset,snapshot,query)));}catch(Exception e){if(sessionLogin==owner){JSONObject cached=e instanceof AuthenticationFailedException?null:offlinePage(name,offset,snapshot,query);if(cached!=null)calendarReply(owner,request,cached);else readFailure(request,e,"Поиск по сохранённым письмам недоступен. Подключитесь к серверу.");}}});

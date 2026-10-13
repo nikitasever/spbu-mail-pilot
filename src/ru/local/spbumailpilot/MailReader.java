@@ -27,6 +27,7 @@ final class MailReader implements AutoCloseable {
     private long pagingValidity;
     private long generation;
     private UidPages pages,filePages;
+    private UidPages smartPages;private String smartFolder="",smartKey="";private long smartValidity,smartGeneration;
     private String pagingQuery="",fileFolder;private long fileValidity,fileGeneration;
     private final java.util.LinkedHashMap<String,JSONObject> downloadedFiles=new java.util.LinkedHashMap<>();
     void connect(String host, int port, String user, String password) throws Exception {
@@ -88,9 +89,11 @@ final class MailReader implements AutoCloseable {
     }
     private long[] uidSnapshot() throws Exception {return uidSnapshot("");}
     private long[] uidSnapshot(String query) throws Exception {
-        final com.sun.mail.iap.Argument search=query.isEmpty()?null:SearchQuery.arguments(query);
+        return uidSnapshot(query.isEmpty()?null:SearchQuery.arguments(query));
+    }
+    private long[] uidSnapshot(com.sun.mail.iap.Argument search)throws Exception{
         return (long[]) ((IMAPFolder) inbox).doCommand(protocol -> {
-            Response[] responses = query.isEmpty()?protocol.command("UID SEARCH ALL", null):protocol.command("UID SEARCH",search);
+            Response[] responses = search==null?protocol.command("UID SEARCH ALL", null):protocol.command("UID SEARCH",search);
             protocol.handleResult(responses[responses.length - 1]);
             long[] values = UidSearch.parse(responses);
             protocol.notifyResponseHandlers(responses);
@@ -106,7 +109,12 @@ final class MailReader implements AutoCloseable {
         } else if (pages == null || !query.equals(pagingQuery) || !name.equals(pagingFolder) || pagingValidity != validity || !Long.toString(generation).equals(snapshot)) {
             throw new MessagingException("Page snapshot changed");
         }
-        long[] uids = pages.page(offset);
+        JSONArray result=headersForUids(pages.page(offset));
+        int next = pages.next(offset);
+        return new JSONObject().put("messages", result).put("total", pages.size()).put("nextOffset", next)
+                .put("hasMore", next < pages.size()).put("snapshot", Long.toString(generation)).put("folder", name).put("validity",Long.toString(validity));
+    }
+    private JSONArray headersForUids(long[] uids)throws Exception{
         JSONArray result = new JSONArray();
         Message[] found = uids.length == 0 ? new Message[0] : ((UIDFolder) inbox).getMessagesByUID(uids);
         ArrayList<Message> present = new ArrayList<>();
@@ -124,9 +132,14 @@ final class MailReader implements AutoCloseable {
             if (m.isExpunged()) continue;
             result.put(header(m));
         }
-        int next = pages.next(offset);
-        return new JSONObject().put("messages", result).put("total", pages.size()).put("nextOffset", next)
-                .put("hasMore", next < pages.size()).put("snapshot", Long.toString(generation)).put("folder", name).put("validity",Long.toString(validity));
+        return result;
+    }
+    JSONObject smartPage(String name,int offset,String snapshot,SearchQuery.Filters filters)throws Exception{
+        openFolder(name);String key=filters.key();
+        if(offset==0){smartPages=new UidPages(uidSnapshot(filters.arguments()));smartFolder=name;smartValidity=validity;smartKey=key;smartGeneration++;}
+        else if(smartPages==null||!smartFolder.equals(name)||smartValidity!=validity||!smartKey.equals(key)||!Long.toString(smartGeneration).equals(snapshot))throw new MessagingException("Search snapshot changed");
+        JSONArray rows=headersForUids(smartPages.page(offset));int next=smartPages.next(offset);
+        return SearchQuery.filtered(new JSONObject().put("messages",rows).put("total",smartPages.size()).put("nextOffset",next).put("hasMore",next<smartPages.size()).put("snapshot",Long.toString(smartGeneration)).put("folder",name).put("validity",Long.toString(validity)),filters);
     }
     JSONObject files(String name,int offset,String snapshot,String query)throws Exception{
         openFolder(name);
