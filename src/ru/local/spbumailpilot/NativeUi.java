@@ -6,7 +6,7 @@ import android.graphics.drawable.*;
 import android.view.*;
 import android.widget.*;
 final class NativeUi {
- static boolean dark(Activity a){return a instanceof MainActivity?((MainActivity)a).nativeDark():a instanceof PdfPreviewActivity?((PdfPreviewActivity)a).nativeDark():(a.getResources().getConfiguration().uiMode&android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;}
+ static boolean dark(Activity a){return a instanceof MainActivity?((MainActivity)a).nativeDark():a instanceof PdfPreviewActivity?((PdfPreviewActivity)a).nativeDark():a instanceof DocxPreviewActivity?((DocxPreviewActivity)a).nativeDark():(a.getResources().getConfiguration().uiMode&android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;}
  static int dp(Context c,int v){return Math.round(v*c.getResources().getDisplayMetrics().density);}
  static int paper(Activity a){return dark(a)?0xff18171e:0xffffffff;}
  static int surface(Activity a){return dark(a)?0xff24202c:0xfff8f7fb;}

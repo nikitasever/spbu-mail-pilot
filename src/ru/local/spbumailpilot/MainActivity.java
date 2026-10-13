@@ -439,6 +439,9 @@ public final class MainActivity extends Activity {
             if(PdfPreviewPolicy.pdf(downloaded.optString("name"),downloaded.optString("mime"))){
                 PdfPreviewPolicy.file(base,file.getName());startActivity(new android.content.Intent(this,PdfPreviewActivity.class).setData(uri).putExtra("name",downloaded.getString("name")).putExtra("appearance",appearanceMode));reply(request,new JSONObject().put("opened",true));return;
             }
+            if(DocxReader.docx(downloaded.optString("name"),downloaded.optString("mime"))){
+                PdfPreviewPolicy.file(base,file.getName());startActivity(new android.content.Intent(this,DocxPreviewActivity.class).setData(uri).putExtra("name",downloaded.getString("name")).putExtra("appearance",appearanceMode));reply(request,new JSONObject().put("opened",true));return;
+            }
             android.content.Intent intent=new android.content.Intent(android.content.Intent.ACTION_VIEW);
             intent.setDataAndType(uri,downloaded.getString("mime"));intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
             intent.setClipData(android.content.ClipData.newRawUri(downloaded.getString("name"),uri));
