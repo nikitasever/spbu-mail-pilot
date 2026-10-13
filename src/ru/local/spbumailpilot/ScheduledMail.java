@@ -24,6 +24,7 @@ final class ScheduledMail {
     private static final Set<String> active=new HashSet<>();
     private static SQLiteDatabase db(Context c){
         SQLiteDatabase d=SQLiteDatabase.openOrCreateDatabase(new File(c.getNoBackupFilesDir(),"scheduled-mail.db"),null);
+        d.execSQL("PRAGMA synchronous=FULL");
         d.execSQL("CREATE TABLE IF NOT EXISTS queue (id TEXT PRIMARY KEY, account TEXT NOT NULL, source TEXT NOT NULL, due INTEGER NOT NULL, next INTEGER NOT NULL, state TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, returned_source TEXT, payload BLOB NOT NULL, UNIQUE(account,source))");
         d.execSQL("CREATE INDEX IF NOT EXISTS queue_due ON queue(state,next)");return d;
     }
@@ -54,7 +55,7 @@ final class ScheduledMail {
             recover(d);try(Cursor rows=d.rawQuery("SELECT count(*) FROM queue WHERE account=? AND state NOT IN ('sent','cancelled')",new String[]{account})){rows.moveToFirst();if(rows.getInt(0)>=50)throw new IllegalStateException("Queue full");}
             if(protects(c,login,source))throw new IllegalStateException("Draft already scheduled");
             JSONArray sourceFiles=draft.optJSONArray("attachments"),copied=new JSONArray();
-            if(sourceFiles!=null)for(int i=0;i<sourceFiles.length();i++){JSONObject entry=new JSONObject(sourceFiles.getJSONObject(i).toString());try(InputStream input=new FileInputStream(MailSender.file(uploads(c,login),entry.getString("token")))){File copy=AttachmentFiles.copy(input,directory,entry.optString("name"),AttachmentFiles.MAX_BYTES);entry.put("token",copy.getName());copied.put(entry);}}
+            if(sourceFiles!=null)for(int i=0;i<sourceFiles.length();i++){JSONObject entry=new JSONObject(sourceFiles.getJSONObject(i).toString());try(InputStream input=new FileInputStream(MailSender.file(uploads(c,login),entry.getString("token")))){File copy=AttachmentFiles.copy(input,directory,entry.optString("name"),AttachmentFiles.MAX_BYTES);try(RandomAccessFile durable=new RandomAccessFile(copy,"rw")){durable.getFD().sync();}entry.put("token",copy.getName()).put("size",copy.length());copied.put(entry);}}
             draft.put("attachments",copied).put("scheduledMessageId","<schedule-"+id+"@mail-pilot.local>");
             JSONObject payload=new JSONObject().put("draft",draft).put("from",login.from).put("to",draft.optString("to")).put("subject",draft.optString("subject"));
             ContentValues v=values("pending",at);v.put("id",id);v.put("account",account);v.put("source",source);v.put("due",at);v.put("payload",encode(account,id,payload));d.insertOrThrow("queue",null,v);stored=true;
@@ -83,9 +84,9 @@ final class ScheduledMail {
     static JSONObject returned(Context c,SavedAccounts.Login login,String id)throws Exception{
         if(id==null||!id.matches("[0-9a-f-]{36}"))throw new IllegalArgumentException();String account=NoticeCenter.scope(login);
         synchronized(LOCK){try(SQLiteDatabase d=db(c);Cursor row=d.rawQuery("SELECT payload FROM queue WHERE account=? AND id=? AND state='cancelled'",new String[]{account,id})){
-            if(!row.moveToFirst())throw new IllegalArgumentException();JSONObject p=decode(account,id,row.getBlob(0));if(p.has("returnedDraft"))return new JSONObject().put("draft",p.getJSONObject("returnedDraft"));
+            if(!row.moveToFirst())throw new IllegalArgumentException();JSONObject p=decode(account,id,row.getBlob(0));if(p.has("returnedDraft")){try{ScheduledFiles.verify(uploads(c,login),p.getJSONObject("returnedDraft").optJSONArray("attachments"));return new JSONObject().put("draft",p.getJSONObject("returnedDraft"));}catch(Exception missingReturnedFiles){p.remove("returnedDraft");}}
             if(!p.has("draft"))throw new IllegalStateException("Draft already returned");
-            JSONObject restored=new JSONObject(p.getJSONObject("draft").toString());JSONArray entries=restored.optJSONArray("attachments"),copies=new JSONArray();List<File> created=new ArrayList<>();boolean committed=false;
+            ScheduledFiles.verify(files(c,account,id),p.getJSONObject("draft").optJSONArray("attachments"));JSONObject restored=new JSONObject(p.getJSONObject("draft").toString());JSONArray entries=restored.optJSONArray("attachments"),copies=new JSONArray();List<File> created=new ArrayList<>();boolean committed=false;
             try{if(entries!=null)for(int i=0;i<entries.length();i++){JSONObject entry=new JSONObject(entries.getJSONObject(i).toString());try(InputStream input=new FileInputStream(MailSender.file(files(c,account,id),entry.getString("token")))){File copy=AttachmentFiles.copy(input,uploads(c,login),entry.optString("name"),AttachmentFiles.MAX_BYTES);created.add(copy);entry.put("token",copy.getName());copies.put(entry);}}
                 restored.put("id",UUID.randomUUID().toString()).put("attachments",copies);restored.remove("serverDraft");restored.remove("serverDraftUnconfirmed");restored.remove("serverDraftAttempted");restored.remove("scheduledMessageId");
                 p.put("returnedDraft",restored);ContentValues v=new ContentValues();v.put("payload",encode(account,id,p));v.put("returned_source",restored.getString("id"));if(d.update("queue",v,"account=? AND id=? AND state='cancelled'",new String[]{account,id})!=1)throw new IllegalStateException();committed=true;
@@ -110,7 +111,7 @@ final class ScheduledMail {
     }}}
     private static PendingIntent alarm(Context c){return PendingIntent.getBroadcast(c,ALARM,new Intent(c,NoticeAlarm.class).setAction(ACTION),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);}
     static boolean reconcile(Context c){try{synchronized(LOCK){try(SQLiteDatabase d=db(c)){
-        recover(d);long next=Long.MAX_VALUE;for(SavedAccounts.Login login:new CredentialVault(c).list())try(Cursor row=d.rawQuery("SELECT min(next) FROM queue WHERE account=? AND state='pending'",new String[]{NoticeCenter.scope(login)})){if(row.moveToFirst()&&!row.isNull(0))next=Math.min(next,row.getLong(0));}
+        recover(d);ScheduledFiles.cleanup(new File(c.getNoBackupFilesDir(),"scheduled-files"),(account,id)->{try(Cursor row=d.rawQuery("SELECT id FROM queue WHERE account=? AND id=?",new String[]{account,id})){return row.moveToFirst();}});long next=Long.MAX_VALUE;for(SavedAccounts.Login login:new CredentialVault(c).list())try(Cursor row=d.rawQuery("SELECT min(next) FROM queue WHERE account=? AND state='pending'",new String[]{NoticeCenter.scope(login)})){if(row.moveToFirst()&&!row.isNull(0))next=Math.min(next,row.getLong(0));}
         AlarmManager alarms=c.getSystemService(AlarmManager.class);alarms.cancel(alarm(c));JobScheduler jobs=c.getSystemService(JobScheduler.class);
         if(next==Long.MAX_VALUE){if(!running.get())jobs.cancel(JOB);return true;}
         long now=System.currentTimeMillis();if(next>now)alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,next,alarm(c));
@@ -136,6 +137,7 @@ final class ScheduledMail {
         try{
             SavedAccounts.Login current=null;for(SavedAccounts.Login saved:new CredentialVault(c).list())if(saved.identity().equals(login.identity()))current=saved;
             if(current==null||stopped.getAsBoolean())throw new IOException("Account unavailable or stopped");final SavedAccounts.Login sender=new SavedAccounts.Login(current.host,current.port,current.user,current.password,current.smtpHost,current.smtpPort,current.smtpSsl,p.optString("from",current.from));
+            ScheduledFiles.verify(files(c,account,id),p.getJSONObject("draft").optJSONArray("attachments"));
             javax.mail.internet.MimeMessage message=MailSender.send(sender,p.getJSONObject("draft"),files(c,account,id),null,()->{
                 synchronized(LOCK){try(SQLiteDatabase d=db(c)){
                     if(stopped.getAsBoolean())throw new IOException("Stopped before SMTP DATA");boolean remembered=false;for(SavedAccounts.Login saved:new CredentialVault(c).list())if(saved.identity().equals(sender.identity()))remembered=true;if(!remembered)throw new IOException("Account removed");
