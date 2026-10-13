@@ -502,3 +502,19 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 #quick-popup.reminder-popup[open]{display:flex;flex-direction:column;overflow:hidden}
 #mail-v2 .reminder-popup .quick-head{position:static;flex:none}
 #mail-v2 .reminder-popup .quick-body{min-height:0;overflow-y:auto;overflow-x:hidden;padding:2px}
+
+/* Unified search follows existing form, directory and compact reader controls. */
+#mail-v2 .smart-filters{margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:12px}
+#mail-v2 .smart-filters summary{min-height:44px;display:list-item;padding-top:10px;cursor:pointer;color:var(--brand)}
+#mail-v2 .smart-dates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#mail-v2 .smart-dates input{min-width:0;width:100%}
+#mail-v2 .smart-section{padding:18px 0;border-bottom:1px solid var(--line)}
+#mail-v2 .smart-result{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;width:100%;white-space:normal;overflow-wrap:anywhere;border-bottom:1px solid var(--line);border-radius:0;padding:12px 4px}
+#mail-v2 .smart-result span,#mail-v2 .smart-result small{color:var(--muted);font-size:13px}
+@media(max-width:600px){#mail-v2 .smart-dates{grid-template-columns:minmax(0,1fr)}}
+
+@media(max-width:360px){#mail-v2 .titlebar h2{font-size:24px}}
+#mail-v2 .text-size-large .smart-result strong{font-size:18px}
+#mail-v2 .text-size-large .smart-result span{font-size:15px}
+
+#mail-v2 .smart-result strong,#mail-v2 .smart-result span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
