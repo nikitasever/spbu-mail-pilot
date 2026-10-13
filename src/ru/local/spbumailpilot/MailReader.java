@@ -125,7 +125,7 @@ final class MailReader implements AutoCloseable {
         profile.add(FetchProfile.Item.FLAGS);
         // JavaMail fetches BODYSTRUCTURE in this batch, without downloading bodies.
         profile.add(FetchProfile.Item.CONTENT_INFO);
-        profile.add(UIDFolder.FetchProfileItem.UID);MailThreadHeaders.fetch(profile);
+        profile.add(UIDFolder.FetchProfileItem.UID);MailThreadHeaders.fetch(profile);profile.add("From");
         if (messages.length > 0) inbox.fetch(messages, profile);
         for (int i = messages.length - 1; i >= 0; --i) {
             Message m = messages[i];
@@ -146,7 +146,7 @@ final class MailReader implements AutoCloseable {
         if(offset==0){filePages=new UidPages(uidSnapshot());fileFolder=name;fileValidity=validity;fileGeneration++;}
         else if(filePages==null||!name.equals(fileFolder)||fileValidity!=validity||!Long.toString(fileGeneration).equals(snapshot))throw new MessagingException("File snapshot changed");
         long[] uids=filePages.page(offset);Message[] found=uids.length==0?new Message[0]:((UIDFolder)inbox).getMessagesByUID(uids);
-        FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add(FetchProfile.Item.CONTENT_INFO);profile.add(UIDFolder.FetchProfileItem.UID);MailThreadHeaders.fetch(profile);if(found.length>0)inbox.fetch(found,profile);
+        FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add(FetchProfile.Item.CONTENT_INFO);profile.add(UIDFolder.FetchProfileItem.UID);MailThreadHeaders.fetch(profile);profile.add("From");if(found.length>0)inbox.fetch(found,profile);
         JSONArray result=new JSONArray();for(int i=found.length-1;i>=0;i--){Message message=found[i];if(message==null||message.isExpunged())continue;
             JSONArray entries=AttachmentIndex.list(message,query);JSONObject info=header(message);
             for(int j=0;j<entries.length();j++){JSONObject entry=entries.getJSONObject(j);entry.put("message",info);result.put(entry);}
@@ -160,6 +160,9 @@ final class MailReader implements AutoCloseable {
         try(java.io.OutputStream raw=new java.io.FileOutputStream(file);java.io.OutputStream bounded=new java.io.FilterOutputStream(raw){long size;public void write(int b)throws java.io.IOException{if(++size>AttachmentFiles.MAX_BYTES)throw new java.io.IOException("Message too large");out.write(b);}public void write(byte[] b,int off,int len)throws java.io.IOException{if((size+=len)>AttachmentFiles.MAX_BYTES)throw new java.io.IOException("Message too large");out.write(b,off,len);}}){message.writeTo(bounded);}catch(Exception e){file.delete();throw e;}
         return new JSONObject().put("file",file.getAbsolutePath()).put("name",AttachmentFiles.safeName(message.getSubject())+".eml").put("mime","message/rfc822");
     }
+    private String senderPersonal(Message message,InternetAddress envelope){
+        try{String[] values=message.getHeader("From");if(values!=null&&values.length>0&&values[0].length()<=8192){InternetAddress[] parsed=InternetAddress.parseHeader(values[0],false);if(parsed.length>0&&envelope.getAddress()!=null&&envelope.getAddress().equalsIgnoreCase(parsed[0].getAddress()))return MimeWords.personal(parsed[0]);}}catch(Exception invalid){}return MimeWords.personal(envelope);
+    }
     private JSONObject header(Message m) throws Exception {
             JSONObject obj = new JSONObject();
             obj.put("uid", Long.toString(((UIDFolder) inbox).getUID(m)));
@@ -172,7 +175,7 @@ final class MailReader implements AutoCloseable {
                 if (from[0] instanceof InternetAddress) {
                     InternetAddress address = (InternetAddress) from[0];
                     email = address.getAddress();
-                    name = address.getPersonal() == null ? email : address.getPersonal();
+                    name = senderPersonal(m,address);
                 } else name = from[0].toString();
             }
             obj.put("sender", name); obj.put("email", email);MailThreadHeaders.add(m,obj);
@@ -225,7 +228,7 @@ final class MailReader implements AutoCloseable {
             for(Address value:values)if(value instanceof InternetAddress){
                 InternetAddress address=(InternetAddress)value;String email=address.getAddress();
                 if(email==null||!email.matches("[^\\s<>@]+@[^\\s<>@]+"))continue;
-                result.put(new JSONObject().put("email",email).put("sender",address.getPersonal()==null?email:address.getPersonal()));
+                result.put(new JSONObject().put("email",email).put("sender",MimeWords.personal(address)));
             }
         }
         return result;
@@ -239,8 +242,8 @@ final class MailReader implements AutoCloseable {
         Message[] found=((UIDFolder)inbox).getMessagesByUID(oldUid+1,UIDFolder.LASTUID);ArrayList<Message> messages=new ArrayList<>();
         for(Message message:found)if(message!=null&&!message.isExpunged()){messages.add(message);high=Math.max(high,((UIDFolder)inbox).getUID(message));}
         int start=Math.max(0,messages.size()-3);Message[] recent=messages.subList(start,messages.size()).toArray(new Message[0]);
-        FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);if(recent.length>0)inbox.fetch(recent,profile);
-        StringBuilder summary=new StringBuilder();for(int i=recent.length-1;i>=0;i--){if(summary.length()>0)summary.append('\n');Address[] from=recent[i].getFrom();String name="",email="";if(from!=null&&from.length>0){if(from[0] instanceof InternetAddress){InternetAddress address=(InternetAddress)from[0];name=address.getPersonal();email=address.getAddress();}else name=from[0].toString();}String sender=MailNotificationText.sender(name,email),subject=MailNotificationText.clean(recent[i].getSubject(),"Без темы",180);summary.append(sender).append(" · ").append(subject);if(i==recent.length-1)result.put("sender",sender).put("email",email).put("subject",subject).put("openUid",Long.toString(((UIDFolder)inbox).getUID(recent[i])));}
+        FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add("From");if(recent.length>0)inbox.fetch(recent,profile);
+        StringBuilder summary=new StringBuilder();for(int i=recent.length-1;i>=0;i--){if(summary.length()>0)summary.append('\n');Address[] from=recent[i].getFrom();String name="",email="";if(from!=null&&from.length>0){if(from[0] instanceof InternetAddress){InternetAddress address=(InternetAddress)from[0];name=senderPersonal(recent[i],address);email=address.getAddress();}else name=from[0].toString();}String sender=MailNotificationText.sender(name,email),subject=MailNotificationText.clean(recent[i].getSubject(),"Без темы",180);summary.append(sender).append(" · ").append(subject);if(i==recent.length-1)result.put("sender",sender).put("email",email).put("subject",subject).put("openUid",Long.toString(((UIDFolder)inbox).getUID(recent[i])));}
 
         return result.put("uid",high).put("count",messages.size()).put("summary",summary.toString());
     }
@@ -258,7 +261,9 @@ final class MailReader implements AutoCloseable {
         }
         return new JSONObject().put("items",items);
     }
-    JSONObject body(String name, String uid, String expectedValidity) throws Exception {
+    JSONObject body(String name,String uid,String validity)throws Exception{return body(name,uid,validity,false);}
+    JSONObject cachedBody(String name,String uid,String validity)throws Exception{return body(name,uid,validity,true);}
+    private JSONObject body(String name, String uid, String expectedValidity,boolean prefetch) throws Exception {
         openFolder(name);
         if (!Long.toString(validity).equals(expectedValidity)) throw new MessagingException("UID validity changed");
         Message m = ((UIDFolder) inbox).getMessageByUID(Long.parseLong(uid));
@@ -266,7 +271,8 @@ final class MailReader implements AutoCloseable {
         FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add(FetchProfile.Item.FLAGS);profile.add(FetchProfile.Item.CONTENT_INFO);MailThreadHeaders.fetch(profile);profile.add("From");
         inbox.fetch(new Message[]{m},profile);
         JSONArray files = new JSONArray();
-        String text = extract(m, files, 0, "root",100000);
+        if(m instanceof com.sun.mail.imap.IMAPMessage)((com.sun.mail.imap.IMAPMessage)m).setPeek(true);
+        String text = extract(m, files, 0, "root",prefetch?24000:100000,prefetch);
         JSONObject info=header(m);String[] rawFrom=m.getHeader("From");if(rawFrom!=null&&rawFrom.length>0)info.put("rawFrom",rawFrom[0]);
         return new JSONObject().put("uid", uid).put("text", text).put("attachments", files).put("message", info).put("phones",new JSONArray(PhoneNumbers.find(text)));
     }
@@ -293,8 +299,9 @@ final class MailReader implements AutoCloseable {
         if(chosen==null)throw new MessagingException("Sent folder not found");
         message.setFlag(Flags.Flag.SEEN,true);chosen.appendMessages(new Message[]{message});
     }
-    private String extract(Part part, JSONArray files, int depth, String path,int budget) throws Exception {
+    private String extract(Part part, JSONArray files, int depth, String path,int budget,boolean prefetch) throws Exception {
         if (depth > 12) return "";
+        if(prefetch&&part.isMimeType("message/rfc822")){String forwardName=part.getFileName();files.put(new JSONObject().put("name",forwardName==null?"Пересланное письмо.eml":AttachmentNames.decode(forwardName)).put("size",part.getSize()).put("path",path));return "";}
         String name = part.getFileName();
         if (name != null || Part.ATTACHMENT.equalsIgnoreCase(part.getDisposition())) {
             files.put(new JSONObject().put("name", name == null ? "Вложение" : AttachmentNames.decode(name)).put("size", part.getSize()).put("path",path));
@@ -309,17 +316,17 @@ final class MailReader implements AutoCloseable {
         if (part.isMimeType("multipart/*")) {
             Multipart multi = (Multipart) part.getContent();
             if (part.isMimeType("multipart/alternative")) {
-                for (int i = 0; i < multi.getCount(); i++) if (multi.getBodyPart(i).isMimeType("text/plain")) return extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)),budget);
-                for (int i = multi.getCount() - 1; i >= 0; i--) if (multi.getBodyPart(i).isMimeType("text/html")) return extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)),budget);
+                for (int i = 0; i < multi.getCount(); i++) if (multi.getBodyPart(i).isMimeType("text/plain")) return extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)),budget,prefetch);
+                for (int i = multi.getCount() - 1; i >= 0; i--) if (multi.getBodyPart(i).isMimeType("text/html")) return extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)),budget,prefetch);
             }
             StringBuilder text = new StringBuilder();
             for (int i = 0; i < multi.getCount() && i < 80; i++) {
-                String value = extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)),Math.max(0,budget-text.length()));
+                String value = extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)),Math.max(0,budget-text.length()),prefetch);
                 if (!value.isEmpty()) { if (text.length() > 0) text.append("\n\n"); text.append(value); }
             }
             return limit(text.toString());
         }
-        if (part.isMimeType("message/rfc822")) return extract((Part) part.getContent(), files, depth + 1, AttachmentParts.child(path,"m"),budget);
+        if (part.isMimeType("message/rfc822")) return extract((Part) part.getContent(), files, depth + 1, AttachmentParts.child(path,"m"),budget,prefetch);
         return "";
     }
     JSONObject attachment(String folder,String uid,String expectedValidity,String path,java.io.File directory)throws Exception{
