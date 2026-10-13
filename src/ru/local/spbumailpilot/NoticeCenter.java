@@ -123,6 +123,7 @@ final class NoticeCenter {
     }catch(Exception unavailable){/* Delivery is recorded even if notifications are disabled. */}}
     static void test(Context context){channels(context);post(context,MAIL,"test","Уведомления включены","Это тестовое уведомление почтового приложения.");}
     static void seed(Context context,SavedAccounts.Login login,MailReader reader)throws Exception{
+        if(MailWidget.installed(context))MailWidget.record(context,login,reader.unread(new JSONObject()));
         SharedPreferences record=context.getSharedPreferences("notices-"+scope(login),Context.MODE_PRIVATE);
         if(!record.contains("validity")){JSONObject baseline=reader.arrivals(null,0);record.edit().putString("validity",baseline.getString("validity")).putLong("uid",baseline.getLong("uid")).apply();}
     }
@@ -163,6 +164,7 @@ final class NoticeCenter {
                 SavedAccounts.Login remembered=null;
                 for(SavedAccounts.Login current:vault.list())if(current.identity().equals(login.identity())){remembered=current;break;}
                 if(remembered==null||!remembered.password.equals(login.password)||!mailEnabled(context,remembered,continuous))return;
+                if(MailWidget.installed(context))MailWidget.record(context,login,reader.unread(update));
                 int count=update.getInt("count");
                 MailNoticeTarget target=MailNoticeTarget.parse(new JSONObject().put("account",scope(login)).put("uid",update.optString("openUid")).put("validity",update.getString("validity")).toString());
                 if(count>0&&!post(context,MAIL,scope(login)+"/mail",MailNotificationText.title(update),MailNotificationText.text(update,login.user),target,login.user))return;
