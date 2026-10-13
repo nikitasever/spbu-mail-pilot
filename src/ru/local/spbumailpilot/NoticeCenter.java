@@ -107,8 +107,8 @@ final class NoticeCenter {
             String account=scope(login);JSONObject data=new JSONObject(state(context,login).getString("state","{}"));
             SharedPreferences record=context.getSharedPreferences("notices-"+account,Context.MODE_PRIVATE);
             Set<String> sent=new HashSet<>(record.getStringSet("snoozes",Collections.emptySet()));
-            MailSnooze.Plan plan=MailSnooze.plan(data.optJSONArray("snoozedMail"),account,sent,now);next=Math.min(next,plan.next);
-            for(MailSnooze value:plan.due)if(post(context,SNOOZE,account+"/snooze/"+value.key,value.sender,"Отложенное письмо · "+value.subject,value.target,login.user))sent.add(value.key);
+            JSONArray personal=new JSONArray();JSONArray responses=data.optJSONArray("responseReminders");for(int i=0;responses!=null&&i<Math.min(500,responses.length());i++)try{personal.put(new JSONObject(responses.getJSONObject(i).toString()).put("personal",true));}catch(Exception invalid){}MailSnooze.Plan plan=MailSnooze.plan(data.optJSONArray("snoozedMail"),account,sent,now),responsePlan=MailSnooze.plan(personal,account,sent,now);plan.due.addAll(responsePlan.due);plan.current.addAll(responsePlan.current);plan.next=Math.min(plan.next,responsePlan.next);next=Math.min(next,plan.next);
+            for(MailSnooze value:plan.due)if(post(context,SNOOZE,account+"/snooze/"+value.key,value.sender,(value.personal?"Пора ответить · ":"Отложенное письмо · ")+value.subject,value.target,login.user))sent.add(value.key);
             for(String key:new HashSet<>(sent))if(!plan.current.contains(key)){context.getSystemService(NotificationManager.class).cancel(account+"/snooze/"+key,1);sent.remove(key);}
             record.edit().putStringSet("snoozes",sent).commit();
         }catch(Exception unavailable){/* One unavailable mailbox must not suppress other reminders. */}
@@ -162,12 +162,12 @@ final class NoticeCenter {
             try(MailReader reader=new MailReader()){
                 if(stopped.get())return;
                 reader.connect(login.host,login.port,login.user,login.password);
-                JSONObject update=reader.arrivals(oldValidity,oldUid);if(stopped.get())return;
+                MailCategories categories=new MailCategories(new JSONObject(state(context,login).getString("state","{}")).optJSONArray("mailCategories"));JSONObject update=reader.arrivals(oldValidity,oldUid,categories.hasMuted());if(stopped.get())return;
                 SavedAccounts.Login remembered=null;
                 for(SavedAccounts.Login current:vault.list())if(current.identity().equals(login.identity())){remembered=current;break;}
                 if(remembered==null||!remembered.password.equals(login.password)||!mailEnabled(context,remembered,continuous))return;
                 if(MailWidget.installed(context))MailWidget.record(context,login,reader.unread(update));
-                int count=update.getInt("count");
+                update=new MailCategories(new JSONObject(state(context,remembered).getString("state","{}")).optJSONArray("mailCategories")).filter(update);int count=update.getInt("count");
                 MailNoticeTarget target=MailNoticeTarget.parse(new JSONObject().put("account",scope(login)).put("uid",update.optString("openUid")).put("validity",update.getString("validity")).toString());
                 if(count>0&&!post(context,MAIL,scope(login)+"/mail",MailNotificationText.title(update),MailNotificationText.text(update,login.user),target,login.user))return;
                 record.edit().putString("validity",update.getString("validity")).putLong("uid",update.getLong("uid")).apply();

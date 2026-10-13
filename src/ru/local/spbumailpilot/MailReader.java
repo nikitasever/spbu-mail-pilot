@@ -233,7 +233,21 @@ final class MailReader implements AutoCloseable {
         }
         return result;
     }
-    JSONObject arrivals(String oldValidity,long oldUid)throws Exception{
+    JSONObject moveMail(String folder,String uid,String expectedValidity,String kind)throws Exception{
+        if(!"archive".equals(kind)&&!"trash".equals(kind))throw new java.io.IOException("Некорректное действие.");
+        openFolder(folder);if(!Long.toString(validity).equals(expectedValidity))throw new java.io.IOException("Папка изменилась. Обновите список.");
+        long id=Long.parseLong(uid);Message message=((UIDFolder)inbox).getMessageByUID(id);if(message==null||message.isExpunged())throw new java.io.IOException("Письмо отсутствует. Обновите список.");
+        if(!((com.sun.mail.imap.IMAPStore)store).hasCapability("MOVE"))throw new java.io.IOException("Сервер не поддерживает безопасное перемещение MOVE. Откройте веб-почту.");
+        Folder destination=null;String attribute="trash".equals(kind)?"\\Trash":"\\Archive";String[] names="trash".equals(kind)?new String[]{"Trash","Deleted Items","Корзина"}:new String[]{"Archive","Archives","Архив"};
+        Folder[] candidates=store.getDefaultFolder().list("*");for(Folder candidate:candidates)if(candidate instanceof IMAPFolder)for(String flag:((IMAPFolder)candidate).getAttributes())if(attribute.equalsIgnoreCase(flag))destination=candidate;
+        if(destination==null)for(String name:names){Folder candidate=store.getFolder(name);if(candidate.exists()&&(candidate.getType()&Folder.HOLDS_MESSAGES)!=0){destination=candidate;break;}}
+        if(destination==null||destination.getFullName().equals(folder))throw new java.io.IOException("Папка назначения не найдена или письмо уже в ней. Используйте веб-почту.");
+        String name=destination.getFullName();inbox.close(false);inbox.open(Folder.READ_WRITE);validity=((UIDFolder)inbox).getUIDValidity();
+        if(!Long.toString(validity).equals(expectedValidity)){inbox.close(false);inbox.open(Folder.READ_ONLY);validity=((UIDFolder)inbox).getUIDValidity();throw new java.io.IOException("Папка изменилась. Обновите список.");}
+        try{message=((UIDFolder)inbox).getMessageByUID(id);if(message==null||message.isExpunged())throw new java.io.IOException("Письмо отсутствует.");((IMAPFolder)inbox).moveMessages(new Message[]{message},destination);return new JSONObject().put("moved",true).put("destination",name);}finally{if(inbox!=null&&inbox.isOpen()){inbox.close(false);inbox.open(Folder.READ_ONLY);validity=((UIDFolder)inbox).getUIDValidity();}}
+    }
+    JSONObject arrivals(String oldValidity,long oldUid)throws Exception{return arrivals(oldValidity,oldUid,false);}
+    JSONObject arrivals(String oldValidity,long oldUid,boolean categoryFiltering)throws Exception{
         openFolder("INBOX");String current=Long.toString(validity);
         long next=((IMAPFolder)inbox).getUIDNext(),high=next>0?next-1:0;
         if(next<=0){long[] all=uidSnapshot();for(long uid:all)high=Math.max(high,uid);}
@@ -241,11 +255,11 @@ final class MailReader implements AutoCloseable {
         if(!ReminderPolicy.newMail(oldValidity,oldUid,current,high))return result;
         Message[] found=((UIDFolder)inbox).getMessagesByUID(oldUid+1,UIDFolder.LASTUID);ArrayList<Message> messages=new ArrayList<>();
         for(Message message:found)if(message!=null&&!message.isExpunged()){messages.add(message);high=Math.max(high,((UIDFolder)inbox).getUID(message));}
-        int start=Math.max(0,messages.size()-3);Message[] recent=messages.subList(start,messages.size()).toArray(new Message[0]);
+        int start=Math.max(0,messages.size()-(categoryFiltering?500:3));Message[] recent=messages.subList(start,messages.size()).toArray(new Message[0]);
         FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add("From");if(recent.length>0)inbox.fetch(recent,profile);
-        StringBuilder summary=new StringBuilder();for(int i=recent.length-1;i>=0;i--){if(summary.length()>0)summary.append('\n');Address[] from=recent[i].getFrom();String name="",email="";if(from!=null&&from.length>0){if(from[0] instanceof InternetAddress){InternetAddress address=(InternetAddress)from[0];name=senderPersonal(recent[i],address);email=address.getAddress();}else name=from[0].toString();}String sender=MailNotificationText.sender(name,email),subject=MailNotificationText.clean(recent[i].getSubject(),"Без темы",180);summary.append(sender).append(" · ").append(subject);if(i==recent.length-1)result.put("sender",sender).put("email",email).put("subject",subject).put("openUid",Long.toString(((UIDFolder)inbox).getUID(recent[i])));}
+        JSONArray noticeMessages=new JSONArray();StringBuilder summary=new StringBuilder();for(int i=recent.length-1;i>=0;i--){if(summary.length()>0)summary.append('\n');Address[] from=recent[i].getFrom();String name="",email="";if(from!=null&&from.length>0){if(from[0] instanceof InternetAddress){InternetAddress address=(InternetAddress)from[0];name=senderPersonal(recent[i],address);email=address.getAddress();}else name=from[0].toString();}String sender=MailNotificationText.sender(name,email),subject=MailNotificationText.clean(recent[i].getSubject(),"Без темы",180);noticeMessages.put(new JSONObject().put("sender",sender).put("email",email).put("subject",subject).put("uid",Long.toString(((UIDFolder)inbox).getUID(recent[i]))));if(i>=recent.length-3)summary.append(sender).append(" · ").append(subject);if(i==recent.length-1)result.put("sender",sender).put("email",email).put("subject",subject).put("openUid",Long.toString(((UIDFolder)inbox).getUID(recent[i])));}
 
-        return result.put("uid",high).put("count",messages.size()).put("summary",summary.toString());
+        JSONArray ascending=new JSONArray();for(int i=noticeMessages.length()-1;i>=0;i--)ascending.put(noticeMessages.get(i));return result.put("uid",high).put("count",messages.size()).put("summary",summary.toString().trim()).put("noticeMessages",ascending);
     }
     JSONObject previews(String name,JSONArray refs)throws Exception {
         if(refs.length()>5)throw new IllegalArgumentException("Too many previews");
