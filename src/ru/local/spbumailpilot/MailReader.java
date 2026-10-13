@@ -59,6 +59,10 @@ final class MailReader implements AutoCloseable {
         folderName = name;
         validity = ((UIDFolder) inbox).getUIDValidity();
     }
+    JSONObject unread(JSONObject result){
+        try{int count=store.getFolder("INBOX").getUnreadMessageCount();if(count>=0)result.put("unread",count);}catch(Exception unavailable){/* Never infer zero on a failed STATUS command. */}
+        return result;
+    }
     JSONArray folders() throws Exception {
         JSONArray result = new JSONArray();
         ArrayList<String> names = new ArrayList<>();

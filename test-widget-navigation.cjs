@@ -1,0 +1,11 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),{parseHTML}=require('linkedom');
+const {document,window}=parseHTML(fs.readFileSync(__dirname+'/assets/index.html','utf8'));let fail=false,saved={tasks:[],notes:[],events:[]},sent=0;const calls=[];
+window.setTimeout=()=>1;window.clearTimeout=()=>{};
+const reply=(r,data)=>window.onNativeResult({request:r,...data});
+const Pilot={account:()=> 'fixture@example.invalid',loadState:()=>JSON.stringify(saved),saveState:j=>{if(fail)return false;saved=JSON.parse(j);return true;},folders:r=>reply(r,{folders:['INBOX']}),page:(folder,offset,snap,r)=>{calls.push(folder);reply(r,{messages:[],total:0,nextOffset:0,hasMore:false});},calendars:(month,refresh,r)=>reply(r,{calendars:[],events:[]}),send:()=>sent++};
+vm.runInNewContext(fs.readFileSync(__dirname+'/assets/app.js','utf8'),{document,window,Pilot,lucide:{createIcons(){}},console});const root=document.getElementById('mail-v2');
+const click=s=>{const el=root.querySelector(s);assert.ok(el,s);el.dispatchEvent(new window.Event('click',{bubbles:true}));};
+assert.equal(window.openWidgetFromNotification('bogus'),false);assert.equal(window.openWidgetFromNotification('calendar'),true);assert.ok(root.querySelector('[data-action="calendar-view"]'));
+assert.equal(window.openWidgetFromNotification('mail'),true);assert.equal(calls.at(-1),'INBOX');click('[data-action="compose"]');const body=root.querySelector('[name="body"]');body.value='Важный несохранённый ответ';body.dispatchEvent(new window.Event('input',{bubbles:true}));fail=true;
+assert.equal(window.openWidgetFromNotification('calendar'),false,'failed draft persistence blocks widget navigation');assert.ok(root.querySelector('[name="body"]'));fail=false;assert.equal(window.openWidgetFromNotification('calendar'),true);assert.ok(saved.drafts.some(d=>d.body==='Важный несохранённый ответ'));assert.equal(sent,0);
+console.log('PASS: widget routes only to mail/calendar, opens INBOX, preserves composer, blocks failed saves and performs no SMTP.');

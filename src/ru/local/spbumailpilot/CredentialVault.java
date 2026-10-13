@@ -51,6 +51,7 @@ final class CredentialVault {
         try {
             String encrypted=Base64.encodeToString(SessionSecret.encrypt(key(true),plain),Base64.NO_WRAP);
             if(!prefs.edit().putString("encrypted",encrypted).commit()) throw new IllegalStateException("Cannot persist login");
+            MailWidget.request(context);
         } finally {Arrays.fill(plain,(byte)0);}
     }
     private SavedAccounts read() throws Exception {
@@ -67,10 +68,11 @@ final class CredentialVault {
     SavedAccounts.Login load()throws Exception{return read().active();}
     ArrayList<SavedAccounts.Login> list()throws Exception{return read().list();}
     void deactivate()throws Exception{SavedAccounts accounts=read();accounts.deactivate();write(accounts);}
-    void remove(SavedAccounts.Login login)throws Exception{ScheduledMail.forget(context,login);OfflineMailStore.delete(context,login);SavedAccounts accounts=read();accounts.remove(login);if(accounts.list().isEmpty())clear();else write(accounts);}
+    void remove(SavedAccounts.Login login)throws Exception{ScheduledMail.forget(context,login);OfflineMailStore.delete(context,login);SavedAccounts accounts=read();accounts.remove(login);if(accounts.list().isEmpty())clear();else write(accounts);MailWidget.forget(context,login);}
     void clear() throws Exception {
-        ScheduledMail.forgetAll(context);OfflineMailStore.deleteAll(context);
+        SavedAccounts removed=read();ScheduledMail.forgetAll(context);OfflineMailStore.deleteAll(context);
         if(!prefs.edit().clear().commit())throw new IllegalStateException("Cannot remove login");
+        for(SavedAccounts.Login login:removed.list())MailWidget.forget(context,login);MailWidget.request(context);
         KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
         if(store.containsAlias(ALIAS))store.deleteEntry(ALIAS);
     }
