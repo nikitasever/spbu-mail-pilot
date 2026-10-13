@@ -497,3 +497,8 @@ html.day-overlay { overflow-y:hidden; }
 
 #mail-v2 .scheduled-list strong,#mail-v2 .scheduled-list p{overflow-wrap:anywhere}
 #mail-v2 .scheduled-list button{min-height:44px;white-space:normal}
+
+/* Reminder forms share a fixed header and one body scroller; focused date controls never pass behind the title. */
+#mail-v2 #quick-popup.reminder-popup[open]{display:flex;flex-direction:column;overflow:hidden}
+#mail-v2 .reminder-popup .quick-head{position:static;flex:none}
+#mail-v2 .reminder-popup .quick-body{min-height:0;overflow-y:auto;overflow-x:hidden;padding:2px}

@@ -1,0 +1,20 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),{parseHTML}=require('linkedom');
+let clock=Date.parse('2026-10-13T08:00:00Z');class Clock extends Date{constructor(...args){super(...(args.length?args:[clock]));}static now(){return clock;}}
+function app(saved={tasks:[],notes:[],events:[]},messageId='<source@example.invalid>',statuses=[]){
+ const {document,window}=parseHTML(fs.readFileSync(__dirname+'/assets/index.html','utf8'));let fail=false,send=0,seen=0;const timers=new Map();let tick=0;
+ window.setTimeout=fn=>{timers.set(++tick,fn);return tick;};window.clearTimeout=id=>timers.delete(id);
+ const m={folder:'INBOX',uid:'42',validity:'7',subject:'Тема <img src=x>',sender:'Автор',email:'sender@example.invalid',seen:true,messageId};
+ const reply=(r,data)=>window.onNativeResult({request:r,...data});
+ const Pilot={account:()=> 'fixture@example.invalid',loadState:()=>JSON.stringify(saved),saveState:j=>{if(fail)return false;saved=JSON.parse(j);return true;},notificationsAllowed:()=>false,replyReminderStatuses:()=>JSON.stringify(statuses),folders:r=>reply(r,{folders:['INBOX','Архив']}),page:(f,o,s,r)=>reply(r,{messages:[{...m,folder:f}],total:1,nextOffset:1,hasMore:false}),body:(f,u,v,r)=>reply(r,{message:{...m,folder:f,uid:u,validity:v},text:'Текст',attachments:[]}),seen:()=>seen++,send:()=>send++};
+ vm.runInNewContext(fs.readFileSync(__dirname+'/assets/app.js','utf8'),{document,window,Pilot,lucide:{createIcons(){}},console,Date:Clock});const root=document.getElementById('mail-v2');
+ const click=s=>{const el=root.querySelector(s);assert.ok(el,s);el.dispatchEvent(new window.Event('click',{bubbles:true}));};const input=v=>{const el=root.querySelector('[name="snooze-at"]');el.value=v;el.dispatchEvent(new window.Event('input',{bubbles:true}));};
+ return {root,window,click,input,timers,get saved(){return saved;},set fail(v){fail=v;},get send(){return send;},get seen(){return seen;}};
+}
+
+const a=app();a.click('[data-action="open"]');a.click('[data-action="reply-reminder"]');assert.ok(a.root.textContent.includes('Без интернета проверка откладывается'));a.input('2020-01-01T09:00');a.click('[data-action="save-snooze"]');assert.equal(a.root.querySelector('[name="snooze-at"]').getAttribute('aria-invalid'),'true');
+a.click('[data-action="snooze-preset"][data-id="4320"]');a.fail=true;a.click('[data-action="save-snooze"]');assert.equal(a.saved.replyReminders?.length||0,0);a.fail=false;a.click('[data-action="save-snooze"]');assert.equal(a.saved.replyReminders.length,1);assert.equal(a.saved.replyReminders[0].at,clock+3*86400000);assert.equal(a.saved.replyReminders[0].messageId,'<source@example.invalid>');a.click('[data-action="back"]');assert.equal(a.root.querySelectorAll('.mail-row').length,1);assert.equal(a.root.querySelector('img'),null);
+a.click('[data-action="open-reply-reminder"]');a.click('[data-action="reply-reminder"]');a.click('[data-action="snooze-preset"][data-id="1440"]');a.click('[data-action="save-snooze"]');assert.equal(a.saved.replyReminders.length,1);assert.equal(a.saved.replyReminders[0].at,clock+86400000);
+const b=app(a.saved);b.click('[data-action="open-reply-reminder"]');b.fail=true;b.click('[data-action="cancel-reply-reminder"]');assert.equal(b.saved.replyReminders.length,1);b.fail=false;b.click('[data-action="cancel-reply-reminder"]');assert.equal(b.saved.replyReminders.length,0);assert.equal(a.send+b.send+a.seen+b.seen,0);
+const missing=app(undefined,'');missing.click('[data-action="open"]');missing.click('[data-action="reply-reminder"]');assert.equal(missing.root.querySelectorAll('dialog').length,0);assert.ok(missing.root.textContent.includes('Проверка ответа недоступна'));
+const answered=app(a.saved,undefined,a.saved.replyReminders.map(x=>({...x,status:'answered'})));assert.ok(answered.root.textContent.includes('Ответ найден'));
+console.log('PASS: follow-up custom/presets, save rollback, restore/replacement/cancel, safe subject, mail stays visible, no SMTP/read flag side effects.');

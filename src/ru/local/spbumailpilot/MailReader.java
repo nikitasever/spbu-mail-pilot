@@ -59,6 +59,18 @@ final class MailReader implements AutoCloseable {
         folderName = name;
         validity = ((UIDFolder) inbox).getUIDValidity();
     }
+    boolean hasReply(String id,String ownAddress)throws Exception{
+        if(!ReplyReminder.validId(id))throw new MessagingException("Invalid reply identity");
+        openFolder("INBOX");
+        Message[] candidates=inbox.search(new javax.mail.search.OrTerm(new javax.mail.search.HeaderTerm("In-Reply-To",id),new javax.mail.search.HeaderTerm("References",id)));
+        if(candidates.length>2000)throw new MessagingException("Too many reply candidates");
+        FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add("In-Reply-To");profile.add("References");inbox.fetch(candidates,profile);
+        for(Message candidate:candidates){if(candidate==null||candidate.isExpunged())continue;
+            boolean other=false;Address[] from=candidate.getFrom();if(from!=null)for(Address address:from)if(address instanceof InternetAddress&&!((InternetAddress)address).getAddress().equalsIgnoreCase(ownAddress))other=true;
+            if(!other)continue;
+            for(String name:new String[]{"In-Reply-To","References"}){String[] values=candidate.getHeader(name);if(values!=null)for(String value:values)if(ReplyReminder.references(value,id))return true;}
+        }return false;
+    }
     JSONObject unread(JSONObject result){
         try{int count=store.getFolder("INBOX").getUnreadMessageCount();if(count>=0)result.put("unread",count);}catch(Exception unavailable){/* Never infer zero on a failed STATUS command. */}
         return result;
