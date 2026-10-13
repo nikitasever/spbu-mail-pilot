@@ -14,6 +14,7 @@ public final class WidgetAgendaTest {
   result=WidgetAgenda.entries(new JSONArray().put(span).put(span),null,now);check(result.size()==1&&result.get(0).label.startsWith("Продолжается"));
   result=WidgetAgenda.entries(new JSONArray().put(event("ended","2026-10-30","").put("allDay",true).put("endDate","2026-10-31")),null,now);check(result.isEmpty());
   result=WidgetAgenda.entries(new JSONArray().put(span).put(new JSONObject(span.toString()).put("calendarId","two")),null,now);check(result.size()==2);
+  result=WidgetAgenda.entries(new JSONArray().put(event("last","2026-11-06","10:00")).put(event("outside","2026-11-07","10:00")),null,now);check(result.size()==1&&result.get(0).title.contains("last"));
   check(WidgetAgenda.entries(null,null,now).isEmpty());check(WidgetAgenda.checked(0,now).contains("Откройте"));check(WidgetAgenda.checked(now+3600000,now).contains("Откройте"));check(WidgetAgenda.checked(now,now).equals("Проверено 12:00 · МСК"));check(WidgetAgenda.checked(now-86400000,now).contains("30 окт"));
   check(!WidgetAgenda.clean("Название\n\r\t",180).contains("\n"));check(WidgetAgenda.clean(String.join("",Collections.nCopies(100,"😀")),5).codePointCount(0,WidgetAgenda.clean(String.join("",Collections.nCopies(100,"😀")),5).length())<=6);
   System.out.println("PASS: widget agenda ignores malformed/completed/expired entries, includes ongoing/all-day and next-month events, deduplicates per calendar, bounds rows and honestly dates the saved unread count.");

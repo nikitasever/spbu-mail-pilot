@@ -75,7 +75,12 @@ public final class MailWidget extends AppWidgetProvider {
             views.setViewVisibility(res(c,"id","widget_empty"),entries.isEmpty()?View.VISIBLE:View.GONE);
             int height=manager.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,220);float scale=c.getResources().getConfiguration().fontScale;
             int capacity=Math.max(0,Math.min(3,(int)((height-145*scale)/(48*scale))));
-            if(capacity==0){text(c,views,"widget_empty","Открыть календарь");views.setViewVisibility(res(c,"id","widget_empty"),View.VISIBLE);views.setViewVisibility(res(c,"id","widget_checked"),View.GONE);views.setViewVisibility(res(c,"id","widget_footer"),View.GONE);}
+            // Hosts may reapply onto the old layout: explicitly restore both visibility states.
+            views.setViewVisibility(res(c,"id","widget_checked"),capacity==0?View.GONE:View.VISIBLE);
+            views.setViewVisibility(res(c,"id","widget_footer"),capacity==0?View.GONE:View.VISIBLE);
+            views.setViewVisibility(res(c,"id","widget_agenda"),capacity==0?View.GONE:View.VISIBLE);
+            views.setViewVisibility(res(c,"id","widget_title"),scale>1.5f&&height<300?View.GONE:View.VISIBLE);
+            if(capacity==0){text(c,views,"widget_empty","Открыть календарь");views.setViewVisibility(res(c,"id","widget_empty"),View.VISIBLE);}
             for(int n=0;n<3;n++){
                 String name="widget_event"+(n+1);boolean visible=n<entries.size()&&n<capacity;views.setViewVisibility(res(c,"id",name),visible?View.VISIBLE:View.GONE);
                 if(visible){WidgetAgenda.Entry e=entries.get(n);text(c,views,name,e.label+"\n"+e.title);views.setContentDescription(res(c,"id",name),e.label+", "+e.title);}

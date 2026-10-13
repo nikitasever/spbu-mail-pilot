@@ -27,7 +27,7 @@ final class WidgetAgenda {
                 if(group==1){if(allDay)end=date.plusDays(1).atStartOfDay(ZONE).toInstant().toEpochMilli();}
                 else if(allDay){LocalDate endDate=value.optString("endDate").isEmpty()?date.plusDays(1):LocalDate.parse(value.getString("endDate"));end=endDate.atStartOfDay(ZONE).toInstant().toEpochMilli();}
                 else if(!value.optString("endTime").isEmpty()){LocalDate endDate=value.optString("endDate").isEmpty()?date:LocalDate.parse(value.getString("endDate"));end=endDate.atTime(LocalTime.parse(value.getString("endTime"))).atZone(ZONE).toInstant().toEpochMilli();}
-                if(end<now||date.isAfter(today.plusDays(7)))continue;
+                if(end<now||!date.isBefore(today.plusDays(7)))continue;
                 String key=group+"/"+value.optString("calendarId")+"/"+value.optString("id")+"/"+date+"/"+time;
                 if(!seen.add(key))continue;
                 String day=date.isBefore(today)?"Продолжается":date.equals(today)?"Сегодня":date.equals(today.plusDays(1))?"Завтра":date.format(DateTimeFormatter.ofPattern("d MMM",new Locale("ru")));
