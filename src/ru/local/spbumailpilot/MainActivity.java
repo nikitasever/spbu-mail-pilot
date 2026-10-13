@@ -90,6 +90,9 @@ public final class MainActivity extends Activity {
         pendingMail=MailNoticeTarget.parse(getIntent().getStringExtra("openMail"));
         restoreLogin();
     }
+    private String appVersion(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception unavailable){return "—";}}
+    boolean mailSurface(){return web!=null&&mailPageReady&&web.getParent()!=null;}
+    void appLockChanged(){AppLock.window(this);if(web!=null)web.evaluateJavascript("window.appLockChanged&&window.appLockChanged()",null);resumePendingNavigation();}
     boolean nativeDark(){String mode=local!=null?appearanceMode:getSharedPreferences("appearance",MODE_PRIVATE).getString("theme","system");return AppearancePolicy.dark(AppearancePolicy.mode(mode),(getResources().getConfiguration().uiMode&android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES);}
     private void loadAppearance(){try{JSONObject settings=new JSONObject(local.getString("state","{}")).optJSONObject("settings");appearanceMode=AppearancePolicy.mode(settings==null?"system":settings.optString("theme","system"));}catch(Exception ignored){appearanceMode="system";}}
     private TextView text(String value, int size, int color) {
@@ -113,7 +116,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(NativeUi.context(this,false));scroll.setFillViewport(true);scroll.setBackgroundColor(NativeUi.paper(this));
         LinearLayout box=new LinearLayout(NativeUi.context(this,false));box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(24),dp(28),dp(24),dp(24));scroll.addView(box);setContentView(scroll);
         TextView heading=text("Рабочая почта",29,0xff29262e);heading.setTypeface(null,Typeface.BOLD);box.addView(heading);
-        box.addView(text("Тестовая версия 0.39 · реальный ящик",14,0xff8051b1));
+        box.addView(text("Тестовая версия "+appVersion()+" · реальный ящик",14,0xff8051b1));
         box.addView(text("Вход сохранится на этом телефоне в зашифрованном виде. Переключайте ящики без повторного ввода пароля.",15,0xff726d7c));
         box.addView(text("Почтовый сервис",14,0xff726d7c));
         Spinner provider=new Spinner(NativeUi.context(this,false));provider.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"СПбГУ","Mail.ru","Другая почта"}));box.addView(provider);
@@ -134,6 +137,7 @@ public final class MainActivity extends Activity {
         Button connect=NativeUi.button(this,true);connect.setText("Подключить ящик");box.addView(connect,new LinearLayout.LayoutParams(-1,dp(56)));
         box.addView(text("После входа доступны письма, календарь и ваши задачи.",13,0xff726d7c));
         Button accounts=NativeUi.button(this,false);accounts.setText("Сохранённые аккаунты");accounts.setOnClickListener(v->{if(!loginBusy)showAccounts();});box.addView(accounts);
+        if(AppLock.enabled(this)){Button lock=NativeUi.button(this,false);lock.setText("Блокировка приложения");lock.setOnClickListener(v->AppLock.settings(this));box.addView(lock);}
         connect.setOnClickListener(v->{
             if (loginBusy) return;
             String u=user.getText().toString().trim(),h=host.getText().toString().trim(),pw=password.getText().toString();
@@ -294,13 +298,13 @@ public final class MainActivity extends Activity {
     private static String digest(String value)throws Exception{byte[] bytes=MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));StringBuilder out=new StringBuilder();for(byte b:bytes)out.append(String.format("%02x",b));return out.toString();}
     private void showMail() {
         if (closing || isFinishing()) return;
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);NativeUi.bars(this);
-        mailPageReady=false;web=new WebView(this);WebSettings settings=web.getSettings();settings.setJavaScriptEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setDomStorageEnabled(false);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);settings.setBlockNetworkLoads(true);
+        if(AppLock.enabled(this))getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);NativeUi.bars(this);
+        loginScreen=false;mailPageReady=false;web=new WebView(this);WebSettings settings=web.getSettings();settings.setJavaScriptEnabled(true);settings.setAllowFileAccess(false);settings.setAllowContentAccess(false);settings.setDomStorageEnabled(false);settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);settings.setBlockNetworkLoads(true);
         web.setHorizontalScrollBarEnabled(false);web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.addJavascriptInterface(new Bridge(),"Pilot");
         web.setWebChromeClient(new WebChromeClient(){
             @Override public boolean onJsConfirm(WebView view,String url,String message,JsResult result){
-                if(closing||isFinishing()){result.cancel();return true;}
+                if(closing||isFinishing()||AppLock.locked(MainActivity.this)||!resumed){result.cancel();return true;}
                 NativeUi.dialog(MainActivity.this).setTitle("Подтверждение").setMessage(message).setPositiveButton(message.startsWith("Изменения не сохранены.")?"Выйти без сохранения":message.startsWith("Удалить ")?"Удалить":"Отключить",(dialog,which)->result.confirm()).setNegativeButton("Отмена",(dialog,which)->result.cancel()).setOnCancelListener(dialog->result.cancel()).show();return true;
             }
         });
@@ -326,7 +330,7 @@ public final class MainActivity extends Activity {
         }
     }
     private void smtpSettings(){
-        if(sessionLogin==null)return;
+        if(sessionLogin==null||AppLock.locked(this)||!resumed)return;
         SavedAccounts.Login login=sessionLogin;
         LinearLayout box=new LinearLayout(NativeUi.context(this,false));box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(20),0,dp(20),0);
         EditText host=input(box,"Сервер SMTP",login.smtpHost,InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
@@ -376,6 +380,7 @@ public final class MainActivity extends Activity {
     private java.io.File uploads(SavedAccounts.Login login)throws Exception{return new java.io.File(getFilesDir(),"outgoing/"+NoticeCenter.scope(login));}
     @Override protected void onActivityResult(int requestCode,int resultCode,android.content.Intent data){
         super.onActivityResult(requestCode,resultCode,data);
+        if(AppLock.result(this,requestCode,resultCode))return;
         if(requestCode==74&&batchRequest!=null){String request=batchRequest;SavedAccounts.Login owner=batchOwner;java.util.List<BulkAttachments.Ref> refs=batchRefs;batchRequest=null;batchOwner=null;batchRefs=null;if(owner==null||sessionLogin!=owner){batchCancel.set(true);batchBusy.set(false);return;}if(resultCode!=RESULT_OK||data==null||data.getData()==null||batchCancel.get()){batchBusy.set(false);transferReply(owner,request,new JSONObjectSafe().putValue("cancelled",true));return;}Uri tree=data.getData();worker.execute(()->runAttachmentBatch(owner,request,refs,tree));return;}
 
         if(requestCode==73&&exportRequest!=null){String request=exportRequest,owner=exportOwner;java.io.File file=exportFile;exportRequest=null;exportOwner=null;exportFile=null;
@@ -405,7 +410,7 @@ public final class MainActivity extends Activity {
     }
     @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] results){super.onRequestPermissionsResult(requestCode,permissions,results);if(requestCode==61){BackgroundMailService.reconcile(this,resumed);if(pendingTestNotice&&NoticeCenter.allowed(this))NoticeCenter.test(this);pendingTestNotice=false;worker.execute(()->{try{NoticeCenter.schedule(this);}catch(Exception ignored){}});}}
     @Override protected void onNewIntent(android.content.Intent intent){super.onNewIntent(intent);setIntent(intent);pendingMail=MailNoticeTarget.parse(intent.getStringExtra("openMail"));resumePendingNavigation();}
-    private void resumePendingNavigation(){if(!resumed||closing||web==null||!mailPageReady)return;if(pendingMail!=null){openPendingMail();return;}if(getIntent().hasExtra("openScheduledAccount")){openPendingScheduled();return;}if(getIntent().hasExtra("openWidgetRoute")){openPendingWidget();return;}if(getIntent().getBooleanExtra("openTasks",false))web.evaluateJavascript("window.openTasksFromNotification&&window.openTasksFromNotification()",accepted->{if("true".equals(accepted))getIntent().removeExtra("openTasks");});}
+    private void resumePendingNavigation(){if(!resumed||closing||web==null||!mailPageReady||AppLock.locked(this))return;if(pendingMail!=null){openPendingMail();return;}if(getIntent().hasExtra("openScheduledAccount")){openPendingScheduled();return;}if(getIntent().hasExtra("openWidgetRoute")){openPendingWidget();return;}if(getIntent().getBooleanExtra("openTasks",false))web.evaluateJavascript("window.openTasksFromNotification&&window.openTasksFromNotification()",accepted->{if("true".equals(accepted))getIntent().removeExtra("openTasks");});}
     private void openPendingWidget(){
         String route=getIntent().getStringExtra("openWidgetRoute"),owner=getIntent().getStringExtra("openWidgetAccount");
         if(!("mail".equals(route)||"calendar".equals(route))){getIntent().removeExtra("openWidgetRoute");return;}
@@ -431,7 +436,7 @@ public final class MainActivity extends Activity {
     private void readFailure(String request,Exception error,String message){failure(request,error instanceof AuthenticationFailedException?"Сервер отклонил сохранённый вход. Откройте «Профиль» → «Сменить аккаунт» и добавьте этот ящик с новым паролем.":message);}
     private void openAttachmentFile(String request,JSONObject downloaded,SavedAccounts.Login owner){
         if(closing||web==null||sessionLogin!=owner)return;
-        if(!resumed){failure(request,"Файл загружен. Вернитесь к письму и нажмите «Открыть» снова.");return;}
+        if(!resumed||AppLock.locked(this)){failure(request,"Файл загружен. Вернитесь к письму, разблокируйте приложение и нажмите «Открыть» снова.");return;}
         try{
             java.io.File file=new java.io.File(downloaded.getString("file"));
             java.io.File base=new java.io.File(getCacheDir(),"attachments").getCanonicalFile();if(!base.equals(file.getCanonicalFile().getParentFile()))throw new java.io.IOException("Invalid attachment location");
@@ -453,6 +458,7 @@ public final class MainActivity extends Activity {
     }
     private void chooseExport(String request,JSONObject downloaded,SavedAccounts.Login owner){
         if(closing||sessionLogin!=owner)return;
+        if(AppLock.locked(this)||!resumed){failure(request,"Файл загружен. Разблокируйте приложение и повторите сохранение.");return;}
         if(exportRequest!=null){failure(request,"Сначала завершите сохранение предыдущего файла.");return;}
         try{exportRequest=request;exportOwner=owner.identity();exportFile=new java.io.File(downloaded.getString("file"));
             android.content.Intent intent=new android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).setType(downloaded.getString("mime")).addCategory(android.content.Intent.CATEGORY_OPENABLE).putExtra(android.content.Intent.EXTRA_TITLE,downloaded.getString("name"));startActivityForResult(intent,73);
@@ -460,6 +466,7 @@ public final class MainActivity extends Activity {
     }
     private void calendarReply(SavedAccounts.Login owner,String request,JSONObject result){runOnUiThread(()->{if(!closing&&sessionLogin!=null&&sessionLogin.identity().equals(owner.identity()))reply(request,result);});}
     private void calendarSetup(String month,String request) {
+        if(AppLock.locked(this)||!resumed){failure(request,"Разблокируйте приложение и откройте настройку календаря снова.");return;}
         SavedAccounts.Login owner=sessionLogin;if(owner==null){failure(request,"Войдите в почтовый аккаунт.");return;}
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         ScrollView scroll=new ScrollView(NativeUi.context(this,false));LinearLayout box=new LinearLayout(NativeUi.context(this,false));box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(20),dp(12),dp(20),dp(12));scroll.addView(box);
@@ -479,7 +486,7 @@ public final class MainActivity extends Activity {
         box.addView(text("Подключение привязано к этому почтовому аккаунту. Пароль сохраняется зашифрованно. События сервера доступны для просмотра; локальные записи не отправляются в рабочий календарь.",13,0xff726d7c));
         TextView status=text("",14,0xff9b422b);box.addView(status);
         android.app.AlertDialog dialog=NativeUi.dialog(this).setTitle("Подключить календарь").setView(scroll).setNegativeButton("Отмена",null).setPositiveButton("Продолжить",null).create();
-        final boolean[] submitted={false};dialog.setOnDismissListener(d->{password.getText().clear();if(!loginScreen)getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);if(!submitted[0])try{reply(request,new JSONObject().put("cancelled",true));}catch(Exception ignored){}});dialog.show();
+        final boolean[] submitted={false};dialog.setOnDismissListener(d->{password.getText().clear();if(!loginScreen)AppLock.window(this);if(!submitted[0])try{reply(request,new JSONObject().put("cancelled",true));}catch(Exception ignored){}});dialog.show();
         dialog.getButton(-1).setOnClickListener(v->{
             final String label=title.getText().toString().trim(),address=url.getText().toString().trim(),login=user.getText().toString().trim(),secret=password.getText().toString();
             final boolean manual=mode.getSelectedItemPosition()==2;
@@ -501,11 +508,12 @@ public final class MainActivity extends Activity {
         });
     }
     private void chooseCalendar(SavedAccounts.Login owner,java.util.List<CalendarDiscovery.Calendar> found,String login,String secret,String month,String request){
+        if(AppLock.locked(this)||!resumed){failure(request,"Разблокируйте приложение и подключите календарь снова.");return;}
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         String[] names=new String[found.size()];for(int i=0;i<names.length;i++)names[i]=found.get(i).title;
         final int[] selected={0};final boolean[] submitted={false};
         android.app.AlertDialog picker=NativeUi.dialog(this).setTitle("Выберите календарь").setSingleChoiceItems(names,0,(dialog,index)->selected[0]=index).setNegativeButton("Отмена",null).setPositiveButton("Подключить",null).create();
-        picker.setOnDismissListener(d->{if(!loginScreen)getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);if(!submitted[0])try{reply(request,new JSONObject().put("cancelled",true));}catch(Exception ignored){}});picker.show();
+        picker.setOnDismissListener(d->{if(!loginScreen)AppLock.window(this);if(!submitted[0])try{reply(request,new JSONObject().put("cancelled",true));}catch(Exception ignored){}});picker.show();
         picker.getButton(-1).setOnClickListener(v->{
             if(closing||sessionLogin==null||!sessionLogin.identity().equals(owner.identity())){picker.dismiss();return;}
             CalendarDiscovery.Calendar calendar=found.get(selected[0]);submitted[0]=true;picker.setCancelable(false);picker.getButton(-1).setEnabled(false);picker.getButton(-2).setEnabled(false);picker.setTitle("Загрузка событий…");
@@ -601,7 +609,9 @@ public final class MainActivity extends Activity {
             });
         }
         @JavascriptInterface public void batterySettings(){runOnUiThread(()->{try{startActivity(new android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName())));}catch(Exception error){Toast.makeText(MainActivity.this,"Откройте настройки приложения → Батарея.",Toast.LENGTH_LONG).show();}});}
-        @JavascriptInterface public boolean openTasksRequested(){return getIntent().getBooleanExtra("openTasks",false);}
+        @JavascriptInterface public boolean appLockEnabled(){return AppLock.enabled(MainActivity.this);}
+        @JavascriptInterface public void appLockSettings(){runOnUiThread(()->AppLock.settings(MainActivity.this));}
+        @JavascriptInterface public boolean openTasksRequested(){return !AppLock.locked(MainActivity.this)&&getIntent().getBooleanExtra("openTasks",false);}
         @JavascriptInterface public void smtpSettings(){runOnUiThread(()->MainActivity.this.smtpSettings());}
         @JavascriptInterface public void syncDraft(String json,String request){
             if(offlineSession){failure(request,"Нет подключения. Черновик сохранён на телефоне.");return;}
@@ -720,6 +730,7 @@ public final class MainActivity extends Activity {
             SavedAccounts.Login owner=sessionLogin;worker.execute(()->{try{if(owner==null||sessionLogin!=owner||closing)return;JSONObject downloaded=readWithReconnect(()->reader.attachmentMeasured(name,uid,validity,path,new java.io.File(getCacheDir(),"attachments"),()->closing||sessionLogin!=owner,(bytes,total)->attachmentProgress(owner,request,"download",bytes,total)));runOnUiThread(()->openAttachmentFile(request,downloaded,owner));}catch(Exception error){if(sessionLogin==owner&&!closing)readFailure(request,error,"Не удалось скачать вложение. Проверьте сеть и повторите попытку. Максимальный размер файла — 100 МБ.");}});
         }
         @JavascriptInterface public void geminiSettings(){runOnUiThread(()->{
+            if(AppLock.locked(MainActivity.this)||!resumed)return;
             final AiVault secret=new AiVault(MainActivity.this);EditText input=new EditText(NativeUi.context(MainActivity.this,true));input.setSingleLine(true);input.setHint("API-ключ Gemini");input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);input.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);input.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(512)});
             LinearLayout layout=new LinearLayout(NativeUi.context(MainActivity.this,true));layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(dp(20),dp(10),dp(20),dp(10));TextView hint=new TextView(NativeUi.context(MainActivity.this,true));hint.setText(""+(secret.configured()?"Ключ сохранён. Можно заменить или удалить.\n":"")+"Ключ хранится зашифрованным на телефоне. При открытии умной панели выбранные тексты писем передаются Google Gemini. Вложения не отправляются.");layout.addView(hint);layout.addView(input);CheckBox show=new CheckBox(NativeUi.context(MainActivity.this,true));show.setText("Показать введённый ключ");show.setOnCheckedChangeListener((b,checked)->{input.setTransformationMethod(checked?null:android.text.method.PasswordTransformationMethod.getInstance());input.setSelection(input.length());});layout.addView(show);
             android.app.AlertDialog dialog=NativeUi.dialog(MainActivity.this).setTitle("Gemini · умная сводка").setView(layout).setPositiveButton("Сохранить",null).setNeutralButton("Удалить",null).setNegativeButton("Отмена",null).create();dialog.setOnShowListener(d->{dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.getButton(-1).setOnClickListener(v->{try{secret.save(input.getText().toString());input.setText("");dialog.dismiss();Toast.makeText(MainActivity.this,"Ключ сохранён",Toast.LENGTH_SHORT).show();}catch(Exception invalid){input.setError("Не удалось сохранить ключ. Проверьте значение.");}});dialog.getButton(-3).setOnClickListener(v->{try{secret.remove();gemini.cancel();++digestSerial;input.setText("");dialog.dismiss();}catch(Exception error){input.setError("Не удалось удалить ключ.");}});});dialog.show();

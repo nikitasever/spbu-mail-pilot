@@ -101,6 +101,7 @@ public final class PdfPreviewActivity extends Activity {
         if(uri==null||!validFile){status.setText("Файл недоступен. Вернитесь к письму и откройте вложение снова.");return;}
         try{Intent intent=new Intent(Intent.ACTION_VIEW).setDataAndType(uri,"application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);intent.setClipData(ClipData.newRawUri(title,uri));startActivity(intent);}catch(ActivityNotFoundException missing){status.setText("На телефоне нет другого просмотрщика PDF.");}catch(Exception unavailable){status.setText("Не удалось открыть файл в другом приложении.");}
     }
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);AppLock.result(this,request,result);}
     @Override protected void onSaveInstanceState(Bundle saved){super.onSaveInstanceState(saved);saved.putInt("page",page);saved.putInt("zoom",zoom);saved.putInt("x",horizontal.getScrollX());saved.putInt("y",vertical.getScrollY());}
     @Override protected void onDestroy(){closing=true;++generation;image.setImageDrawable(null);worker.execute(()->{if(renderer!=null){try{renderer.close();}catch(Exception ignored){}renderer=null;}});worker.shutdown();super.onDestroy();}
 }
