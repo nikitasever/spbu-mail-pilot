@@ -26,6 +26,7 @@ final class NoticeCenter {
     static void channels(Context context){
         NotificationManager manager=context.getSystemService(NotificationManager.class);
         manager.createNotificationChannel(new NotificationChannel(MAIL,"Новые письма",NotificationManager.IMPORTANCE_DEFAULT));
+        manager.createNotificationChannel(new NotificationChannel("reply-follow-up","Напомнить ответить",NotificationManager.IMPORTANCE_DEFAULT));
         manager.createNotificationChannel(new NotificationChannel(SNOOZE,"Отложенные письма",NotificationManager.IMPORTANCE_DEFAULT));
         manager.createNotificationChannel(new NotificationChannel(TASKS,"Сроки задач",NotificationManager.IMPORTANCE_DEFAULT));
     }
@@ -70,7 +71,7 @@ final class NoticeCenter {
             if(previous==null||previous.getNetworkType()!=JobInfo.NETWORK_TYPE_ANY)scheduler.schedule(new JobInfo.Builder(JOB,new ComponentName(context,NoticeJob.class)).setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setPeriodic(INTERVAL_MS).setPersisted(true).build());
         }else scheduler.cancel(JOB);
         if(mailEnabled)alarms.setInexactRepeating(AlarmManager.ELAPSED_REALTIME_WAKEUP,android.os.SystemClock.elapsedRealtime()+60*1000L,INTERVAL_MS,mailAlarm(context));else{alarms.cancel(mailAlarm(context));scheduler.cancel(JOB+1);}
-        try{tasks(context);}finally{snoozes(context);}
+        try{tasks(context);}finally{try{snoozes(context);}finally{ReplyReminderCenter.schedule(context);}}
     }
     private static void cancelTasks(Context context,String accountScope){
         SharedPreferences record=context.getSharedPreferences("notices-"+accountScope,Context.MODE_PRIVATE);
@@ -89,7 +90,7 @@ final class NoticeCenter {
         if(target!=null)try{open.setData(android.net.Uri.parse("mailpilot://mail/"+target.account+"/"+target.validity+"/"+target.uid+"/"+android.net.Uri.encode(target.folder)));open.putExtra("openMail",target.encode());}catch(Exception invalid){return false;}
         PendingIntent click=PendingIntent.getActivity(context,channel.equals(TASKS)?2:1,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         Notification publicVersion=new Notification.Builder(context,channel).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle("Почта СПбГУ").setContentText("Новое уведомление").build();
-        Notification.Builder builder=new Notification.Builder(context,channel).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle(title).setContentText(text).setStyle(new Notification.BigTextStyle().bigText(text)).setContentIntent(click).setAutoCancel(true).setOnlyAlertOnce(channel.equals(SNOOZE)).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(publicVersion);
+        Notification.Builder builder=new Notification.Builder(context,channel).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle(title).setContentText(text).setStyle(new Notification.BigTextStyle().bigText(text)).setContentIntent(click).setAutoCancel(true).setOnlyAlertOnce(channel.equals(SNOOZE)||channel.equals("reply-follow-up")).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(publicVersion);
         if(mailbox!=null)builder.setSubText(MailNotificationText.clean(mailbox,"",180));
         Notification notice=builder.build();
         context.getSystemService(NotificationManager.class).notify(tag,1,notice);return true;
@@ -121,6 +122,7 @@ final class NoticeCenter {
         Notification hidden=new Notification.Builder(c,channel).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle("Рабочая почта").setContentText("Результат запланированной отправки").build();
         Notification n=new Notification.Builder(c,channel).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle(title).setContentText(MailNotificationText.clean(subject,"Без темы",300)).setSubText(MailNotificationText.clean(login.user,"",180)).setContentIntent(click).setAutoCancel(true).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(hidden).build();c.getSystemService(NotificationManager.class).notify(account+"/scheduled/"+id,1,n);
     }catch(Exception unavailable){/* Delivery is recorded even if notifications are disabled. */}}
+    static boolean reply(Context c,ReplyReminder item,String mailbox){return post(c,"reply-follow-up",item.target.account+"/reply/"+item.key,item.sender,"Напомнить ответить · Ответ в папке «Входящие» не найден · "+item.subject,item.target,mailbox);}
     static void test(Context context){channels(context);post(context,MAIL,"test","Уведомления включены","Это тестовое уведомление почтового приложения.");}
     static void seed(Context context,SavedAccounts.Login login,MailReader reader)throws Exception{
         if(MailWidget.installed(context))MailWidget.record(context,login,reader.unread(new JSONObject()));
