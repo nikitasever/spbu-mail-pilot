@@ -7,10 +7,10 @@ import java.util.*;
 /** Local reminders: no IMAP moves, flags or SMTP operations. */
 final class MailSnooze {
     static final int MAX=500;
-    final MailNoticeTarget target;final long at;final String sender,subject,key;
-    private MailSnooze(MailNoticeTarget target,long at,String sender,String subject)throws Exception{
-        this.target=target;this.at=at;this.sender=sender;this.subject=subject;
-        byte[] digest=MessageDigest.getInstance("SHA-256").digest((target.encode()+"\n"+at).getBytes(StandardCharsets.UTF_8));
+    final MailNoticeTarget target;final boolean personal;final long at;final String sender,subject,key;
+    private MailSnooze(MailNoticeTarget target,long at,String sender,String subject,boolean personal)throws Exception{
+        this.target=target;this.personal=personal;this.at=at;this.sender=sender;this.subject=subject;
+        byte[] digest=MessageDigest.getInstance("SHA-256").digest((target.encode()+"\n"+at+(personal?"\nreply":"")).getBytes(StandardCharsets.UTF_8));
         StringBuilder k=new StringBuilder();for(byte b:digest)k.append(String.format(Locale.ROOT,"%02x",b&255));key=k.toString();
     }
     static final class Plan {
@@ -29,8 +29,8 @@ final class MailSnooze {
             JSONObject item=items.getJSONObject(i),ref=item.getJSONObject("mail");
             MailNoticeTarget target=MailNoticeTarget.parse(new JSONObject(ref.toString()).put("account",account).toString());
             long at=item.getLong("at");if(target==null||at<=0||at>253402300799000L)continue;
-            MailSnooze value=new MailSnooze(target,at,MailNotificationText.clean(item.optString("sender"),"Неизвестный отправитель",180),MailNotificationText.clean(item.optString("subject"),"Без темы",300));
-            result.put(target.encode(),value);
+            MailSnooze value=new MailSnooze(target,at,MailNotificationText.clean(item.optString("sender"),"Неизвестный отправитель",180),MailNotificationText.clean(item.optString("subject"),"Без темы",300),item.optBoolean("personal",false));
+            result.put(target.encode()+(value.personal?"/reply":""),value);
         }catch(Exception invalid){}return new ArrayList<>(result.values());
     }
 }
