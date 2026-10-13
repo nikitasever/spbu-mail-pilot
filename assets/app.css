@@ -494,3 +494,6 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 [name="snooze-at"]{min-width:0;width:100%;box-sizing:border-box}
 #mail-v2 .snooze-popup .quick-head{position:sticky;top:0;background:var(--paper);z-index:1;padding-block:4px}
 #mail-v2 .snooze-subject{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+
+#mail-v2 .scheduled-list strong,#mail-v2 .scheduled-list p{overflow-wrap:anywhere}
+#mail-v2 .scheduled-list button{min-height:44px;white-space:normal}

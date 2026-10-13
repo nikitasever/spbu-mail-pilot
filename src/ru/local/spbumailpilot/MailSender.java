@@ -5,6 +5,7 @@ import javax.mail.internet.*;
 import org.json.JSONObject;
 
 final class MailSender {
+    interface BeforeSend {void run()throws Exception;}
     static final class Uncertain extends Exception {Uncertain(Exception cause){super(cause);}}
     static java.io.File file(java.io.File directory,String token)throws Exception{
         if(token==null||token.indexOf('/')>=0||token.indexOf('\\')>=0)throw new IllegalArgumentException("Invalid file token");
@@ -13,6 +14,9 @@ final class MailSender {
     }
     static MimeMessage send(SavedAccounts.Login login,JSONObject draft,java.io.File directory)throws Exception{return send(login,draft,directory,null);}
     static MimeMessage send(SavedAccounts.Login login,JSONObject draft,java.io.File directory,TransferMessage.Progress progress)throws Exception{
+        return send(login,draft,directory,progress,()->{});
+    }
+    static MimeMessage send(SavedAccounts.Login login,JSONObject draft,java.io.File directory,TransferMessage.Progress progress,BeforeSend before)throws Exception{
         String protocol=login.smtpSsl?"smtps":"smtp";
         Session session=Session.getInstance(OutgoingMail.properties(login.smtpSsl));session.setDebug(false);
         session.setProvider(new Provider(Provider.Type.TRANSPORT,protocol,login.smtpSsl?"com.sun.mail.smtp.SMTPSSLTransport":"com.sun.mail.smtp.SMTPTransport","Eclipse","1.6.7"));
@@ -21,13 +25,17 @@ final class MailSender {
         Transport transport=session.getTransport(protocol);
         try{
             transport.connect(login.smtpHost,login.smtpPort,login.user,login.password);
-            try{transport.sendMessage(message,message.getAllRecipients());}catch(SendFailedException rejected){throw rejected;}catch(Exception unknown){throw new Uncertain(unknown);}
+            transmit(transport,message,before);
             try{transfer.finish();}catch(Exception ignored){transfer.detach();}return message;
         }finally{try{transport.close();}catch(Exception ignored){}}
     }
+    static void transmit(Transport transport,MimeMessage message,BeforeSend before)throws Exception{
+        before.run();
+        try{transport.sendMessage(message,message.getAllRecipients());}catch(SendFailedException rejected){throw rejected;}catch(Exception unknown){throw new Uncertain(unknown);}
+    }
     static MimeMessage message(Session session,SavedAccounts.Login login,JSONObject draft,java.io.File directory)throws Exception{
         MimeMessage message=OutgoingMail.build(session,login.from,draft.optString("to"),draft.optString("cc"),draft.optString("bcc"),draft.optString("subject"),draft.optString("body"),draft.optString("inReplyTo"));
-        MailThreadHeaders.reply(message,draft.optString("inReplyTo"),draft.optJSONArray("references"));attach(message,draft,directory);return message;
+        MailThreadHeaders.reply(message,draft.optString("inReplyTo"),draft.optJSONArray("references"));attach(message,draft,directory);String scheduled=draft.optString("scheduledMessageId");if(!scheduled.isEmpty()){if(!scheduled.matches("<schedule-[0-9a-f-]{36}@mail-pilot\\.local>"))throw new IllegalArgumentException("Scheduled message identity");message.setHeader("Message-ID",scheduled);}return message;
     }
     static TransferMessage draft(SavedAccounts.Login login,JSONObject draft,java.io.File directory)throws Exception{
         String subject=draft.optString("subject"),body=draft.optString("body"),reply=draft.optString("inReplyTo");
