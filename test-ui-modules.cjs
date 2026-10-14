@@ -151,6 +151,56 @@ const {bundleUi, buildUi} = require('./scripts/build_ui.cjs');
   assert.equal(notesDoc.querySelector('.list-item p').textContent,'<script> literal');
   assert.equal(notesDoc.querySelector('[data-action="edit-note"]').dataset.id,'note');
 
+  const {renderDraftItem} = await import('./ui/drafts/item.mjs');
+  const {renderDraftsView} = await import('./ui/drafts/render.mjs');
+  const {renderCategoriesView} = await import('./ui/mail/categories.mjs');
+  const {renderCategoryDialog} = await import('./ui/mail/category-dialog.mjs');
+  const {renderScheduledList} = await import('./ui/mail/scheduled-list.mjs');
+  const {renderScheduledPreviewDialog} = await import('./ui/mail/scheduled-preview.mjs');
+  const {renderScheduleDialog} = await import('./ui/mail/schedule-dialog.mjs');
+  const {renderSnoozeDialog} = await import('./ui/mail/snooze-dialog.mjs');
+  const draftDeletions=new Map(), savedDrafts=[{id:'old',subject:'<b> old',updatedAt:1},
+    {id:'new',subject:'New',updatedAt:2},{id:'protected',subject:'Scheduled',updatedAt:3}];
+  const draftsContext={local:{drafts:savedDrafts},scheduledProtected:new Set(['protected']),
+    draftRow:d=>renderDraftItem(d,{draftDeletions})};
+  let draftDoc=doc(renderDraftsView(draftsContext));
+  assert.equal(draftDoc.querySelectorAll('.draft-row').length,2);
+  assert.equal(draftDoc.querySelector('[data-action="edit-draft"]').dataset.id,'new');
+  assert.deepEqual(savedDrafts.map(d=>d.id),['old','new','protected']);
+  draftDeletions.set('new',{busy:true});draftDoc=doc(renderDraftsView(draftsContext));
+  assert.ok(draftDoc.querySelector('[data-action="edit-draft"][data-id="new"]').disabled);
+  assert.ok(draftDoc.querySelector('[data-action="delete-draft"][data-id="new"]').disabled);
+  const category={id:'rule',color:'blue',name:'<script> Rule',subjects:'<topic>',enabled:false,notify:false};
+  const catDoc=doc(renderCategoriesView({account:'a@example.invalid',categoryList:()=>[category],categoryRuleSummary:()=>''}));
+  assert.equal(catDoc.querySelector('h4').textContent,category.name);
+  const catDialog=doc(renderCategoryDialog({categoryEdit:category}));
+  assert.equal(catDialog.querySelector('[name="category-subjects"]').value,'<topic>');
+  assert.equal(catDialog.querySelector('[name="category-enabled"]').hasAttribute('checked'),false);
+  let nativeCalls=0;
+  const inertPilot={scheduledMail:()=>{nativeCalls++;},scheduledSendDetails:()=>{nativeCalls++;}};
+  const scheduleContext={Pilot:inertPilot,scheduledItems:[],scheduledLoading:false,scheduledError:'',
+    scheduledExpanded:false,account:'a@example.invalid',scheduledLabels:{uncertain:'Результат неизвестен'},snoozeDate:()=>''};
+  assert.equal(renderScheduledList(scheduleContext),'');
+  scheduleContext.scheduledItems=[{id:'uncertain',state:'uncertain',subject:'<script>',to:'a@example.invalid',at:1}];
+  const queue=doc(renderScheduledList(scheduleContext));
+  assert.ok(queue.querySelector('[role="alert"]').textContent.includes('Автоматического повтора не будет'));
+  assert.equal(queue.querySelector('[data-action="cancel-scheduled"]').dataset.id,'uncertain');
+  assert.equal(nativeCalls,0, 'rendering does not fetch or send scheduled mail');
+  const preview=doc(renderScheduledPreviewDialog({scheduledPreview:{draft:{subject:'<img>',body:'<script> literal',attachments:[]},from:'a@example.invalid'}}));
+  assert.equal(preview.querySelector('.body-text').textContent,'<script> literal');
+  assert.equal(preview.querySelector('[data-action="confirm-schedule"]'),null);
+  const schedule=doc(renderScheduleDialog({schedulePopup:{busy:true,value:'2099-04-02T15:00'},draft:{subject:'<b>',to:'a@example.invalid'},account:'a@example.invalid'}));
+  assert.equal(schedule.querySelector('dialog').getAttribute('aria-busy'),'true');
+  assert.equal(schedule.querySelector('[name="schedule-at"]').value,'2099-04-02T15:00');
+  const snoozeContext={snoozePopup:{personal:true,subject:'<img>',value:'2099-04-02T15:00'},Pilot:{}};
+  let snooze=doc(renderSnoozeDialog(snoozeContext));
+  assert.equal(snooze.querySelector('#quick-title').textContent,'Мне нужно ответить');
+  assert.equal(snooze.querySelector('[data-action="notification-settings"]'),null);
+  snoozeContext.Pilot={notificationsAllowed:()=>false,notificationSettings:()=>{nativeCalls++;}};
+  snooze=doc(renderSnoozeDialog(snoozeContext));
+  assert.ok(snooze.querySelector('[data-action="notification-settings"]'));
+  assert.equal(nativeCalls,0, 'rendering exposes notification settings without opening Android');
+
   const first = await bundleUi(), second = await bundleUi();
   assert.ok(Buffer.from(first).equals(Buffer.from(second)), 'bundle must be deterministic');
   assert.ok(Buffer.from(first).equals(fs.readFileSync(path.join(__dirname,'assets/app.js'))), 'tracked bundle must match sources');
