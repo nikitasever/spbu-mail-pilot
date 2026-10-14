@@ -1,0 +1,3 @@
+export const uniqueAttachments=files=>[...new Map((files||[]).filter(f=>f&&typeof f.path==='string').map(f=>[f.path,f])).values()];
+export function attachmentType(f){const ext=String(f.name||'').split('.').pop().toLowerCase();return {icon:ext==='pdf'?'file-text':ext==='docx'||ext==='doc'?'file-text':ext==='pptx'||ext==='ppt'?'presentation':ext==='xlsx'||ext==='xls'?'sheet':'file',label:ext==='pdf'?'PDF · откроется в приложении':ext==='docx'?'DOCX · текст в приложении':'Внешний просмотрщик'};}
+export const bytesText=n=>n>=1048576?(n/1048576).toLocaleString('ru-RU',{maximumFractionDigits:1})+' МБ':n>=1024?(n/1024).toLocaleString('ru-RU',{maximumFractionDigits:1})+' КБ':n+' Б';

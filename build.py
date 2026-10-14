@@ -18,6 +18,8 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument('--test',action='store_true');parser.add_argument('--check-only',action='store_true',help='Compile and run tests without creating or signing an APK');parser.add_argument('--keystore',default='pilot-test.keystore');parser.add_argument('--output',default='build/spbu-mail-pilot.apk');args=parser.parse_args()
     if args.check_only and not args.test: parser.error('--check-only requires --test')
     run(sys.executable,ROOT/'scripts/build_styles.py')
+    run('npm.cmd' if os.name=='nt' else 'npm','ci','--ignore-scripts')
+    run('node',ROOT/'scripts/build_ui.cjs')
     sdk=pathlib.Path(os.environ.get('ANDROID_HOME',os.environ.get('ANDROID_SDK_ROOT','C:/android-sdk')))
     tools=sdk/'build-tools/35.0.0';android=sdk/'platforms/android-34/android.jar';windows=os.name=='nt'
     def tool(name):return tools/(name+('.bat' if name in ['d8','apksigner'] else '.exe') if windows else name)
@@ -30,7 +32,7 @@ def main():
         cp=os.pathsep.join(map(str,[next(j for j in jars if j.name.startswith('json-test')),classes,*runtime,android]))
         run('javac','-encoding','UTF-8','-source','8','-target','8','-classpath',cp,'-d',testclasses,*list((ROOT/'tests').glob('*.java')))
         for test in (ROOT/'tests').glob('*Test.java'):run('java','-classpath',str(testclasses)+os.pathsep+cp,'ru.local.spbumailpilot.'+test.stem)
-        run('npm.cmd' if windows else 'npm','ci','--ignore-scripts');run('npm.cmd' if windows else 'npm','test')
+        run('npm.cmd' if windows else 'npm','test')
     if args.check_only:return
     run('jar','cf',build/'app.jar','-C',classes,'.')
     run(tool('d8'),'--min-api','26','--lib',android,'--output',build,build/'app.jar',*runtime)

@@ -10,3 +10,6 @@
 
 - lib-recur 0.17.1, rfc5545-datetime 0.3 and jems2 2.23.1 (Apache 2.0), used for local recurrence expansion: https://github.com/dmfs/lib-recur, https://github.com/dmfs/rfc5545-datetime and https://github.com/dmfs/jems. License: assets/APACHE-2.0-LICENSE.txt. Versions and checksums are fixed in dependencies.lock.json.
 - Playwright 1.56.1 (Apache 2.0), used only by browser layout tests. https://github.com/microsoft/playwright
+
+
+- esbuild 0.28.2 (MIT), build-time only; not bundled into the Android APK. Project/license: https://github.com/evanw/esbuild.
