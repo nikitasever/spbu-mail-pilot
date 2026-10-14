@@ -1,0 +1,3 @@
+import {esc,icon,btn,page,field} from '../core/markup.mjs';
+export function renderDraftsView(context){
+ const {local,scheduledProtected,draftRow}=context;const drafts=local.drafts.filter(d=>!scheduledProtected.has(d.id)).slice().sort((a,b)=>(Number(b.updatedAt)||0)-(Number(a.updatedAt)||0));return page('<div class="actions">'+btn('К почте','back-drafts')+btn(icon('pencil')+' Написать','compose','','primary')+'</div><p class="note">Черновики на этом телефоне · '+drafts.length+'</p><div class="draft-list">'+drafts.map(draftRow).join('')+'</div>'+(!drafts.length?'<p class="note">Черновиков пока нет.</p>':''));}
