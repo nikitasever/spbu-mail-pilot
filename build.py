@@ -17,6 +17,7 @@ def dependencies():
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--test',action='store_true');parser.add_argument('--check-only',action='store_true',help='Compile and run tests without creating or signing an APK');parser.add_argument('--keystore',default='pilot-test.keystore');parser.add_argument('--output',default='build/spbu-mail-pilot.apk');args=parser.parse_args()
     if args.check_only and not args.test: parser.error('--check-only requires --test')
+    run(sys.executable,ROOT/'scripts/build_styles.py')
     sdk=pathlib.Path(os.environ.get('ANDROID_HOME',os.environ.get('ANDROID_SDK_ROOT','C:/android-sdk')))
     tools=sdk/'build-tools/35.0.0';android=sdk/'platforms/android-34/android.jar';windows=os.name=='nt'
     def tool(name):return tools/(name+('.bat' if name in ['d8','apksigner'] else '.exe') if windows else name)

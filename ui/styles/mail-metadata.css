@@ -1,0 +1,6 @@
+/* Mail metadata uses one rhythm; calendar action belongs to the same row. */
+#mail-v2 .mail-row :is(.category-tag,.response-due,.attachment-fact,.message-label){display:inline-flex;align-items:center;margin:4px 8px 0 0;vertical-align:middle;max-width:100%;overflow-wrap:anywhere}
+#mail-v2 .reader-files-jump{display:flex;align-items:center;gap:6px;min-height:44px;font-size:13px;margin-top:8px;text-align:left}
+#mail-v2 .reader-attachments{scroll-margin-top:calc(var(--top-height,64px) + 12px);scroll-margin-bottom:calc(var(--bottom-height,80px) + 80px)}
+#mail-v2 .reader-attachments:focus-visible{outline:2px solid var(--brand);outline-offset:4px}
+

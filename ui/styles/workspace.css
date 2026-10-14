@@ -1,0 +1,24 @@
+#mail-v2 .list-item { padding:18px 0; border-bottom:1px solid var(--line); }
+#mail-v2 .list-item:last-child { border-bottom:0; }
+#mail-v2 .list-item h4 { margin-bottom:6px; overflow-wrap:anywhere; }
+#mail-v2 .list-item p { font-size:14px; white-space:pre-wrap; overflow-wrap:anywhere; }
+#mail-v2 .list-item .inline-actions { margin-top:12px; }
+#mail-v2 .contact { display:flex; align-items:flex-start; gap:12px; }
+#mail-v2 .contact-body { min-width:0; flex:1; }
+#mail-v2 .contact-body small { font-size:12px; color:var(--muted); overflow-wrap:anywhere; }
+#mail-v2 .tasks-head { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+#mail-v2 .tasks-head button { display:flex; align-items:center; gap:6px; font-size:13px; }
+#mail-v2 .task-tabs { display:flex; gap:4px; margin:18px 0 12px; padding:4px; background:var(--surface); border-radius:12px; }
+#mail-v2 .task-tabs button { flex:1; min-width:0; min-height:38px; padding:7px 4px; border:0; background:transparent; color:var(--muted); font-size:12px; }
+#mail-v2 .task-tabs button[aria-pressed="true"] { background:var(--paper); color:var(--brand); box-shadow:0 1px 5px #21172e0d; font-weight:600; }
+#mail-v2 .task-row { display:flex; align-items:flex-start; gap:12px; margin:0 20px; padding:18px 0; border-bottom:1px solid var(--line); }
+#mail-v2 .task-row .check { flex-shrink:0; min-width:40px; width:40px; min-height:40px; padding:8px; border:0; color:var(--brand); background:var(--tint); }
+#mail-v2 .task-text { min-width:0; flex:1; }
+#mail-v2 .task-row h3 { font-size:16px; overflow-wrap:anywhere; }
+#mail-v2 .task-row.completed h3 { text-decoration:line-through; color:var(--muted); }
+#mail-v2 .task-row .text-button { font-size:12px; }
+#mail-v2 .deadline { font-size:12px; color:var(--muted); margin-top:8px; }
+#mail-v2 .task-notes { white-space:pre-wrap; font-size:13px; color:var(--muted); }
+#mail-v2 .settings-row { display:flex; align-items:center; justify-content:space-between; gap:15px; border-bottom:1px solid var(--line); padding:15px 0; font-size:14px; margin:0; color:var(--ink); font-weight:400; }
+#mail-v2 .settings-row input[type="checkbox"] { flex:0 0 22px; width:22px; min-height:22px; height:22px; padding:0; margin:0; accent-color:var(--brand); }
+#mail-v2 .profile-avatar { margin:6px auto 20px; width:72px; height:72px; display:flex; align-items:center; justify-content:center; background:var(--tint); color:var(--brand); border-radius:50%; font-size:28px; }

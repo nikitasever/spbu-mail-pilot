@@ -1,0 +1,19 @@
+#mail-v2 .directory-person.contact-card-open { border:0; background:transparent; padding:0; margin:0; text-align:left; border-radius:4px; }
+#mail-v2 .contact-card-person { text-align:center; padding:12px 0; overflow-wrap:anywhere; }
+#mail-v2 .contact-card-person .avatar { margin:0 auto 12px; }
+#mail-v2 .contact-card-person h4 { font-size:20px; margin:8px 0; }
+#mail-v2 .contact-card-email { color:var(--muted); user-select:text; }
+#mail-v2 .contact-card-actions { display:flex; flex-direction:column; gap:8px; }
+#mail-v2 .contact-card-actions button { margin:0; overflow-wrap:anywhere; }
+
+#mail-v2 .thread-count { display:flex; flex-wrap:wrap; align-items:center; gap:5px; color:var(--brand); font-size:11px; line-height:1.5; margin-top:5px; }
+#mail-v2 .thread-count svg { width:14px; height:14px; }
+#mail-v2 .thread-head { padding:16px 20px; border-bottom:1px solid var(--line); }
+#mail-v2 .thread-head h3 { overflow-wrap:anywhere; margin:0 0 8px; }
+#mail-v2 .thread-view>.note { margin:16px 20px; }
+
+#mail-v2 .send-delay { overflow-wrap:anywhere; }
+#mail-v2 .send-delay strong { display:block; font-size:18px; }
+#mail-v2 .send-delay p { color:var(--muted); font-size:13px; margin:8px 0 12px; }
+#mail-v2 .send-delay button { width:100%; margin:0; }
+

@@ -1,0 +1,37 @@
+/* 0.64: inbox reference, shared theme and readable three-line rows. */
+#mail-v2 .inbox-screen .header-meta{padding-left:44px;gap:4px}
+#mail-v2 .inbox-screen #account-label{background:transparent;padding:0;font-size:13px;min-height:32px;border-radius:6px}
+#mail-v2 .inbox-screen .inbox-toolbar{display:none}
+#mail-v2 .inbox-copy-age{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)}
+#mail-v2 .inbox-screen .offline-banner{margin:8px 12px 4px;padding:4px 10px;border-radius:12px;gap:6px;background:light-dark(#fff3dc,#35230b);color:light-dark(#76500b,#f0c77a)}
+#mail-v2 .inbox-screen .offline-banner span{font-size:13px;display:inline-flex;align-items:center;gap:6px;min-width:0}
+#mail-v2 .inbox-screen .offline-banner svg{width:18px;height:18px;flex-shrink:0}
+#mail-v2 .inbox-screen .offline-banner button{font-size:13px;color:inherit;padding:6px 4px;min-height:44px;flex-shrink:0}
+#mail-v2 .inbox-screen .mail-filters{padding:8px 16px 12px;margin:0;gap:8px;border-bottom:1px solid var(--line)}
+#mail-v2 .inbox-screen .mail-filters .filter-chip{font-size:13px;min-height:44px;padding:8px 14px;border-radius:24px}
+#mail-v2 .inbox-screen .mail-filters [data-action="mail-filter"][aria-pressed="true"]{background:var(--tint);color:var(--brand);border-color:transparent;font-weight:600}
+#mail-v2 .inbox-screen .mail-date-group{font-size:13px;font-weight:400;padding:7px 20px;border-bottom:1px solid var(--line);margin:0}
+#mail-v2 .inbox-screen .mail-row{min-height:94px;padding:14px 48px 14px 20px;border-left:0;gap:12px;align-items:flex-start}
+#mail-v2 .inbox-screen .mail-row .avatar{width:42px;height:42px;font-size:15px;flex-shrink:0;margin-top:2px}
+#mail-v2 .inbox-screen .row-meta{margin:0 0 2px;gap:8px}
+#mail-v2 .inbox-screen .row-meta .sender-name{font-size:16px;font-weight:450}
+#mail-v2 .inbox-screen .unread .sender-name{font-weight:650}
+#mail-v2 .inbox-screen .row-title{font-size:15px;-webkit-line-clamp:1;line-height:1.4}
+#mail-v2 .inbox-screen .row-summary{font-size:13px;line-height:1.4}
+#mail-v2 .inbox-screen .row-foot{margin-top:3px;gap:6px}
+#mail-v2 .inbox-screen .mail-time{font-size:11px}
+#mail-v2 .inbox-screen .mail-row.unread .mail-time{color:var(--brand)}
+#mail-v2 .inbox-screen .unread-dot{width:8px;height:8px}
+#mail-v2 .inbox-screen .mail-file svg{width:16px;height:16px}
+#mail-v2 .inbox-screen .thread-count{margin:0;font-size:11px;flex-shrink:0;color:var(--muted)}
+#mail-v2 .inbox-screen .mail-row-actions{bottom:6px;color:var(--muted)}
+#mail-v2 .inbox-action-dock{border-top:1px solid var(--line);height:68px}
+#mail-v2 .inbox-action-dock .inbox-compose{border-radius:24px;min-height:48px;padding:10px 18px;font-size:15px;background:var(--action);color:var(--on-brand)}
+#mail-v2 .bottom button[aria-pressed="true"]{background:transparent;color:var(--brand)}
+#mail-v2 .text-size-large.inbox-screen .sender-name,#mail-v2 .text-size-large.inbox-screen .row-title{font-size:18px}
+#mail-v2 .text-size-large.inbox-screen .row-summary{font-size:15px}
+#mail-v2 .inbox-screen .mail-row.unread:not(.mail-selected){background:var(--paper)}
+#mail-v2 .inbox-screen .mail-row.unread:active{background:var(--tint)}
+#mail-v2 .inbox-screen .row-title{display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+#mail-v2 .inbox-screen .mail-row[class*="category-"] .avatar{background:color-mix(in srgb,var(--category) 14%,var(--paper))}
+

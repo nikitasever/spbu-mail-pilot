@@ -1,0 +1,12 @@
+#mail-v2 .calendar-modes { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+#mail-v2 .calendar-modes button { flex:1; min-width:80px; padding:10px 8px; font-size:12px; border-radius:20px; }
+#mail-v2 .calendar-modes button[aria-pressed="true"] { background:var(--tint); border-color:var(--brand); }
+#mail-v2 .calendar-period-caption { color:var(--muted); font-size:12px; margin:18px 0 8px; }
+#mail-v2 .calendar-period-day { border-top:1px solid var(--line); padding:12px 0; }
+#mail-v2 .calendar-period-day h3 { margin:0; }
+#mail-v2 .calendar-period-day h3 button { padding:8px 0; text-align:left; font-weight:600; font-size:14px; }
+#mail-v2 .calendar-period-day .agenda-item { padding:12px 0; gap:8px; }
+#mail-v2 .calendar-period-day .agenda-time { flex-basis:72px; }
+#mail-v2 .calendar-period-day .agenda-content { padding-left:8px; }
+#mail-v2 .calendar-period-day .agenda-content h4 { overflow-wrap:anywhere; }
+

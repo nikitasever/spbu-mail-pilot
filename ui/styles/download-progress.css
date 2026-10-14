@@ -1,0 +1,24 @@
+/* Shared batch progress: file count is measurable even when byte totals are not. */
+#mail-v2 .batch-progress-summary { display:flex; align-items:center; gap:20px; margin:20px 0; }
+#mail-v2 .batch-ring { position:relative; width:96px; height:96px; flex:none; }
+#mail-v2 .batch-ring svg { width:100%; height:100%; transform:rotate(-90deg); }
+#mail-v2 .batch-ring circle { fill:none; stroke-width:7; }
+#mail-v2 .batch-ring-track { stroke:var(--line); }
+#mail-v2 .batch-ring-fill { stroke:var(--brand); }
+#mail-v2 .batch-ring strong { position:absolute; inset:0; display:grid; place-items:center; font-size:22px; font-variant-numeric:tabular-nums; }
+#mail-v2 .batch-progress-count { display:flex; flex-direction:column; gap:5px; min-width:0; }
+#mail-v2 .batch-progress-count strong { font-size:20px; font-variant-numeric:tabular-nums; }
+#mail-v2 .batch-file-status { border-top:1px solid var(--line); padding-top:14px; margin-bottom:16px; }
+#mail-v2 .batch-file-status p { margin:0 0 8px; }
+#mail-v2 #batch-name { display:block; overflow-wrap:anywhere; font-size:15px; line-height:1.5; }
+#mail-v2 #batch-size { min-height:1.5em; margin-top:8px; font-variant-numeric:tabular-nums; }
+@media (forced-colors:active) { #mail-v2 .batch-ring-track { stroke:GrayText; } #mail-v2 .batch-ring-fill { stroke:Highlight; } }
+
+#mail-v2 .file-transfer { margin:14px 0; }
+#mail-v2 .file-progress-text { display:flex; flex-direction:column; gap:5px; margin:10px 0; overflow-wrap:anywhere; }
+#mail-v2 .file-progress-text strong { font-size:14px; }
+#mail-v2 .file-transfer progress,#mail-v2 #batch-file-progress progress { display:block; width:100%; height:8px; accent-color:var(--brand); border:0; border-radius:8px; overflow:hidden; background:var(--line); }
+#mail-v2 progress::-webkit-progress-bar { background:var(--line); }
+#mail-v2 progress::-webkit-progress-value { background:var(--brand); }
+#mail-v2 progress::-moz-progress-bar { background:var(--brand); }
+

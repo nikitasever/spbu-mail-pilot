@@ -1,0 +1,23 @@
+#mail-v2 .digest-entry {display:flex;align-items:center;justify-content:space-between;gap:12px;width:calc(100% - 40px);margin:0 20px 8px;background:var(--surface);color:var(--brand);border:1px solid var(--line);border-radius:14px;text-align:left;font-size:13px;padding:12px 14px;}
+#mail-v2 .digest-entry span {min-width:0;overflow-wrap:anywhere;}
+#mail-v2 .digest-entry svg {flex-shrink:0;width:18px;height:18px;}
+#mail-v2 .digest-choice {display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line);}
+#mail-v2 .digest-choice input {width:20px;height:20px;min-height:20px;flex:0 0 20px;margin:2px 0;accent-color:var(--brand);}
+#mail-v2 .digest-choice span {min-width:0;overflow-wrap:anywhere;}
+#mail-v2 .digest-choice strong,#mail-v2 .digest-choice small {display:block;}
+#mail-v2 .digest-choice small {font-size:12px;color:var(--muted);margin-top:4px;}
+#mail-v2 .digest-item {padding:16px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere;}
+#mail-v2 .digest-item h4 {margin:5px 0 8px;font-size:15px;}
+#mail-v2 .digest-item p {font-size:13px;line-height:1.6;margin:8px 0;}
+#mail-v2 .digest-item small {color:var(--muted);font-size:12px;}
+
+#mail-v2 .digest-subtitle {font-size:15px;color:var(--muted);margin:0 0 12px;}
+
+.smart-overview{padding:18px;border-radius:18px;background:var(--surface);margin:16px 0}.smart-overview small,.smart-point>small{color:var(--brand);font-weight:600;letter-spacing:.04em}.smart-overview p{font-size:17px;line-height:1.55;margin:10px 0 0}.smart-deadline{font-weight:600}.smart-loading{text-align:center;padding:32px 12px}.smart-loading svg{width:32px;height:32px;color:var(--brand)}.smart-loading p{color:var(--muted);line-height:1.5}.smart-point p{line-height:1.55}
+
+#recipient-suggestions:empty,#upload-progress:empty{display:none}.recipient-choice{display:flex!important;flex-direction:column;align-items:flex-start;width:100%;text-align:left}.recipient-choice small{color:var(--muted);overflow-wrap:anywhere}#upload-progress progress{width:100%;accent-color:var(--brand)}
+
+#mail-v2 .icon-previews{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}#mail-v2 .icon-previews button{display:flex;flex-direction:column;gap:10px;align-items:center;text-align:center;min-width:0;white-space:normal;font-size:13px}#mail-v2 .icon-previews img{width:96px;max-width:100%;border-radius:22px}#mail-v2 .icon-previews button[aria-pressed="true"]{border-color:var(--brand);background:var(--tint)}
+
+/* Address books: a familiar contact list, with distinct rows rather than cards. */
+#mail-v2 .contacts-page { padding:16px 0 24px; min-width:0; }
