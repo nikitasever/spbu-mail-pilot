@@ -1,0 +1,8 @@
+import {esc,icon,btn} from '../core/markup.mjs';
+import {calendarTimeRange} from './dates.mjs';
+export function renderCalendarItem(t,context){
+ const {calendarMyTask,eventLinks,mailCategory,calendarSourceKey,eventLinkKey}=context;
+  const myTask=t.kind==='remote'?calendarMyTask(t):null,linkedCategory=eventLinks(t).map(link=>mailCategory(link.mail)).find(Boolean);
+  const label=t.kind==='remote'?t.calendarTitle||'Рабочий календарь':t.kind==='task'?'Моя задача':'Моё событие';
+  return `<article class="agenda-item ${t.kind} ${linkedCategory?'category-'+linkedCategory.color:''}"><div class="agenda-time">${esc(calendarTimeRange(t))}</div><div class="agenda-content"><h4>${esc(t.title)}</h4><p class="agenda-source">${esc(label)}</p>${t.location?'<p class="agenda-location">'+icon('map-pin')+'<span>Место: '+esc(t.location)+'</span></p>':''}${t.description?'<details><summary>Описание</summary><p class="body-text">'+esc(t.description)+'</p></details>':''}${t.notes?'<p>'+esc(t.notes)+'</p>':''}${t.kind==='remote'?(t.calendarId&&t.id?'<div class="inline-actions">'+(myTask?btn(myTask.done?'Моя задача выполнена · изменить':'Моя задача · изменить','edit-task',myTask.id,'text-button'):btn(icon('list-plus')+' Это моя задача','calendar-my-task',calendarSourceKey(t),'text-button'))+'</div>':''):'<div class="inline-actions">'+(t.kind==='task'?btn(icon('check')+' Выполнить','done',t.id,'text-button'):'')+btn('Изменить',t.kind==='task'?'edit-task':'edit-event',t.id,'text-button')+btn('Удалить',t.kind==='task'?'delete-task':'delete-event',t.id,'text-button')+'</div>'}${eventLinks(t).length?'<div class="inline-actions">'+btn(icon('mail')+' Письма · '+eventLinks(t).length,'calendar-links',eventLinkKey(t),'text-button')+'</div>':''}</div></article>`;
+ }
