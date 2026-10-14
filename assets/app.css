@@ -637,3 +637,51 @@ html.drawer-overlay{overflow:hidden}
 #mail-v2 .calendar-period-day{scroll-margin-top:calc(var(--top-height,100px) + 12px)}
 #mail-v2 .category-rule .note{overflow-wrap:anywhere}
 #mail-v2 .mail-row-actions,#mail-v2 .mail-row-wrap{scroll-margin-top:calc(var(--top-height,100px) + 8px);scroll-margin-bottom:calc(var(--bottom-height,80px) + 80px)}
+/* 0.62: compact reading, attachment rows and one reply dock. */
+#mail-v2 .reader{padding-bottom:96px}
+#mail-v2 .reader-sender{flex-wrap:wrap;gap:12px;padding-bottom:16px}
+#mail-v2 .reader-sender>div{flex:1;min-width:120px}
+#mail-v2 .reader-sender .category-tag{align-self:center;max-width:100%;overflow-wrap:anywhere}
+#mail-v2 .reader-tools{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}
+#mail-v2 .reader .reader-chip{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:8px 12px;font-size:13px;border-radius:24px;background:transparent}
+#mail-v2 .reader .reader-chip[aria-pressed="true"]{background:var(--tint);color:var(--brand)}
+#mail-v2 .reader-calendar-hint{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--tint);border-radius:12px;padding:12px;margin:16px 0;color:var(--brand)}
+#mail-v2 .reader-calendar-hint>span{flex:1;min-width:120px}
+#mail-v2 .reader-calendar-hint strong{display:block;font-size:14px}
+#mail-v2 .reader-calendar-hint small{display:block;font-size:12px;color:var(--muted);margin-top:4px}
+#mail-v2 .reader-calendar-hint button{min-height:44px;white-space:normal;font-size:13px}
+#mail-v2 .reader .reader-attachments{padding-top:14px;border:0}
+#mail-v2 .reader .reader-section-head{gap:6px;flex-wrap:nowrap}
+#mail-v2 .reader-section-head h4{font-size:15px;min-width:0;overflow-wrap:anywhere}
+#mail-v2 .reader-section-head button{margin:0;flex-shrink:0}
+#mail-v2 .reader .attachment-compact{padding:0;margin:10px 0;border-radius:14px;background:var(--surface)}
+#mail-v2 .attachment-compact-row{display:block;position:relative}
+#mail-v2 .attachment-compact .attachment-open{display:flex;align-items:center;gap:12px;flex:1;width:calc(100% - 52px);min-width:0;min-height:76px;border:0;background:transparent;text-align:left;border-radius:14px;margin:0;padding:12px}
+#mail-v2 .attachment-open>svg{width:24px;height:24px;flex-shrink:0;color:var(--brand)}
+#mail-v2 .attachment-info{min-width:0;flex:1}
+#mail-v2 .attachment-info strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-size:15px;font-weight:550;line-height:1.4}
+#mail-v2 .attachment-meta{display:block;margin-top:4px;font-size:12px;line-height:1.4;color:var(--muted);overflow-wrap:anywhere}
+#mail-v2 .attachment-compact .attachment-more{border:0;padding:0;margin:0;position:static}
+#mail-v2 .attachment-compact .attachment-more summary{list-style:none;display:flex;align-items:center;justify-content:center;position:absolute;right:6px;top:10px;width:44px;min-height:44px;padding:0;opacity:1;border-radius:10px;color:var(--muted)}
+#mail-v2 .attachment-compact summary::-webkit-details-marker{display:none}
+#mail-v2 .attachment-options{padding:4px 12px 12px;display:flex;flex-wrap:wrap;gap:8px;border-top:1px solid var(--line)}
+#mail-v2 .attachment-options button{min-height:44px;margin:0;font-size:13px;flex:1;min-width:110px}
+#mail-v2 .attachment-full-name{flex-basis:100%;font-size:13px;overflow-wrap:anywhere;margin:8px 0;color:var(--muted);user-select:text}
+#mail-v2 .attachment-compact .file-transfer{padding:0 12px 12px;margin:10px 0 0}
+#mail-v2 .reader-secondary{padding:0;margin-top:18px;border-top:1px solid var(--line)}
+#mail-v2 .reader-secondary>summary{min-height:44px;padding:12px 0;cursor:pointer;color:var(--muted);font-size:13px}
+#mail-v2 .reader-secondary-content{padding:8px 0 16px}
+#mail-v2 .reader-secondary-content>label{font-size:12px;max-width:250px}
+#mail-v2 .reader .reader-reply{position:fixed;left:max(0px,calc((100vw - 900px)/2));right:max(0px,calc((100vw - 900px)/2));bottom:var(--bottom-height,80px);z-index:5;padding:8px 16px;margin:0;background:var(--paper);gap:6px;flex-wrap:nowrap;border-top:1px solid var(--line);box-shadow:none;display:flex}
+#mail-v2 .reader .reader-reply button{margin:0;min-height:48px;display:flex;align-items:center;justify-content:center;gap:6px;flex:none;font-size:14px;border-radius:14px;padding:10px}
+#mail-v2 .reader .reader-reply .primary{flex:1;min-width:90px}
+#mail-v2 .reader .reader-reply .reader-icon{width:44px;min-width:44px;border:1px solid var(--line);background:transparent;flex-shrink:0}
+#mail-v2 .reader-secondary summary:hover,#mail-v2 .attachment-compact summary:hover,#mail-v2 .attachment-open:hover{background:var(--tint)}
+#mail-v2 .reader-secondary summary:focus-visible,#mail-v2 .attachment-compact summary:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+#mail-v2 .reader-screen .reader-top-actions button{min-height:44px}
+#mail-v2 .reader .reader-tools,#mail-v2 .reader .attachment-compact,#mail-v2 .reader-secondary{scroll-margin-top:calc(var(--top-height,64px) + 12px);scroll-margin-bottom:calc(var(--bottom-height,80px) + 80px)}
+#mail-v2 .text-size-large .attachment-info strong{font-size:18px}
+#mail-v2 .text-size-large .attachment-meta{font-size:14px}
+@media(forced-colors:active){#mail-v2 .reader .reader-reply{border:1px solid CanvasText}}
+#mail-v2 .reader button,#mail-v2 .reader summary,#mail-v2 .reader select{scroll-margin-top:calc(var(--top-height,64px) + 12px);scroll-margin-bottom:calc(var(--bottom-height,80px) + 80px)}
+#mail-v2 .attachment-limit{flex-basis:100%;margin:0;font-size:11px}
