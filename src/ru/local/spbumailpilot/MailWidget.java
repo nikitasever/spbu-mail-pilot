@@ -70,7 +70,7 @@ public final class MailWidget extends AppWidgetProvider {
         for(int id:ids)try{
             RemoteViews views=new RemoteViews(c.getPackageName(),res(c,"layout","mail_widget"));
             views.setInt(res(c,"id","widget_root"),"setBackgroundResource",res(c,"drawable",dark?"widget_dark":"widget_light"));
-            for(String name:new String[]{"widget_title","widget_account","widget_unread","widget_checked","widget_agenda","widget_empty","widget_footer","widget_event1","widget_event2","widget_event3"})views.setTextColor(res(c,"id",name),name.equals("widget_title")||name.equals("widget_unread")?(dark?0xff85b9ef:0xff1b65af):(dark?0xfff1f3f4:0xff232a31));
+            for(String name:new String[]{"widget_title","widget_account","widget_unread","widget_checked","widget_agenda","widget_empty","widget_footer","widget_event1","widget_event2","widget_event3"})views.setTextColor(res(c,"id",name),name.equals("widget_title")||name.equals("widget_unread")?(dark?0xffceacf3:0xff7946ae):(dark?0xfff3eff8:0xff292533));
             text(c,views,"widget_account",user);text(c,views,"widget_unread",count);text(c,views,"widget_checked",checked);text(c,views,"widget_empty",empty);
             views.setViewVisibility(res(c,"id","widget_empty"),entries.isEmpty()?View.VISIBLE:View.GONE);
             int height=manager.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,220);float scale=c.getResources().getConfiguration().fontScale;
