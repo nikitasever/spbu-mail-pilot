@@ -2,9 +2,9 @@
 
 Личный экспериментальный Android-клиент. Неофициальный проект; не продукт СПбГУ.
 
-**Актуальная версия — 0.63 (versionCode 78).**
+**Актуальная версия — 0.64 (versionCode 79).**
 
-[Скачать APK 0.63](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.63/spbu-mail-pilot-0.63.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.63)
+[Скачать APK 0.64](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.64/spbu-mail-pilot-0.64.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.64)
 
 В 0.50: новый экран чтения с компактными кнопками, офлайн-почта, уведомления всех сохранённых ящиков с отправителем и подписью ящика, пакетное скачивание вложений, расписание дня и связь писем с событиями.
 
