@@ -99,6 +99,58 @@ const {bundleUi, buildUi} = require('./scripts/build_ui.cjs');
   assert.equal(item.querySelector('h4').textContent,events[1].title);
   assert.equal(item.querySelector('[data-action="edit-event"]').dataset.id,'selected');
 
+  const {renderContactsList} = await import('./ui/contacts/list.mjs');
+  const {renderContactCardView} = await import('./ui/contacts/card.mjs');
+  const {renderContactsView} = await import('./ui/contacts/render.mjs');
+  const {renderTaskItem} = await import('./ui/tasks/item.mjs');
+  const {renderTasksView} = await import('./ui/tasks/render.mjs');
+  const {renderNotesView} = await import('./ui/notes/render.mjs');
+  const person={sender:'<img> Имя',email:'test@example.invalid'};
+  let people=[person];
+  const contactContext={contactPeople:()=>people,contactsServer:()=>true,contactsBook:'company',contactsMore:true,
+    contactsPrefix:'',contactsLetter:'',contactsNotice:'',contactsError:'',local:{contacts:[],phoneContacts:[]},
+    bodyCache:{},avatar:()=>'',contactsLoading:false,contactsQuery:''};
+  let contactDoc=doc(renderContactsList(contactContext));
+  assert.ok(contactDoc.querySelector('[data-action="contact-letter"][data-id="Я"]'), 'server index is not limited to loaded names');
+  assert.equal(contactDoc.querySelector('.directory-person strong').textContent,person.sender);
+  assert.equal(contactDoc.querySelector('[data-action="compose-to"]').dataset.id,person.email);
+  people=[];contactDoc=doc(renderContactsList(contactContext));
+  assert.equal(contactDoc.querySelector('.contact-empty'),null, 'more pages do not claim an empty directory');
+  assert.ok(contactDoc.querySelector('[data-action="contacts-more"]'));
+  contactContext.contactsError='Ошибка <script>';contactDoc=doc(renderContactsList(contactContext));
+  assert.equal(contactDoc.querySelector('[role="alert"]').textContent,'Ошибка <script>Повторить');
+  assert.equal(contactDoc.querySelector('script'),null);
+  const cardContext={contactCard:person,contactsBook:'company',contactNumber:()=>'+70000000000',
+    local:{contacts:[]},avatar:()=>''};
+  let cardDoc=doc(renderContactCardView(cardContext));
+  assert.equal(cardDoc.querySelector('[data-action="dial"]').dataset.id,'+70000000000');
+  assert.ok(cardDoc.querySelector('[data-action="save-contact"]'));
+  cardContext.local.contacts.push(person);cardDoc=doc(renderContactCardView(cardContext));
+  assert.ok(cardDoc.querySelector('[data-action="edit-contact"]'), 'saved status reflects current contact data');
+  const contactsView=doc(renderContactsView({contactsBook:'history',contactsQuery:'"<query>',contactsContent:()=>''}));
+  assert.equal(contactsView.querySelector('#contacts-query').value,'"<query>');
+  assert.equal(contactsView.querySelector('option[selected]').value,'history');
+  const tasks=[{id:'normal',title:'Ordinary',priority:'normal',date:'2099-04-02'},
+    {id:'urgent',title:'<b> Urgent',notes:'Find Me',priority:'urgent',date:'2099-04-01',mail:reference},
+    {id:'done',title:'Done',done:true,priority:'urgent'}];
+  const tasksContext={taskQuery:'',taskFilter:'active',local:{tasks},searchClear:()=>'',
+    taskRow:t=>renderTaskItem(t,{labelChip:()=>'',today:'2099-04-02',taskDate:()=>''})};
+  let taskDoc=doc(renderTasksView(tasksContext));
+  assert.equal(taskDoc.querySelector('.task-text h3').textContent,'<b> Urgent');
+  assert.equal(taskDoc.querySelectorAll('.task-row').length,2);
+  assert.ok(taskDoc.querySelector('[data-action="task-source"][data-id="urgent"]'));
+  assert.ok(taskDoc.querySelector('.deadline').textContent.includes('Просрочено'));
+  tasksContext.taskQuery='find me';taskDoc=doc(renderTasksView(tasksContext));
+  assert.equal(taskDoc.querySelectorAll('.task-row').length,1, 'search includes task notes');
+  tasksContext.taskQuery='';tasksContext.taskFilter='done';taskDoc=doc(renderTasksView(tasksContext));
+  assert.equal(taskDoc.querySelector('.task-text h3').textContent,'Done');
+  assert.deepEqual(tasks.map(t=>t.id),['normal','urgent','done'], 'rendering does not reorder stored tasks');
+  const notesContext={local:{notes:[{id:'note',title:'<img>',body:'<script> literal'}]}};
+  const notesDoc=doc(renderNotesView(notesContext));
+  assert.equal(notesDoc.querySelector('h4').textContent,'<img>');
+  assert.equal(notesDoc.querySelector('.list-item p').textContent,'<script> literal');
+  assert.equal(notesDoc.querySelector('[data-action="edit-note"]').dataset.id,'note');
+
   const first = await bundleUi(), second = await bundleUi();
   assert.ok(Buffer.from(first).equals(Buffer.from(second)), 'bundle must be deterministic');
   assert.ok(Buffer.from(first).equals(fs.readFileSync(path.join(__dirname,'assets/app.js'))), 'tracked bundle must match sources');
@@ -110,5 +162,5 @@ const {bundleUi, buildUi} = require('./scripts/build_ui.cjs');
     const time=fs.statSync(target).mtimeMs;assert.equal(await buildUi(false,target),false);
     assert.equal(fs.statSync(target).mtimeMs,time);
   } finally {fs.rmSync(dir,{recursive:true,force:true});}
-  console.log('PASS: independently importable UI modules, Unicode/escaped markup, exact mail references, safe sender fallback, Moscow dates, scoped compose controls and deterministic/stale/idempotent offline bundle.');
+  console.log('PASS: independently importable UI modules, Unicode/escaped markup, exact mail references, safe sender fallback, Moscow dates, live view contexts, scoped compose controls and deterministic/stale/idempotent offline bundle.');
 })().catch(error=>{console.error(error);process.exitCode=1;});

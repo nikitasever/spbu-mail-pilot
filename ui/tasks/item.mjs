@@ -1,0 +1,3 @@
+import {esc,icon,btn,page} from '../core/markup.mjs';
+export function renderTaskItem(t,context){
+ const {labelChip,today,taskDate}=context;return `<article class="task-row ${t.done?'completed':''}">${btn(icon(t.done?'check':'circle'),'done',t.id,'check')}<div class="task-text"><h3>${esc(t.title)}</h3>${labelChip(t.priority)}<p class="deadline">${t.date&&t.date<today&&!t.done?"Просрочено · ":""}${taskDate(t)}</p>${t.notes?'<p class="task-notes">'+esc(t.notes)+'</p>':''}<div class="inline-actions">${btn('Изменить','edit-task',t.id,'text-button')}${t.mail?btn('К письму','task-source',t.id,'text-button'):''}${btn('Удалить','delete-task',t.id,'text-button')}</div></div></article>`;}
