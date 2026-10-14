@@ -30,6 +30,7 @@ final class UniversityDirectory {
         for(char character:value.toCharArray())switch(character){case '*':result.append("\\2a");break;case '(':result.append("\\28");break;case ')':result.append("\\29");break;case '\\':result.append("\\5c");break;default:result.append(character);}
         return result.toString();
     }
+    static String prefixFilter(String value){if(!value.matches("[А-ЯЁA-Z#]"))throw new IllegalArgumentException();String text=escapedFilter(value);return "(|(cn="+text+"*)(displayName="+text+"*))";}
     static String filter(String value){String text=escapedFilter(value),user=escapedFilter(value.split("@",2)[0]);return "(|(cn=*"+text+"*)(displayName=*"+text+"*)(mail=*"+text+"*)(uid=*"+user+"*))";}
     static Document document(String xml)throws Exception{
         if(xml.length()>512*1024||java.util.regex.Pattern.compile("(?is)<\\s*!\\s*(DOCTYPE|ENTITY)\\b").matcher(xml).find())throw new IOException("Некорректный ответ справочника.");
@@ -127,7 +128,7 @@ final class UniversityDirectory {
         try{connect(login);Document prefs=preferences();
             if(book.equals("personal"))return personal(preference(prefs,"ContactsBox"),query,cookie);
             Document defaults=command("<prefsRead id=\"defaultBooks\" type=\"default\"><name>DirectoryBooks</name></prefsRead>");completed(defaults,"defaultBooks");
-            String base=companyBase(prefs);if(base.equals("$domain$"))base=companyBase(defaults);String filter=query.trim().isEmpty()?"":filter(query.trim());
+            String base=companyBase(prefs);if(base.equals("$domain$"))base=companyBase(defaults);String filter=query.trim().isEmpty()?"":query.startsWith("^:")?prefixFilter(query.substring(2)):filter(query.trim());
             if(book.equals("team")){
                 String user=canonicalUser.split("@",2)[0];Document own=command(directoryCommand(base,"(uid="+escapedFilter(user)+")",1,null));completed(own,"directory");NodeList records=own.getElementsByTagName("directoryData");String department=records.getLength()==1?field((Element)records.item(0),"ou"):"";
                 if(department.isEmpty())return new JSONObject().put("people",new JSONArray()).put("cookie","").put("hasMore",false).put("notice","В справочнике не указано ваше подразделение. Выберите «Компания», чтобы найти пользователей СПбГУ.");
@@ -141,7 +142,7 @@ final class UniversityDirectory {
     private JSONObject personal(String mailbox,String query,String cookie)throws Exception{
         if(mailbox.isEmpty()||mailbox.length()>512)throw new IOException("Сервер не указал личную адресную книгу.");
         int offset=cookie.isEmpty()?0:Integer.parseInt(cookie);if(offset<0||offset>1000000)throw new IllegalArgumentException();
-        Document opened=command("<folderOpen id=\"openContacts\" folder=\"pilotContacts\" mailbox=\""+xml(mailbox)+"\""+(query.trim().isEmpty()?"":" filter=\""+xml(query.trim())+"\"")+" sortField=\"Subject\" sortOrder=\"asc\"><field>Subject</field><field>E-To</field></folderOpen>");completed(opened,"openContacts");
+        Document opened=command("<folderOpen id=\"openContacts\" folder=\"pilotContacts\" mailbox=\""+xml(mailbox)+"\""+(query.trim().isEmpty()?"":" filter=\""+xml(query.startsWith("^:")?query.substring(2)+"*":query.trim())+"\"")+" sortField=\"Subject\" sortOrder=\"asc\"><field>Subject</field><field>E-To</field></folderOpen>");completed(opened,"openContacts");
         try{
             int total=-1;NodeList reports=opened.getElementsByTagName("folderReport");for(int i=0;i<reports.getLength();i++){Element r=(Element)reports.item(i);if("pilotContacts".equals(r.getAttribute("folder"))&&"init".equals(r.getAttribute("mode")))total=Integer.parseInt(r.getAttribute("messages"));}if(total<0)throw new IOException("Неполный ответ адресной книги.");
             JSONArray people=new JSONArray();int end=Math.min(total,offset+50);
@@ -167,3 +168,4 @@ final class UniversityDirectory {
         }finally{connection.disconnect();}
     }
 }
+

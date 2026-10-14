@@ -18,7 +18,8 @@ final class AttachmentParts {
                 part=multi.getBodyPart(index);
             }
         }
-        if(part.getFileName()==null&&!Part.ATTACHMENT.equalsIgnoreCase(part.getDisposition()))throw new MessagingException("Not an attachment");
+        if(!MailAttachments.file(part))throw new MessagingException("Not an attachment");
         return part;
     }
 }
+

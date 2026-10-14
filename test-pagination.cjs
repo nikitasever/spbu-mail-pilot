@@ -13,7 +13,7 @@ function setup({defer=false,state={}}={}) {
  vm.runInNewContext(code,{document,window,Pilot,lucide:{createIcons(){}},console});
  const root=document.getElementById('mail-v2');
  const click=selector=>{const b=root.querySelector(selector);assert.ok(b,selector);b.dispatchEvent(new window.Event('click',{bubbles:true}));};
- const folder=name=>{const select=root.querySelector('#mail-folder');for(const o of select.querySelectorAll('option'))o.selected=o.value===name;select.dispatchEvent(new window.Event('change',{bubbles:true}));};
+ const folder=name=>{const select=root.querySelector('#mail-folder');for(const o of select.querySelectorAll('option'))o.selected=false;[...select.querySelectorAll('option')].find(o=>o.value===name).selected=true;select.dispatchEvent(new window.Event('change',{bubbles:true}));};
  return {root,window,document,click,folder,calls,queue,fail:()=>{failNext=true;},state:()=>state};
 }
 let a=setup();assert.equal(a.root.querySelectorAll('.mail-row').length,50);assert.equal(a.root.querySelector('.inline-hint').textContent,'50 из 137');
@@ -34,3 +34,4 @@ a.click('[data-action="compose"]');const recipient=a.root.querySelector('[name="
 a=setup({defer:true});a.queue.shift()();const rows=a.root.querySelectorAll('.mail-row').length;a.window.mailChanged('INBOX');assert.equal(a.root.querySelectorAll('.mail-row').length,rows,'silent update must keep old rows while fetching');a.fail();a.queue.shift()();assert.equal(a.root.querySelectorAll('.mail-row').length,rows,'silent error must keep old rows');assert.equal(a.root.querySelector('#mail-updates').hidden,false);
 a=setup();a.window.scrollY=200;const scrolled=a.calls.length;a.window.mailChanged('INBOX');assert.equal(a.calls.length,scrolled);assert.equal(a.window.scrollY,200);
 console.log('PASS: live mail refresh, stale-folder isolation, no reset of paginated/scrolled mail or composer, quiet loading/error retain visible rows.');
+
