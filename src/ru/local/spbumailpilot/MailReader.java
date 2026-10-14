@@ -153,11 +153,12 @@ final class MailReader implements AutoCloseable {
         }
         int next=filePages.next(offset);return new JSONObject().put("files",result).put("total",filePages.size()).put("nextOffset",next).put("hasMore",next<filePages.size()).put("snapshot",Long.toString(fileGeneration));
     }
-    JSONObject exportMessage(String name,String uid,String expectedValidity,java.io.File directory)throws Exception{
+    JSONObject exportMessage(String name,String uid,String expectedValidity,java.io.File directory)throws Exception{return exportMessage(name,uid,expectedValidity,directory,false);}
+    JSONObject exportMessage(String name,String uid,String expectedValidity,java.io.File directory,boolean forwarding)throws Exception{
         openFolder(name);if(!Long.toString(validity).equals(expectedValidity))throw new MessagingException("UID validity changed");Message message=((UIDFolder)inbox).getMessageByUID(Long.parseLong(uid));if(message==null||message.isExpunged())throw new MessagingException("Missing message");
         if(message instanceof com.sun.mail.imap.IMAPMessage)((com.sun.mail.imap.IMAPMessage)message).setPeek(true);
         directory.mkdirs();java.io.File file=java.io.File.createTempFile("message-",".eml",directory);
-        try(java.io.OutputStream raw=new java.io.FileOutputStream(file);java.io.OutputStream bounded=new java.io.FilterOutputStream(raw){long size;public void write(int b)throws java.io.IOException{if(++size>AttachmentFiles.MAX_BYTES)throw new java.io.IOException("Message too large");out.write(b);}public void write(byte[] b,int off,int len)throws java.io.IOException{if((size+=len)>AttachmentFiles.MAX_BYTES)throw new java.io.IOException("Message too large");out.write(b,off,len);}}){message.writeTo(bounded);}catch(Exception e){file.delete();throw e;}
+        try(java.io.OutputStream raw=new java.io.FileOutputStream(file);java.io.OutputStream bounded=new java.io.FilterOutputStream(raw){long size;public void write(int b)throws java.io.IOException{if(++size>AttachmentFiles.MAX_BYTES)throw new java.io.IOException("Message too large");out.write(b);}public void write(byte[] b,int off,int len)throws java.io.IOException{if((size+=len)>AttachmentFiles.MAX_BYTES)throw new java.io.IOException("Message too large");out.write(b,off,len);}}){if(forwarding&&message instanceof javax.mail.internet.MimeMessage)((javax.mail.internet.MimeMessage)message).writeTo(bounded,new String[]{"Bcc","Resent-Bcc"});else message.writeTo(bounded);}catch(Exception e){file.delete();throw e;}
         return new JSONObject().put("file",file.getAbsolutePath()).put("name",AttachmentFiles.safeName(message.getSubject())+".eml").put("mime","message/rfc822");
     }
     private String senderPersonal(Message message,InternetAddress envelope){
@@ -180,7 +181,7 @@ final class MailReader implements AutoCloseable {
             }
             obj.put("sender", name); obj.put("email", email);MailThreadHeaders.add(m,obj);
             Address[] reply=m.getReplyTo();obj.put("replyTo",reply!=null&&reply.length>0&&reply[0] instanceof InternetAddress?((InternetAddress)reply[0]).getAddress():email);
-            obj.put("recipients", recipients(m));
+            obj.put("recipients", recipients(m));obj.put("toRecipients",recipientAddresses(m,Message.RecipientType.TO));obj.put("ccRecipients",recipientAddresses(m,Message.RecipientType.CC));
             Date date = m.getReceivedDate(); if (date == null) date = m.getSentDate();
             SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.ROOT);
             format.setTimeZone(TimeZone.getTimeZone("Europe/Moscow"));
@@ -198,7 +199,7 @@ final class MailReader implements AutoCloseable {
     private static Boolean attachmentPresence(Part part, int depth, int[] remaining) throws Exception {
         if (depth > 12 || remaining[0]-- <= 0) return null;
         String disposition = part.getDisposition();
-        if (Part.ATTACHMENT.equalsIgnoreCase(disposition)) return true;
+        if (Part.ATTACHMENT.equalsIgnoreCase(disposition)||part.isMimeType("application/pdf")) return true;
         // Embedded images decorate HTML; they should not advertise a downloadable document.
         if (Part.INLINE.equalsIgnoreCase(disposition) && part.isMimeType("image/*")) return false;
         if (part.getFileName() != null) return true;
@@ -220,6 +221,7 @@ final class MailReader implements AutoCloseable {
         return unknown ? null : false;
     }
 
+    private JSONArray recipientAddresses(Message message,Message.RecipientType type)throws Exception{JSONArray values=new JSONArray();Address[] addresses=message.getRecipients(type);if(addresses!=null)for(Address address:addresses)if(address instanceof InternetAddress)values.put(((InternetAddress)address).getAddress());return values;}
     private JSONArray recipients(Message message) throws Exception {
         JSONArray result=new JSONArray();
         Message.RecipientType[] types={Message.RecipientType.TO,Message.RecipientType.CC,Message.RecipientType.BCC};
@@ -284,10 +286,10 @@ final class MailReader implements AutoCloseable {
         if (m == null || m.isExpunged()) throw new MessagingException("Message unavailable");
         FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add(FetchProfile.Item.FLAGS);profile.add(FetchProfile.Item.CONTENT_INFO);MailThreadHeaders.fetch(profile);profile.add("From");
         inbox.fetch(new Message[]{m},profile);
-        JSONArray files = new JSONArray();
+        JSONArray files;
         if(m instanceof com.sun.mail.imap.IMAPMessage)((com.sun.mail.imap.IMAPMessage)m).setPeek(true);
-        String text = extract(m, files, 0, "root",prefetch?24000:100000,prefetch);
-        JSONObject info=header(m);String[] rawFrom=m.getHeader("From");if(rawFrom!=null&&rawFrom.length>0)info.put("rawFrom",rawFrom[0]);
+        files=MailAttachments.list(m);String text = extract(m, new JSONArray(), 0, "root",prefetch?24000:100000,prefetch);
+        JSONObject info=header(m).put("hasAttachments",files.length()>0);String[] rawFrom=m.getHeader("From");if(rawFrom!=null&&rawFrom.length>0)info.put("rawFrom",rawFrom[0]);
         return new JSONObject().put("uid", uid).put("text", text).put("attachments", files).put("message", info).put("phones",new JSONArray(PhoneNumbers.find(text)));
     }
     JSONObject seen(String name,String uid,String expectedValidity,boolean seen)throws Exception{
@@ -315,6 +317,7 @@ final class MailReader implements AutoCloseable {
     }
     private String extract(Part part, JSONArray files, int depth, String path,int budget,boolean prefetch) throws Exception {
         if (depth > 12) return "";
+        if(MailAttachments.file(part))return "";
         if(prefetch&&part.isMimeType("message/rfc822")){String forwardName=part.getFileName();files.put(new JSONObject().put("name",forwardName==null?"Пересланное письмо.eml":AttachmentNames.decode(forwardName)).put("size",part.getSize()).put("path",path));return "";}
         String name = part.getFileName();
         if (name != null || Part.ATTACHMENT.equalsIgnoreCase(part.getDisposition())) {
