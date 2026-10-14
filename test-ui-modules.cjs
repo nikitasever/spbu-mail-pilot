@@ -53,6 +53,52 @@ const {bundleUi, buildUi} = require('./scripts/build_ui.cjs');
   assert.ok(!compose.includes('data-action="ai-check"'));
   assert.ok(compose.includes('type="submit"'));
 
+  const {renderThreadView} = await import('./ui/mail/thread.mjs');
+  const {renderInboxView} = await import('./ui/mail/inbox.mjs');
+  const {renderCalendarView} = await import('./ui/calendar/render.mjs');
+  const {renderCalendarSearch} = await import('./ui/calendar/search.mjs');
+  const {renderCalendarItem} = await import('./ui/calendar/item.mjs');
+  const {parseHTML} = require('linkedom');
+  const doc = markup => parseHTML('<html><body>'+markup+'</body></html>').document;
+  const messages=[{subject:'<script>unread</script>',date:'2099-04-02',seen:false},
+    {subject:'Read',date:'2099-04-01',seen:true}];
+  const inboxContext={mailGroups:()=>messages.map(m=>({members:[m]})),folders:['Junk','INBOX'],mailFolder:'INBOX',
+    localDraftFolder:()=>':local',local:{drafts:[],settings:{}},scheduledProtected:new Set(),messages,total:2,
+    offlinePrefetchState:null,categoryFilter:'',mailCategory:()=>null,mailFilter:'unread',hasMailFiles:()=>false,
+    today:'2099-04-02',mailRow:m=>'<article>'+html.esc(m.subject)+'</article>',categoryList:()=>[],
+    hasMore:false,loading:false,mailDirty:false,aiEnabled:()=>false,greeting:()=>'',inboxSearchOpen:false,
+    mailQuery:'',inboxSearchDraft:null,searchClear:()=>'',responseItems:()=>[],renderMailSelection:()=>'',
+    renderResponses:()=>'',renderScheduled:()=>'',renderSnoozes:()=>'',renderReplyReminders:()=>'',
+    mailListError:'',mailOffline:false};
+  let inboxDoc=doc(renderInboxView(inboxContext));
+  assert.equal(inboxDoc.querySelectorAll('article').length,1);
+  assert.equal(inboxDoc.querySelector('article').textContent,messages[0].subject);
+  assert.equal(inboxDoc.querySelector('#mail-folder option').value,'INBOX');
+  inboxContext.mailFilter='all';inboxDoc=doc(renderInboxView(inboxContext));
+  assert.equal(inboxDoc.querySelectorAll('article').length,2, 'each render reads the current filter');
+  const thread=doc(renderThreadView({currentThread:()=>({members:messages}),mailRow:inboxContext.mailRow,hasMore:false,loading:false}));
+  assert.equal(thread.querySelector('article').textContent,'Read');
+  const events=[{id:'first',date:'2099-04-01',title:'Other day',kind:'event'},
+    {id:'selected',date:'2099-04-02',title:'<img> selected',kind:'event'}];
+  const calendarContext={calendarBounds:()=>({start:'2099-04-01',end:'2099-05-01'}),calendarView:'month',
+    calendarMonth:'2099-04',calendarEntries:()=>events,onCalendarDay:(e,day)=>e.date===day,
+    today:'2099-04-02',calendarDay:'2099-04-02',calendarItem:e=>'<article>'+html.esc(e.title)+'</article>',
+    calendarLoading:false,calendarData:{calendars:[]},calendarQuery:'',calendarSearchContent:()=>'',dayPopup:false};
+  let calDoc=doc(renderCalendarView(calendarContext));
+  assert.equal(calDoc.querySelector('.calendar-selected-day article').textContent,events[1].title);
+  assert.equal(calDoc.querySelector('[aria-pressed="true"][data-action="calendar-day"]').dataset.id,'2099-04-02');
+  calendarContext.calendarDay='2099-04-01';calendarContext.dayPopup=true;
+  calDoc=doc(renderCalendarView(calendarContext));
+  assert.equal(calDoc.querySelector('#day-popup article').textContent,'Other day');
+  assert.equal(calDoc.querySelector('.calendar-selected-day'),null);
+  const search=doc(renderCalendarSearch({calendarQuery:'selected',calendarMatches:()=>[events[1]],
+    calendarView:'month',calendarLoading:false,calendarBounds:calendarContext.calendarBounds}));
+  assert.equal(search.querySelector('[data-action="calendar-day"]').dataset.id,'2099-04-02');
+  const item=doc(renderCalendarItem(events[1],{calendarMyTask:()=>null,eventLinks:()=>[],mailCategory:()=>null,
+    calendarSourceKey:()=>'',eventLinkKey:()=>''}));
+  assert.equal(item.querySelector('h4').textContent,events[1].title);
+  assert.equal(item.querySelector('[data-action="edit-event"]').dataset.id,'selected');
+
   const first = await bundleUi(), second = await bundleUi();
   assert.ok(Buffer.from(first).equals(Buffer.from(second)), 'bundle must be deterministic');
   assert.ok(Buffer.from(first).equals(fs.readFileSync(path.join(__dirname,'assets/app.js'))), 'tracked bundle must match sources');
