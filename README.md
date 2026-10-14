@@ -2,9 +2,9 @@
 
 Личный экспериментальный Android-клиент. Неофициальный проект; не продукт СПбГУ.
 
-**Актуальная версия — 0.68 (versionCode 83).**
+**Актуальная версия — 0.69 (versionCode 84).**
 
-[Скачать APK 0.68](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.68/spbu-mail-pilot-0.68.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.68)
+[Скачать APK 0.69](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.69/spbu-mail-pilot-0.69.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.69)
 
 В 0.50: новый экран чтения с компактными кнопками, офлайн-почта, уведомления всех сохранённых ящиков с отправителем и подписью ящика, пакетное скачивание вложений, расписание дня и связь писем с событиями.
 
@@ -225,3 +225,7 @@ Java: пагинация UID, миграция и шифрование акка�
 ## Исходники стилей
 
 Стили редактируются в `ui/styles/`, порядок сборки — `ui/styles/order.json`. После изменения выполните `npm run build:styles` и включите обновлённый `assets/app.css` в коммит. Android-сборка собирает его автоматически; тесты проверяют актуальность. [Порядок работы и владельцы модулей](docs/ui-architecture.md).
+
+## Исходники JavaScript
+
+UI редактируется в `ui/app.mjs` и тематических `.mjs`-модулях. После изменений выполните `npm run build:ui` и включите сгенерированный `assets/app.js` в коммит. Сборка Android теперь требует Node.js/npm и автоматически собирает JavaScript. [Границы модулей и команды](docs/ui-architecture.md).
