@@ -727,3 +727,72 @@ html.drawer-overlay{overflow:hidden}
 #mail-v2 .reader-files-jump{display:flex;align-items:center;gap:6px;min-height:44px;font-size:13px;margin-top:8px;text-align:left}
 #mail-v2 .reader-attachments{scroll-margin-top:calc(var(--top-height,64px) + 12px);scroll-margin-bottom:calc(var(--bottom-height,80px) + 80px)}
 #mail-v2 .reader-attachments:focus-visible{outline:2px solid var(--brand);outline-offset:4px}
+
+/* 0.67: scoped visual hierarchy, letterhead composer and day cards. */
+/* Read/unread hierarchy without reducing text or touch-target size. */
+#mail-v2 .inbox-screen .mail-row:not(.unread) .sender-name {
+  color:var(--muted);
+  font-weight:450;
+}
+#mail-v2 .inbox-screen .mail-row.unread .sender-name {
+  color:var(--ink);
+  font-weight:650;
+}
+
+/* Keep the complete row boundary (including calendar shortcut) and its geometry.
+   Start the visible line at the text column; do not move the ellipsis menu. */
+#mail-v2 .inbox-screen .mail-row-wrap { border-bottom-color:transparent; }
+#mail-v2 .inbox-screen .mail-row-wrap::after {
+  content:"";
+  position:absolute;
+  bottom:-1px;
+  left:74px;
+  right:20px;
+  height:1px;
+  background:var(--line);
+  pointer-events:none;
+}
+
+/* Calm filter outlines; the existing minimum 44px target remains in force. */
+#mail-v2 .inbox-screen .mail-filters .filter-chip {
+  border-color:color-mix(in srgb,var(--line) 65%,var(--paper));
+}
+
+/* Mail form only: metadata as a letterhead, body as a blank page.
+   Task/contact/settings fields and validation error styling remain separate. */
+#mail-v2 .compose-form input:not([type="checkbox"]):not([aria-invalid="true"]) {
+  border-top:0;
+  border-left:0;
+  border-right:0;
+  border-radius:0;
+  background:transparent;
+  padding:11px 0;
+}
+#mail-v2 .compose-form textarea[name="body"]:not([aria-invalid="true"]) {
+  border-color:transparent;
+  border-radius:0;
+  background:var(--paper);
+  padding:12px 0;
+  line-height:1.65;
+}
+#mail-v2 .compose-form .composer-tools button {
+  border-radius:12px;
+  font-weight:500;
+}
+#mail-v2 .compose-form #recipient-suggestions {
+  border-radius:16px;
+  border-color:color-mix(in srgb,var(--brand) 30%,var(--line));
+}
+
+/* Local event cards within the existing scrollable native-modal day sheet. */
+#mail-v2 .day-popup-list .agenda-item {
+  margin:8px 0;
+  padding:12px;
+  border-radius:16px;
+  background:var(--surface);
+}
+
+@media(forced-colors:active) {
+  #mail-v2 .inbox-screen .mail-row-wrap::after { background:CanvasText; }
+  #mail-v2 .compose-form textarea[name="body"] { border-color:CanvasText; }
+}
