@@ -1,0 +1,47 @@
+/* 0.60: compact inbox with one metadata row and scoped category accents. */
+#mail-v2 .inbox-screen .header-meta{display:flex;align-items:center;gap:8px;min-width:0}
+#mail-v2 .inbox-screen .account-switch{margin:0;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;min-height:44px}
+#mail-v2 .inbox-screen #inbox-context{flex:1;min-width:0}
+#mail-v2 .inbox-screen .inbox-toolbar{padding:0;display:block}
+#mail-v2 .inbox-screen .inbox-folder{display:flex;align-items:center;gap:6px;min-width:0}
+#mail-v2 .inbox-screen .inbox-folder select{max-width:110px;font-size:12px;min-height:44px}
+#mail-v2 .inbox-screen .inline-hint{font-size:10px;line-height:1.4;margin:0;min-width:0}
+#mail-v2 .inbox-search[hidden]{display:none}
+#mail-v2 .inbox-screen .offline-banner{background:light-dark(#fff5dd,#342913);color:light-dark(#72500e,#f3cf7c);font-size:11px}
+#mail-v2 .mail-filters{flex-wrap:nowrap;overflow-x:auto;padding-bottom:8px;gap:6px;scrollbar-gutter:auto}
+#mail-v2 .mail-filters .filter-chip{flex-shrink:0;white-space:nowrap;font-size:12px;padding:8px 12px}
+#mail-v2 .inbox-compose{position:fixed;right:max(16px,calc((100vw - 900px)/2 + 20px));bottom:calc(var(--bottom-height,80px) + 16px);z-index:5;display:flex;align-items:center;gap:8px;min-height:52px;border-radius:26px;box-shadow:0 3px 12px #0003}
+#mail-v2 .inbox-screen.header-collapsed .inbox-compose span{display:none}
+#mail-v2 .inbox-view{padding-bottom:88px}
+#mail-v2 .mail-row-wrap{position:relative;border-bottom:1px solid var(--line)}
+#mail-v2 .mail-row-main{position:relative}
+#mail-v2 .mail-row{padding-right:45px;min-height:104px;position:relative}
+#mail-v2 .mail-row-actions{position:absolute;right:4px;bottom:8px;width:44px;height:44px;padding:10px;border:0;background:transparent;z-index:1}
+#mail-v2 .row-title{font-weight:400}
+#mail-v2 .unread .row-title{font-weight:700}
+#mail-v2 .unread .mail-time{color:var(--brand)}
+#mail-v2 .thread-count{display:inline-flex;font-size:11px;line-height:18px;min-width:24px;align-self:flex-start;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:12px;margin:3px 0}
+#mail-v2 .category-tag{display:inline-flex;font-size:11px;color:var(--category);align-self:flex-start;line-height:18px}
+#mail-v2 .category-coral{--category:light-dark(#ad3c32,#ffa397)}
+#mail-v2 .category-blue{--category:light-dark(#2866a0,#99c6f5)}
+#mail-v2 .category-violet{--category:light-dark(#7946ae,#ceacf3)}
+#mail-v2 .category-green{--category:light-dark(#267348,#8ad9ad)}
+#mail-v2 .category-pink{--category:light-dark(#a73b73,#f2a5cb)}
+#mail-v2 .mail-row[class*="category-"]{border-left:3px solid var(--category)}
+#mail-v2 .mail-row[class*="category-"] .avatar,#mail-v2 .filter-chip[class*="category-"]{color:var(--category)}
+#mail-v2 .category-rule{border-left:3px solid var(--category);padding:8px 12px;margin:12px 0}
+#mail-v2 .mail-selected{background:var(--surface);outline:2px solid var(--brand);outline-offset:-2px}
+#mail-v2 .mail-selection{display:flex;gap:6px;flex-wrap:wrap;padding:8px 16px;background:var(--paper);position:sticky;top:0;z-index:4}
+#mail-v2 .response-list{margin:4px 20px}
+#mail-v2 .inbox-summary{display:flex;align-items:center;gap:7px;font-size:12px;padding:6px 20px;color:var(--muted)}
+#mail-v2 .attachment-fact{font-size:11px;color:var(--muted)}
+#mail-v2 .row-calendar{display:flex;align-items:center;gap:6px;max-width:calc(100% - 74px);margin:0 0 8px 74px;padding:6px 10px;min-height:44px;font-size:12px}
+@media(prefers-reduced-motion:reduce){#mail-v2 .inbox-compose{transition:none}}
+#mail-v2 .mail-row[class*="category-"].unread .mail-time{color:var(--category)}
+#mail-v2 .agenda-item[class*="category-"]{border-left:3px solid var(--category)}
+#mail-v2 .response-due{font-size:11px;color:var(--brand)}
+/* ID selector overrides the legacy full-width account control in inbox metadata. */
+#mail-v2 .inbox-screen .header-meta{padding-left:44px}
+#mail-v2 .inbox-screen #account-label{margin:0;max-width:43%;min-width:44px;flex:0 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#mail-v2 .inbox-screen .inbox-folder select{flex:0 0 auto;min-width:84px;max-width:110px}
+#mail-v2 .inbox-screen .inline-hint{flex:1 1 auto;overflow-wrap:anywhere}

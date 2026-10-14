@@ -1,0 +1,18 @@
+#mail-v2 .calendar-search{display:flex;align-items:center;gap:8px;margin:8px 0 16px;}
+#mail-v2 .calendar-search label{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:0 14px;flex:1;min-width:0;}
+#mail-v2 .calendar-search input{border:0;background:transparent;min-width:0;width:100%;padding:14px 0;}
+#mail-v2 .calendar-search-result{display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:left;width:100%;margin:8px 0;padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow-wrap:anywhere;}
+#mail-v2 .calendar-search-result strong{font-size:15px;}
+#mail-v2 .calendar-search-result small,#mail-v2 .calendar-result-date{font-size:12px;color:var(--muted);}
+
+
+/* Mail 0.41: preserve the existing palette and list geometry. */
+#mail-v2 .mail-filters { display:flex; flex-wrap:wrap; gap:6px; margin:0 20px 8px; }
+#mail-v2 .filter-chip { min-height:44px; padding:8px 12px; border-radius:22px; font-size:12px; margin:0; }
+#mail-v2 .filter-chip[aria-pressed="true"] { background:var(--tint); color:var(--ink); border-color:var(--brand); }
+#mail-v2 .filter-scope { margin:8px 20px; color:var(--muted); font-size:12px; }
+#mail-v2 .inbox-drafts summary { min-height:44px; padding:6px 0; }
+#mail-v2 .inbox-drafts summary i, #mail-v2 .inbox-drafts summary svg { width:18px; height:18px; }
+#mail-v2 .row-summary.mail-preview { font-size:12px; }
+#mail-v2 .raw-header { white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; font-size:12px; }
+

@@ -1,0 +1,27 @@
+/* 0.59: compact inbox, safe error actions and one composer send bar. */
+#mail-v2 .reader-loading{display:flex;flex-direction:column;align-items:stretch;gap:12px;justify-content:center}
+#mail-v2 .reader-loading p{margin:0}
+#mail-v2 .reader-loading button{width:100%;min-width:0;white-space:normal;flex:none}
+#mail-v2 .offline-banner{padding:4px 20px;gap:8px;flex-wrap:nowrap;align-items:center;font-size:12px}
+#mail-v2 .offline-banner>span{flex:1;min-width:0;line-height:1.35}
+#mail-v2 .offline-banner svg{width:14px;height:14px;vertical-align:middle}
+#mail-v2 .offline-banner button{min-height:44px;padding:6px 0;font-size:12px;flex:none}
+#mail-v2 .inbox-screen .top{position:sticky;top:0;padding:8px 20px;transition:transform .16s ease}
+#mail-v2 .inbox-screen .top .account{display:none}
+#mail-v2 .inbox-screen .top .titlebar{margin-top:0}
+#mail-v2 .inbox-screen.header-collapsed .top{transform:translateY(-105%);visibility:hidden;pointer-events:none}
+#mail-v2 .inbox-screen .inbox-toolbar{padding-top:8px}
+#mail-v2 .inbox-screen .search-form{margin-top:6px;margin-bottom:4px}
+#mail-v2 .inbox-screen .mail-filters{margin-top:4px;margin-bottom:4px}
+#mail-v2 .calendar-modes{display:flex;flex-wrap:nowrap;gap:0;overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+#mail-v2 .calendar-modes button{flex:1 0 auto;min-width:max-content;white-space:nowrap;min-height:44px;border:0;border-right:1px solid var(--line);border-radius:0;padding:10px 6px}
+#mail-v2 .calendar-modes button:last-child{border-right:0}
+#mail-v2 .calendar-modes button:focus-visible{outline-offset:-3px}
+#mail-v2 .calendar-selected-day{margin-top:16px;border-top:1px solid var(--line);padding-top:16px}
+#mail-v2 .calendar-selected-day>h3{font-size:18px;margin-bottom:12px}
+#mail-v2 .composer-sendbar{position:sticky;bottom:calc(var(--bottom-height,80px) + 8px);z-index:2;background:var(--paper);border-top:1px solid var(--line);padding:10px 0;margin-top:12px}
+#mail-v2 .composer-sendbar button{min-height:44px;min-width:0;white-space:normal}
+#mail-v2 .compose-help summary{min-height:44px;display:list-item;padding:10px 0;cursor:pointer;color:var(--muted)}
+#mail-v2 .compose-help summary svg{width:18px;height:18px;vertical-align:middle}
+#mail-v2 .compose-save-status{font-size:12px;color:var(--muted);margin:12px 0 0}
+@media(prefers-reduced-motion:reduce){#mail-v2 .inbox-screen .top{transition:none}}

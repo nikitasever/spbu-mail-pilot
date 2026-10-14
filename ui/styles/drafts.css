@@ -1,0 +1,18 @@
+/* Drafts read like messages, with one compact secondary delete action. */
+#mail-v2 .draft-row { display:flex; align-items:flex-start; gap:8px; border-top:1px solid var(--line); padding:12px 0; }
+#mail-v2 .draft-open { display:flex; flex:1; flex-direction:column; align-items:stretch; gap:5px; min-width:0; text-align:left; padding:8px 10px; border:0; background:transparent; border-radius:10px; color:var(--ink); }
+#mail-v2 .draft-open:hover { background:var(--tint); }
+#mail-v2 .draft-open:active { background:var(--surface); }
+#mail-v2 .draft-open>span { max-width:100%; }
+#mail-v2 .draft-subject { font-size:15px; font-weight:650; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#mail-v2 .draft-recipient { font-size:13px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#mail-v2 .draft-preview { font-size:13px; line-height:1.5; color:var(--muted); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
+#mail-v2 .draft-meta { display:flex; flex-wrap:wrap; gap:8px 12px; font-size:11px; color:var(--muted); margin-top:3px; font-variant-numeric:tabular-nums; }
+#mail-v2 .draft-meta>span { display:inline-flex; align-items:center; gap:4px; }
+#mail-v2 .draft-meta svg { width:13px; height:13px; }
+#mail-v2 .draft-delete { width:44px; min-width:44px; min-height:44px; padding:12px; margin-top:3px; border:0; background:transparent; color:var(--muted); border-radius:10px; }
+#mail-v2 .draft-delete:hover { background:var(--warn-bg); color:var(--warn); }
+#mail-v2 .draft-delete svg { width:18px; height:18px; }
+#mail-v2 .text-size-large .draft-subject { font-size:18px; }
+#mail-v2 .text-size-large .draft-recipient,#mail-v2 .text-size-large .draft-preview { font-size:15px; }
+
