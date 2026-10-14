@@ -71,7 +71,7 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .inbox-drafts summary { gap:8px; font-size:13px; }
 #mail-v2 .inbox-drafts summary>span { margin-left:auto; }
 #mail-v2 .mail-date-group { padding:16px 20px 7px; font-size:12px; font-weight:550; color:var(--muted); }
-#mail-v2 .mail-row { display:flex; align-items:flex-start; gap:13px; width:100%; border:0; border-bottom:1px solid var(--line); border-radius:0; margin:0; padding:16px 20px; text-align:left; background:var(--paper); touch-action:pan-y; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+#mail-v2 .mail-row { display:flex; align-items:flex-start; gap:13px; width:100%; border:0; border-radius:0; margin:0; padding:16px 20px; text-align:left; background:var(--paper); touch-action:pan-y; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
 #mail-v2 .mail-row.unread { background:light-dark(#fcfaff,#211c29); }
 #mail-v2 .mail-row:active { background:var(--tint); }
 #mail-v2 .avatar { display:flex; align-items:center; justify-content:center; flex:0 0 43px; width:43px; height:43px; border-radius:50%; font-size:15px; font-weight:600; background:var(--tint); color:var(--brand); }
@@ -401,7 +401,7 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .contact-letter-nav { display:flex; gap:4px; overflow-x:auto; padding:6px 20px; position:sticky; top:0; z-index:2; background:var(--paper); border-bottom:1px solid var(--line); }
 #mail-v2 .contact-letter-nav button { flex:0 0 auto; min-width:44px; min-height:44px; padding:8px; border-color:transparent; }
 #mail-v2 .contact-letter-nav button[aria-pressed="true"] { background:var(--tint); color:var(--brand); border-color:var(--brand); }
-#mail-v2 .contact-letter-heading { padding:12px 20px 8px; margin:0; background:var(--surface); color:var(--muted); font-size:16px; scroll-margin-top:76px; }
+#mail-v2 .contact-letter-heading { padding:12px 20px 8px; margin:0; background:var(--surface); color:var(--muted); font-size:16px; scroll-margin-top:calc(var(--top-height,100px) + 76px); }
 #mail-v2 .contact-letter-heading:focus-visible { outline:2px solid var(--brand); outline-offset:-3px; }
 #mail-v2 .contacts-search .contacts-clear { display:flex; align-items:center; justify-content:center; flex:0 0 44px; min-width:44px; min-height:44px; padding:8px; border:0; background:transparent; color:var(--muted); }
 #mail-v2 .contacts-search .contacts-clear[hidden] { display:none; }
@@ -556,13 +556,13 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .inbox-screen .inline-hint{font-size:10px;line-height:1.4;margin:0;min-width:0}
 #mail-v2 .inbox-search[hidden]{display:none}
 #mail-v2 .inbox-screen .offline-banner{background:light-dark(#fff5dd,#342913);color:light-dark(#72500e,#f3cf7c);font-size:11px}
-#mail-v2 .inbox-screen.header-collapsed .offline-banner{visibility:hidden}
 #mail-v2 .mail-filters{flex-wrap:nowrap;overflow-x:auto;padding-bottom:8px;gap:6px;scrollbar-gutter:auto}
 #mail-v2 .mail-filters .filter-chip{flex-shrink:0;white-space:nowrap;font-size:12px;padding:8px 12px}
 #mail-v2 .inbox-compose{position:fixed;right:max(16px,calc((100vw - 900px)/2 + 20px));bottom:calc(var(--bottom-height,80px) + 16px);z-index:5;display:flex;align-items:center;gap:8px;min-height:52px;border-radius:26px;box-shadow:0 3px 12px #0003}
 #mail-v2 .inbox-screen.header-collapsed .inbox-compose span{display:none}
 #mail-v2 .inbox-view{padding-bottom:88px}
-#mail-v2 .mail-row-wrap{position:relative}
+#mail-v2 .mail-row-wrap{position:relative;border-bottom:1px solid var(--line)}
+#mail-v2 .mail-row-main{position:relative}
 #mail-v2 .mail-row{padding-right:45px;min-height:104px;position:relative}
 #mail-v2 .mail-row-actions{position:absolute;right:4px;bottom:8px;width:44px;height:44px;padding:10px;border:0;background:transparent;z-index:1}
 #mail-v2 .row-title{font-weight:400}
@@ -583,7 +583,7 @@ html.day-overlay { overflow-y:hidden; }
 #mail-v2 .response-list{margin:4px 20px}
 #mail-v2 .inbox-summary{display:flex;align-items:center;gap:7px;font-size:12px;padding:6px 20px;color:var(--muted)}
 #mail-v2 .attachment-fact{font-size:11px;color:var(--muted)}
-#mail-v2 .row-calendar{margin-left:76px;font-size:12px}
+#mail-v2 .row-calendar{display:flex;align-items:center;gap:6px;max-width:calc(100% - 74px);margin:0 0 8px 74px;padding:6px 10px;min-height:44px;font-size:12px}
 @media(prefers-reduced-motion:reduce){#mail-v2 .inbox-compose{transition:none}}
 #mail-v2 .mail-row[class*="category-"].unread .mail-time{color:var(--category)}
 #mail-v2 .agenda-item[class*="category-"]{border-left:3px solid var(--category)}
@@ -712,7 +712,7 @@ html.drawer-overlay{overflow:hidden}
 #mail-v2 .inbox-screen .mail-file svg{width:16px;height:16px}
 #mail-v2 .inbox-screen .thread-count{margin:0;font-size:11px;flex-shrink:0;color:var(--muted)}
 #mail-v2 .inbox-screen .mail-row-actions{bottom:6px;color:var(--muted)}
-#mail-v2 .inbox-action-dock{border-top:0;height:68px}
+#mail-v2 .inbox-action-dock{border-top:1px solid var(--line);height:68px}
 #mail-v2 .inbox-action-dock .inbox-compose{border-radius:24px;min-height:48px;padding:10px 18px;font-size:15px;background:var(--action);color:var(--on-brand)}
 #mail-v2 .bottom button[aria-pressed="true"]{background:transparent;color:var(--brand)}
 #mail-v2 .text-size-large.inbox-screen .sender-name,#mail-v2 .text-size-large.inbox-screen .row-title{font-size:18px}
@@ -721,3 +721,9 @@ html.drawer-overlay{overflow:hidden}
 #mail-v2 .inbox-screen .mail-row.unread:active{background:var(--tint)}
 #mail-v2 .inbox-screen .row-title{display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
 #mail-v2 .inbox-screen .mail-row[class*="category-"] .avatar{background:color-mix(in srgb,var(--category) 14%,var(--paper))}
+
+/* Mail metadata uses one rhythm; calendar action belongs to the same row. */
+#mail-v2 .mail-row :is(.category-tag,.response-due,.attachment-fact,.message-label){display:inline-flex;align-items:center;margin:4px 8px 0 0;vertical-align:middle;max-width:100%;overflow-wrap:anywhere}
+#mail-v2 .reader-files-jump{display:flex;align-items:center;gap:6px;min-height:44px;font-size:13px;margin-top:8px;text-align:left}
+#mail-v2 .reader-attachments{scroll-margin-top:calc(var(--top-height,64px) + 12px);scroll-margin-bottom:calc(var(--bottom-height,80px) + 80px)}
+#mail-v2 .reader-attachments:focus-visible{outline:2px solid var(--brand);outline-offset:4px}
