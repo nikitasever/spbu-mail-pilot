@@ -201,6 +201,61 @@ const {bundleUi, buildUi} = require('./scripts/build_ui.cjs');
   assert.ok(snooze.querySelector('[data-action="notification-settings"]'));
   assert.equal(nativeCalls,0, 'rendering exposes notification settings without opening Android');
 
+  const {renderSearchResults} = await import('./ui/search/results.mjs');
+  const {renderSearchView} = await import('./ui/search/render.mjs');
+  const {renderSettingsView} = await import('./ui/settings/render.mjs');
+  const {renderProfileView} = await import('./ui/settings/profile.mjs');
+  const {renderFilesView} = await import('./ui/files/render.mjs');
+  const searchState={criteria:{query:'"<pending>',from:'',start:'',end:'',folder:'INBOX',attachments:false},
+    committed:null,mail:[],events:[],people:[]};
+  const searchContext={smart:searchState,smartMonths:()=>({start:'2099-04-01',end:'2099-04-30'}),contactsServer:()=>false};
+  assert.ok(renderSearchResults(searchContext).includes('Введите слово'));
+  const searchForm=doc(renderSearchView({smart:searchState,folders:['INBOX'],searchClear:()=>'',
+    smartResults:()=>renderSearchResults(searchContext)}));
+  assert.equal(searchForm.querySelector('#smart-query').value,'"<pending>');
+  searchState.committed={query:'confirmed',folder:'Junk'};searchState.more=true;
+  let searchDoc=doc(renderSearchResults(searchContext));
+  assert.ok(searchDoc.querySelector('.smart-section .note').textContent.includes('Спам'));
+  assert.ok(searchDoc.body.textContent.includes('В проверенной порции совпадений нет'));
+  assert.ok(searchDoc.querySelector('[data-action="smart-more-mail"]'));
+  searchState.mailError='Ошибка <script>';searchDoc=doc(renderSearchResults(searchContext));
+  assert.equal(searchDoc.querySelector('[role="alert"]').textContent,'Ошибка <script>');
+  assert.ok(searchDoc.querySelector('[data-action="smart-retry-mail"]'));
+  assert.equal(searchDoc.querySelector('script'),null);
+  searchState.mailError='';searchState.mail=[{...reference,subject:'<b> Mail'}];
+  searchDoc=doc(renderSearchResults(searchContext));
+  assert.equal(searchDoc.querySelector('[data-action="smart-open-mail"]').dataset.id,mail.uidKey(reference));
+  let settingsWrites=0;
+  const settingsContext={account:'<account>',local:{settings:{theme:'dark',startScreen:'calendar',offlineMail:false}},
+    Pilot:{appLockSettings:()=>{settingsWrites++;},launcherIcon:()=>'classic',backgroundMailStatus:()=>'<script> status'},
+    tasksEnabled:()=>false,threadsEnabled:()=>true,undoSendEnabled:()=>true,aiEnabled:()=>false};
+  let settingsDoc=doc(renderSettingsView(settingsContext));
+  assert.equal(settingsDoc.querySelector('[data-theme] option[selected]').value,'dark');
+  assert.equal(settingsDoc.querySelector('[data-start-screen] option[selected]').value,'calendar');
+  assert.equal(settingsDoc.querySelector('[data-setting="offlineMail"]').hasAttribute('checked'),false);
+  assert.equal(settingsDoc.querySelector('[data-setting="neuralAnalysis"]').hasAttribute('checked'),false);
+  assert.equal(settingsDoc.querySelector('[data-action="choose-icon"][aria-pressed="true"]').dataset.id,'classic');
+  assert.equal(settingsWrites,0, 'showing settings does not open native dialogs');
+  assert.equal(settingsDoc.querySelector('script'),null);
+  settingsContext.local.settings.theme='light';settingsDoc=doc(renderSettingsView(settingsContext));
+  assert.equal(settingsDoc.querySelector('[data-theme] option[selected]').value,'light');
+  const profile=doc(renderProfileView({account:'<account>'}));
+  assert.equal(profile.querySelector('h3').textContent,'<account>');
+  assert.ok(profile.querySelector('[data-action="switch-account"]'));
+  let fileRequests=0;
+  const filesContext={Pilot:{downloadAttachments:()=>{fileRequests++;}},fileEntries:[],
+    bodyCache:{[mail.uidKey(reference)]:{attachments:[{path:'1',name:'Report.PDF'}]}},fileQuery:'pdf',
+    searchClear:()=>'',folders:['INBOX'],fileFolder:'INBOX',fileOffset:1,fileTotal:1,fileLoading:false,
+    local:{fileLabels:{}},labelChip:()=>'',attachmentButton:()=>'',downloadTransferMarkup:()=>'',
+    fileDownloadButton:()=>'',labelOptions:()=>'',fileMore:false,fileListError:''};
+  const fileDoc=doc(renderFilesView(filesContext));
+  assert.equal(fileDoc.querySelector('h4').textContent,'Report.PDF');
+  assert.equal(fileDoc.querySelector('[data-action="file-source"]').dataset.id,mail.uidKey(reference));
+  assert.equal(fileRequests,0, 'rendering cached file metadata does not download files');
+  filesContext.fileQuery='absent';filesContext.fileListError='offline';
+  const fileError=doc(renderFilesView(filesContext));
+  assert.ok(fileError.querySelector('[data-action="retry-files"]'));
+
   const first = await bundleUi(), second = await bundleUi();
   assert.ok(Buffer.from(first).equals(Buffer.from(second)), 'bundle must be deterministic');
   assert.ok(Buffer.from(first).equals(fs.readFileSync(path.join(__dirname,'assets/app.js'))), 'tracked bundle must match sources');

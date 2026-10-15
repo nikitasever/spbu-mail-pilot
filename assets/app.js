@@ -8,6 +8,100 @@
   var field = (label, name, value = "", type = "text", max = 180) => `<label>${label}<input name="${name}" type="${type}" maxlength="${max}" value="${esc(value)}"></label>`;
   var area = (label, name, value = "", max = 2e3) => `<label>${label}<textarea name="${name}" maxlength="${max}">${esc(value)}</textarea></label>`;
 
+  // ui/mail/identity.mjs
+  var uidKey = (m) => JSON.stringify([m.folder || "INBOX", m.validity, m.uid]);
+  var threadIds = (value) => typeof value === "string" && value.length <= 32768 ? [...value.matchAll(/<[^<>\s@]+@[^<>\s@]+>/g)].map((m) => m[0]).filter((id) => id.length <= 998 && /^[\x21-\x7e]+$/.test(id)).slice(0, 100) : [];
+  function resolveSenderName(m, people = () => []) {
+    const good = (value) => typeof value === "string" && value.trim() && !value.includes("�") && !/=\?[^?]+\?[bBqQ]\?/.test(value);
+    if (good(m.sender) && m.sender !== m.email) return m.sender;
+    const email = String(m.email || "").toLowerCase(), person = people().find((p) => String(p.email || "").toLowerCase() === email && good(p.sender));
+    return person?.sender || m.email || (good(m.sender) ? m.sender : "Неизвестный отправитель");
+  }
+  function folderLabel(name) {
+    const value = String(name);
+    return { inbox: "Входящие", junk: "Спам", outgoing: "Исходящие", drafts: "Черновики на сервере" }[value.toLowerCase()] || value;
+  }
+  var avatarMarkup = (m, name) => {
+    const parts = (name.includes("@") ? name.split("@")[0].split(/[._-]+/) : name.split(/\s+/)).filter(Boolean), initials = (parts.length > 1 ? (Array.from(parts[0])[0] || "") + (Array.from(parts[1])[0] || "") : name.includes("@") ? Array.from(parts[0] || "").slice(0, 2).join("") : Array.from(name)[0] || "").toUpperCase(), tone = [...m.email || name].reduce((n, c) => (n + c.charCodeAt(0)) % 6, 0);
+    return `<span class="avatar person" data-tone="${tone}" aria-hidden="true">${esc(initials)}</span>`;
+  };
+
+  // ui/files/render.mjs
+  function renderFilesView(context) {
+    const { Pilot: Pilot2, fileEntries, bodyCache, fileQuery, searchClear, folders, fileFolder, fileOffset, fileTotal, fileLoading, local, labelChip, attachmentButton, downloadTransferMarkup, fileDownloadButton, labelOptions, fileMore, fileListError } = context;
+    const entries = typeof Pilot2.filesPage === "function" ? fileEntries : Object.entries(bodyCache).flatMap(([key, b]) => (b.attachments || []).map((f) => ({ message: { folder: JSON.parse(key)[0], validity: JSON.parse(key)[1], uid: JSON.parse(key)[2] }, ...f }))).filter((f) => f.name.toLocaleLowerCase("ru").includes(fileQuery.toLocaleLowerCase("ru")));
+    return page((entries.length && typeof Pilot2.downloadAttachments === "function" ? '<div class="files-batch-actions">' + btn(icon("download") + " Скачать показанные · " + entries.length, "download-shown-files", "", "reader-small") + '<p class="note">Вложения из загруженного списка; другие страницы — по кнопке ниже.</p></div>' : "") + '<form data-file-search class="search-form"><input name="file-query" type="search" maxlength="200" value="' + esc(fileQuery) + '" aria-label="Поиск файлов" placeholder="Поиск файлов по имени"><button type="submit" aria-label="Найти файлы">' + icon("search") + "</button>" + searchClear("file-query", "clear-file-search", "Очистить поиск файлов", fileQuery) + '</form><label>Папка<select id="files-folder">' + folders.map((name) => '<option value="' + esc(name) + '" ' + (name === fileFolder ? "selected" : "") + ">" + esc(name === "INBOX" ? "Входящие" : name) + "</option>").join("") + '</select></label><p class="note">Вложения из писем этой папки. Проверено писем: ' + fileOffset + " из " + fileTotal + ". " + (fileLoading ? "Поиск продолжается…" : "") + "</p>" + entries.map((f) => {
+      const ref = f.message, key = JSON.stringify([ref.folder, ref.uid, ref.validity, f.path]);
+      return '<div class="list-item"><h4>' + esc(f.name) + '</h4><p class="note">' + esc(ref.sender || "") + " · " + esc(ref.subject || "") + "</p>" + labelChip(local.fileLabels[key]) + attachmentButton(ref, f) + downloadTransferMarkup(key) + '<div class="inline-actions">' + fileDownloadButton(key) + btn("Сохранить в…", "save-file", key) + btn(icon("share-2") + " Поделиться", "share-file", key) + btn("К письму", "file-source", uidKey(ref)) + '</div><label>Метка файла<select data-file-label="' + esc(key) + '">' + labelOptions(local.fileLabels[key]) + "</select></label></div>";
+    }).join("") + (fileMore && !fileLoading ? btn("Загрузить следующие вложения", "more-files", "", "full") : "") + (!entries.length ? '<p class="note">' + (fileLoading ? "Проверяем имена вложений…" : fileListError ? "Не удалось загрузить файлы. Проверьте подключение." : "Файлы не найдены.") + "</p>" + (fileListError ? btn("Повторить загрузку", "retry-files") : "") : ""));
+  }
+
+  // ui/settings/profile.mjs
+  function renderProfileView(context) {
+    const { account } = context;
+    return page('<div class="profile-avatar">' + esc(account.charAt(0).toUpperCase()) + "</div><h3>" + esc(account) + '</h3><p class="note">Данные входа сохранены на телефоне в зашифрованном виде. «Выйти» закрывает ящик, сохраняя пароль. Удалить сохранённый вход можно в списке аккаунтов.</p><div class="actions">' + btn("Сменить аккаунт", "switch-account", "", "primary") + btn("Выйти из текущего ящика", "logout") + "</div>");
+  }
+
+  // ui/settings/render.mjs
+  function renderSettingsView(context) {
+    const { account, local, Pilot: Pilot2, tasksEnabled, threadsEnabled, undoSendEnabled, aiEnabled } = context;
+    return page(btn(icon("tags") + " Категории и правила", "category-settings") + '<h3>Письма и ответы</h3><p class="note">Подпись и шаблоны для ' + esc(account) + ".</p>" + btn("Настроить подпись", "signature-settings") + btn("Мои шаблоны", "templates") + '<h3>Обновление приложения · 0.73</h3><p class="note">Загрузка новой версии из GitHub. Аккаунты и задачи сохраняются.</p>' + btn("Проверить обновление", "check-update") + "<h3>Начальный экран</h3><label>Открывать при запуске<select data-start-screen>" + [["mail", "Почта"], ["calendar", "Расписание дня"]].map(([value, label]) => '<option value="' + value + '" ' + ((local.settings.startScreen || "mail") === value ? "selected" : "") + ">" + label + "</option>").join("") + '</select></label><h3>Офлайн-почта</h3><label class="settings-row"><span>Сохранять открытые письма</span><input type="checkbox" data-setting="offlineMail" ' + (local.settings.offlineMail !== false ? "checked" : "") + '></label><p class="note">До 200 заголовков на папку и 50 открытых текстов. Зашифрованные копии на этом телефоне, отдельно для каждого ящика. Вложения загружаются при подключении. Ответы сохраняются в черновиках и отправляются только по кнопке.</p>' + btn("Удалить сохранённую почту", "clear-offline-mail") + '<h3>Отображение</h3><div class="icon-previews">' + [["spbu", "С надписью СПбГУ", "spbu"], ["classic", "Без надписи", "plain"]].map(([value, title, asset]) => '<button type="button" data-action="choose-icon" data-id="' + value + '" aria-pressed="' + ((typeof Pilot2.launcherIcon === "function" ? Pilot2.launcherIcon() : "spbu") === value) + '"><img src="icon-' + asset + '.png" alt="' + title + '"><span>' + title + "</span></button>").join("") + '</div><p class="note">Иконка общая для всех ящиков. Лаунчер может обновить её с небольшой задержкой.</p><label>Тема<select data-theme>' + [["system", "Как на телефоне"], ["light", "Светлая"], ["dark", "Тёмная"]].map(([value, title]) => '<option value="' + value + '" ' + ((local.settings.theme || "system") === value ? "selected" : "") + ">" + title + "</option>").join("") + "</select></label>" + [["showTasks", "Задачи и поручения"], ["mailThreads", "Цепочки писем"], ["undoSend", "Отмена отправки (10 секунд)"], ["compact", "Компактный список"], ["large", "Крупный текст"]].map(([key, name]) => `<label class="settings-row"><span>${name}</span><input type="checkbox" data-setting="${key}" ${(key === "showTasks" ? tasksEnabled() : key === "mailThreads" ? threadsEnabled() : key === "undoSend" ? undoSendEnabled() : local.settings[key]) ? "checked" : ""}></label>`).join("") + '<p class="note">Выключите, чтобы скрыть отдельный раздел задач и создание поручений из писем. Задачи и их добавление останутся в календаре. Напоминания настраиваются отдельно. Для текущего ящика.</p><h3>Защита приложения</h3><p class="note">' + (typeof Pilot2.appLockEnabled === "function" && Pilot2.appLockEnabled() ? "Блокировка включена." : "Блокировка выключена.") + " Для всех ящиков: биометрия или PIN устройства при возвращении из фона. Фоновая почта и расписание работают дальше. Виджеты и уведомления защищаются отдельно настройками Android.</p>" + (typeof Pilot2.appLockSettings === "function" ? btn("Настроить блокировку", "app-lock-settings") : "") + '<h3>Уведомления</h3><p class="note">Для ' + esc(account) + ". Проверяются все сохранённые ящики с включёнными уведомлениями; имя ящика указано в уведомлении. Чтобы изменить другой ящик, переключитесь на него.</p>" + [["mailNotifications", "Новые письма"], ["backgroundMail", "Проверять почту при закрытом приложении"], ["taskNotifications", "Сроки задач"]].map(([key, name]) => `<label class="settings-row"><span>${name}</span><input type="checkbox" data-setting="${key}" ${local.settings[key] ? "checked" : ""}></label>`).join("") + '<p class="note">Для текущего аккаунта. При открытом приложении почта обновляется по событиям IMAP IDLE, если сервер поддерживает их, иначе — примерно раз в 30 секунд. При включённой фоновой проверке отдельная служба проверяет текущий ящик примерно раз в минуту и показывает постоянное уведомление. Разрешите работу без ограничений батареи и исключите приложение из спящих, иначе Android может задерживать сеть при выключенном экране. Этот режим расходует дополнительную энергию. При отключении остаётся проверка планировщиком примерно раз в 15 минут, с возможными задержками Android. Напоминания: за час до указанного времени, без времени — в 09:00 по Москве. При выходе уведомления этого ящика останавливаются.</p><p class="note">' + (typeof Pilot2.notificationsAllowed === "function" && Pilot2.notificationsAllowed() ? "Разрешены в Android." : "Разрешите уведомления в Android.") + '</p><div class="actions">' + btn("Проверить уведомление", "test-notification") + btn("Настройки Android", "notification-settings") + btn("Разрешить работу в фоне", "allow-background-mail") + btn("Настройки батареи", "battery-settings") + "</div>" + (typeof Pilot2.backgroundMailStatus === "function" ? '<p class="note">' + esc(Pilot2.backgroundMailStatus()) + "</p>" : "") + '<p class="note">Отложенные письма и «Напомнить ответить»: напоминания для всех сохранённых ящиков, отдельные каналы Android «Отложенные письма» и «Напомнить ответить». Выключатели новых писем и задач на них не влияют.</p><h3>Подключение</h3><p class="note">IMAP с TLS и проверкой сертификата. При открытии письмо помечается прочитанным на сервере. Можно снова отметить его непрочитанным.</p><h3>Умная сводка · Gemini</h3><label class="settings-row"><span>Нейроанализ и приветствие</span><input type="checkbox" data-setting="neuralAnalysis" ' + (aiEnabled() ? "checked" : "") + '></label><p class="note">При отключении скрываются приветствие, умная панель и ИИ-действия. Тексты не передаются для анализа. Для текущего ящика; сохранённый ключ остаётся.</p><p class="note">По открытию панели анализируются выбранные письма. Тексты передаются Google Gemini; вложения не отправляются. API-ключ хранится зашифрованным на телефоне.</p>' + btn("Настроить Gemini", "gemini-settings") + '<p class="note">PDF и текст DOCX открываются прямо в приложении; остальные документы — в просмотрщиках телефона.</p>' + btn("Настройки отправки SMTP", "smtp-settings") + btn("Выйти из ящика", "logout"));
+  }
+
+  // ui/search/render.mjs
+  function renderSearchView(context) {
+    const { smart, folders, searchClear, smartResults } = context;
+    const c = smart.criteria;
+    return page('<form data-smart-search novalidate><div class="search-form"><label class="sr-only" for="smart-query">Поиск по почте, календарю и контактам</label><input id="smart-query" name="smart-query" type="search" maxlength="120" value="' + esc(c.query) + '" placeholder="Письма, события, контакты"><button type="submit" aria-label="Найти">' + icon("search") + "</button>" + searchClear("smart-query", "smart-clear", "Очистить общий поиск", c.query) + '</div><details class="smart-filters"><summary>Фильтры' + ([c.from, c.start, c.end, c.attachments].filter(Boolean).length ? " · " + [c.from, c.start, c.end, c.attachments].filter(Boolean).length : "") + '</summary><label>Папка почты<select name="smart-folder">' + [.../* @__PURE__ */ new Set([...folders, c.folder])].map((folder) => '<option value="' + esc(folder) + '" ' + (folder === c.folder ? "selected" : "") + ">" + esc(folderLabel(folder)) + "</option>").join("") + "</select></label>" + field("Отправитель (почта)", "smart-from", c.from, "text", 200) + '<div class="smart-dates">' + field("С даты", "smart-start", c.start, "date", 10) + field("По дату включительно", "smart-end", c.end, "date", 10) + '</div><label class="settings-row"><span>Только с вложениями (почта)</span><input name="smart-attachments" type="checkbox" ' + (c.attachments ? "checked" : "") + '></label><p class="note">Даты получения писем — по Москве. Календарь: не более 12 месяцев за запрос; без дат — текущий и следующий месяц. Даты и отправитель не ограничивают контакты.</p>' + btn("Сбросить фильтры", "smart-reset-filters", "", "text-button") + '</details><p id="smart-error" role="alert"></p></form><div id="smart-results">' + smartResults() + "</div>");
+  }
+
+  // ui/calendar/dates.mjs
+  var dateText = (value) => value ? new Date(value).toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: "Europe/Moscow" }) : "";
+  var calendarDate = (date) => date.toISOString().slice(0, 10);
+  var shiftCalendarDate = (day, amount) => {
+    const date = /* @__PURE__ */ new Date(day + "T12:00:00Z");
+    date.setUTCDate(date.getUTCDate() + amount);
+    return calendarDate(date);
+  };
+  var calendarDayLabel = (day) => (/* @__PURE__ */ new Date(day + "T12:00:00Z")).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  function calendarPeriodLabel(bounds) {
+    const first = /* @__PURE__ */ new Date(bounds.start + "T12:00:00Z"), last = /* @__PURE__ */ new Date(shiftCalendarDate(bounds.end, -1) + "T12:00:00Z");
+    if (bounds.start.slice(0, 7) === calendarDate(last).slice(0, 7)) return first.getUTCDate() + "–" + last.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+    return first.toLocaleDateString("ru-RU", { day: "numeric", month: "short", ...first.getUTCFullYear() !== last.getUTCFullYear() ? { year: "numeric" } : {}, timeZone: "UTC" }) + " – " + calendarDayLabel(calendarDate(last));
+  }
+  function calendarTimeRange(t) {
+    const dateLabel = (day) => {
+      const date = /* @__PURE__ */ new Date(day + "T12:00:00Z");
+      return Number.isNaN(date.getTime()) ? day : date.toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+    };
+    if (t.kind === "task") return t.time || "Весь день";
+    if (t.allDay || !t.time) {
+      if (t.allDay && t.endDate > t.date) {
+        const last = /* @__PURE__ */ new Date(t.endDate + "T12:00:00Z");
+        if (!Number.isNaN(last.getTime())) {
+          last.setUTCDate(last.getUTCDate() - 1);
+          const end = calendarDate(last);
+          if (end > t.date) return "Весь день · " + dateLabel(t.date) + " – " + dateLabel(end);
+        }
+      }
+      return "Весь день";
+    }
+    if (t.endDate > t.date) return dateLabel(t.date) + " " + t.time + " – " + dateLabel(t.endDate) + (t.endTime ? " " + t.endTime : "");
+    return t.endTime && t.endTime > t.time ? t.time + "–" + t.endTime : t.time;
+  }
+  var snoozeInput = (at) => new Date(at + 3 * 36e5).toISOString().slice(0, 16);
+
+  // ui/search/results.mjs
+  function renderSearchResults(context) {
+    const { smart, smartMonths, contactsServer } = context;
+    if (!smart.committed) return '<p class="note">Введите слово или задайте фильтры. Поиск выполняется в текущем ящике; запрос не передаётся ИИ.</p>';
+    const c = smart.committed, b = smartMonths(c), empty = (busy, error, count) => busy ? '<p role="status">Ищем…</p>' : error ? '<p role="alert">' + esc(error) + "</p>" : count ? "" : '<p class="note">Совпадений нет.</p>';
+    const mail = '<section class="smart-section"><h3>Почта · ' + smart.mail.length + '</h3><p class="note">Папка: ' + esc(folderLabel(c.folder)) + (smart.offline ? " · Только сохранённые заголовки" : " · Серверный поиск по теме, отправителю и тексту") + "." + (smart.total ? " Проверено " + smart.offset + " из " + smart.total + " кандидатов." : "") + (c.attachments ? " Вложения проверяются по метаданным порции; неизвестная структура не считается вложением." : "") + "</p>" + (!smart.mailBusy && !smart.mailError && !smart.mail.length && smart.more ? '<p class="note">В проверенной порции совпадений нет. Проверьте ещё письма.</p>' : empty(smart.mailBusy, smart.mailError, smart.mail.length)) + smart.mail.map((m) => btn("<strong>" + esc(m.subject || "Без темы") + "</strong><span>" + esc(m.sender || m.email || "") + "</span><small>" + esc(dateText(m.date)) + (m.hasAttachments ? " · Есть вложения" : "") + "</small>", "smart-open-mail", uidKey(m), "text-button smart-result")).join("") + (smart.mailError ? btn("Повторить поиск почты", "smart-retry-mail") : "") + (smart.more ? btn("Проверить ещё письма", "smart-more-mail").replace("<button ", "<button " + (smart.mailBusy ? "disabled " : "")) : "") + "</section>";
+    const calendar = '<section class="smart-section"><h3>Календарь · ' + smart.events.length + '</h3><p class="note">' + esc(b.start + " — " + b.end) + ". События и незавершённые личные задачи. Отправитель и вложения относятся только к почте.</p>" + (c.query || c.start || c.end ? empty(smart.calendarBusy, smart.calendarError, smart.events.length) : '<p class="note">Для поиска календаря введите слово или задайте даты.</p>') + (smart.notice ? '<p class="note" role="status">' + esc(smart.notice) + "</p>" : "") + smart.events.map((e, i) => btn("<strong>" + esc(e.title || "Без названия") + "</strong><span>" + esc(e.date + " · " + calendarTimeRange(e)) + "</span>" + (e.location ? "<small>" + esc(e.location) + "</small>" : ""), "smart-open-event", String(i), "text-button smart-result")).join("") + (smart.calendarError ? btn("Повторить поиск", "smart-search") : "") + "</section>";
+    const people = '<section class="smart-section"><h3>Контакты · ' + smart.people.length + '</h3><p class="note">Сохранённые контакты и история получателей' + (contactsServer() ? "; доступный справочник СПбГУ." : ".") + " Для справочника нужны хотя бы два символа.</p>" + (c.query ? empty(smart.peopleBusy, smart.peopleError, smart.people.length) : '<p class="note">Введите имя или адрес для поиска контакта.</p>') + smart.people.map((p) => btn("<strong>" + esc(p.sender || p.email) + "</strong><span>" + esc(p.email) + "</span>", "smart-open-contact", p.email, "text-button smart-result")).join("") + (smart.peopleError ? btn("Повторить поиск контактов", "smart-retry-people") : "") + (smart.peopleMore ? btn("Показать ещё контакты", "smart-more-people").replace("<button ", "<button " + (smart.peopleBusy ? "disabled " : "")) : "") + "</section>";
+    return mail + calendar + people;
+  }
+
   // ui/mail/snooze-dialog.mjs
   function renderSnoozeDialog(context) {
     const { snoozePopup, Pilot: Pilot2 } = context;
@@ -119,42 +213,6 @@
     return `<article class="task-row ${t.done ? "completed" : ""}">${btn(icon(t.done ? "check" : "circle"), "done", t.id, "check")}<div class="task-text"><h3>${esc(t.title)}</h3>${labelChip(t.priority)}<p class="deadline">${t.date && t.date < today && !t.done ? "Просрочено · " : ""}${taskDate(t)}</p>${t.notes ? '<p class="task-notes">' + esc(t.notes) + "</p>" : ""}<div class="inline-actions">${btn("Изменить", "edit-task", t.id, "text-button")}${t.mail ? btn("К письму", "task-source", t.id, "text-button") : ""}${btn("Удалить", "delete-task", t.id, "text-button")}</div></div></article>`;
   }
 
-  // ui/calendar/dates.mjs
-  var dateText = (value) => value ? new Date(value).toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: "Europe/Moscow" }) : "";
-  var calendarDate = (date) => date.toISOString().slice(0, 10);
-  var shiftCalendarDate = (day, amount) => {
-    const date = /* @__PURE__ */ new Date(day + "T12:00:00Z");
-    date.setUTCDate(date.getUTCDate() + amount);
-    return calendarDate(date);
-  };
-  var calendarDayLabel = (day) => (/* @__PURE__ */ new Date(day + "T12:00:00Z")).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-  function calendarPeriodLabel(bounds) {
-    const first = /* @__PURE__ */ new Date(bounds.start + "T12:00:00Z"), last = /* @__PURE__ */ new Date(shiftCalendarDate(bounds.end, -1) + "T12:00:00Z");
-    if (bounds.start.slice(0, 7) === calendarDate(last).slice(0, 7)) return first.getUTCDate() + "–" + last.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
-    return first.toLocaleDateString("ru-RU", { day: "numeric", month: "short", ...first.getUTCFullYear() !== last.getUTCFullYear() ? { year: "numeric" } : {}, timeZone: "UTC" }) + " – " + calendarDayLabel(calendarDate(last));
-  }
-  function calendarTimeRange(t) {
-    const dateLabel = (day) => {
-      const date = /* @__PURE__ */ new Date(day + "T12:00:00Z");
-      return Number.isNaN(date.getTime()) ? day : date.toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-    };
-    if (t.kind === "task") return t.time || "Весь день";
-    if (t.allDay || !t.time) {
-      if (t.allDay && t.endDate > t.date) {
-        const last = /* @__PURE__ */ new Date(t.endDate + "T12:00:00Z");
-        if (!Number.isNaN(last.getTime())) {
-          last.setUTCDate(last.getUTCDate() - 1);
-          const end = calendarDate(last);
-          if (end > t.date) return "Весь день · " + dateLabel(t.date) + " – " + dateLabel(end);
-        }
-      }
-      return "Весь день";
-    }
-    if (t.endDate > t.date) return dateLabel(t.date) + " " + t.time + " – " + dateLabel(t.endDate) + (t.endTime ? " " + t.endTime : "");
-    return t.endTime && t.endTime > t.time ? t.time + "–" + t.endTime : t.time;
-  }
-  var snoozeInput = (at) => new Date(at + 3 * 36e5).toISOString().slice(0, 16);
-
   // ui/calendar/render.mjs
   function renderCalendarView(context) {
     const { calendarBounds, calendarView, calendarMonth, calendarEntries, onCalendarDay, today, calendarDay, calendarItem, calendarLoading, calendarData, calendarQuery, calendarSearchContent, dayPopup } = context;
@@ -196,24 +254,6 @@
     const label = t.kind === "remote" ? t.calendarTitle || "Рабочий календарь" : t.kind === "task" ? "Моя задача" : "Моё событие";
     return `<article class="agenda-item ${t.kind} ${linkedCategory ? "category-" + linkedCategory.color : ""}"><div class="agenda-time">${esc(calendarTimeRange(t))}</div><div class="agenda-content"><h4>${esc(t.title)}</h4><p class="agenda-source">${esc(label)}</p>${t.location ? '<p class="agenda-location">' + icon("map-pin") + "<span>Место: " + esc(t.location) + "</span></p>" : ""}${t.description ? '<details><summary>Описание</summary><p class="body-text">' + esc(t.description) + "</p></details>" : ""}${t.notes ? "<p>" + esc(t.notes) + "</p>" : ""}${t.kind === "remote" ? t.calendarId && t.id ? '<div class="inline-actions">' + (myTask ? btn(myTask.done ? "Моя задача выполнена · изменить" : "Моя задача · изменить", "edit-task", myTask.id, "text-button") : btn(icon("list-plus") + " Это моя задача", "calendar-my-task", calendarSourceKey(t), "text-button")) + "</div>" : "" : '<div class="inline-actions">' + (t.kind === "task" ? btn(icon("check") + " Выполнить", "done", t.id, "text-button") : "") + btn("Изменить", t.kind === "task" ? "edit-task" : "edit-event", t.id, "text-button") + btn("Удалить", t.kind === "task" ? "delete-task" : "delete-event", t.id, "text-button") + "</div>"}${eventLinks(t).length ? '<div class="inline-actions">' + btn(icon("mail") + " Письма · " + eventLinks(t).length, "calendar-links", eventLinkKey(t), "text-button") + "</div>" : ""}</div></article>`;
   }
-
-  // ui/mail/identity.mjs
-  var uidKey = (m) => JSON.stringify([m.folder || "INBOX", m.validity, m.uid]);
-  var threadIds = (value) => typeof value === "string" && value.length <= 32768 ? [...value.matchAll(/<[^<>\s@]+@[^<>\s@]+>/g)].map((m) => m[0]).filter((id) => id.length <= 998 && /^[\x21-\x7e]+$/.test(id)).slice(0, 100) : [];
-  function resolveSenderName(m, people = () => []) {
-    const good = (value) => typeof value === "string" && value.trim() && !value.includes("�") && !/=\?[^?]+\?[bBqQ]\?/.test(value);
-    if (good(m.sender) && m.sender !== m.email) return m.sender;
-    const email = String(m.email || "").toLowerCase(), person = people().find((p) => String(p.email || "").toLowerCase() === email && good(p.sender));
-    return person?.sender || m.email || (good(m.sender) ? m.sender : "Неизвестный отправитель");
-  }
-  function folderLabel(name) {
-    const value = String(name);
-    return { inbox: "Входящие", junk: "Спам", outgoing: "Исходящие", drafts: "Черновики на сервере" }[value.toLowerCase()] || value;
-  }
-  var avatarMarkup = (m, name) => {
-    const parts = (name.includes("@") ? name.split("@")[0].split(/[._-]+/) : name.split(/\s+/)).filter(Boolean), initials = (parts.length > 1 ? (Array.from(parts[0])[0] || "") + (Array.from(parts[1])[0] || "") : name.includes("@") ? Array.from(parts[0] || "").slice(0, 2).join("") : Array.from(name)[0] || "").toUpperCase(), tone = [...m.email || name].reduce((n, c) => (n + c.charCodeAt(0)) % 6, 0);
-    return `<span class="avatar person" data-tone="${tone}" aria-hidden="true">${esc(initials)}</span>`;
-  };
 
   // ui/mail/inbox.mjs
   function renderInboxView(context) {
@@ -312,6 +352,21 @@
   // ui/app.mjs
   (() => {
     "use strict";
+    function renderFiles() {
+      return renderFilesView({ Pilot, fileEntries, bodyCache, fileQuery, searchClear, folders, fileFolder, fileOffset, fileTotal, fileLoading, local, labelChip, attachmentButton, downloadTransferMarkup, fileDownloadButton, labelOptions, fileMore, fileListError });
+    }
+    function renderProfile() {
+      return renderProfileView({ account });
+    }
+    function renderSettings() {
+      return renderSettingsView({ account, local, Pilot, tasksEnabled, threadsEnabled, undoSendEnabled, aiEnabled });
+    }
+    function renderSmart() {
+      return renderSearchView({ smart, folders, searchClear, smartResults });
+    }
+    function smartResults() {
+      return renderSearchResults({ smart, smartMonths, contactsServer });
+    }
     function renderSnoozePopup() {
       return renderSnoozeDialog({ snoozePopup, Pilot });
     }
@@ -1619,18 +1674,6 @@
       if (!q) return [];
       return [...new Map([...local.contacts.map((p) => ({ ...p, origin: "personal" })), ...(local.recipientBook || []).map((p) => ({ ...p, origin: "history" })), ...remote].filter((p) => p.email && smartText([p.sender, p.email, p.number].join(" ")).includes(q)).map((p) => [p.email.toLowerCase(), p])).values()].sort(contactSort);
     }
-    function smartResults() {
-      if (!smart.committed) return '<p class="note">Введите слово или задайте фильтры. Поиск выполняется в текущем ящике; запрос не передаётся ИИ.</p>';
-      const c = smart.committed, b = smartMonths(c), empty = (busy, error, count) => busy ? '<p role="status">Ищем…</p>' : error ? '<p role="alert">' + esc(error) + "</p>" : count ? "" : '<p class="note">Совпадений нет.</p>';
-      const mail = '<section class="smart-section"><h3>Почта · ' + smart.mail.length + '</h3><p class="note">Папка: ' + esc(folderLabel(c.folder)) + (smart.offline ? " · Только сохранённые заголовки" : " · Серверный поиск по теме, отправителю и тексту") + "." + (smart.total ? " Проверено " + smart.offset + " из " + smart.total + " кандидатов." : "") + (c.attachments ? " Вложения проверяются по метаданным порции; неизвестная структура не считается вложением." : "") + "</p>" + (!smart.mailBusy && !smart.mailError && !smart.mail.length && smart.more ? '<p class="note">В проверенной порции совпадений нет. Проверьте ещё письма.</p>' : empty(smart.mailBusy, smart.mailError, smart.mail.length)) + smart.mail.map((m) => btn("<strong>" + esc(m.subject || "Без темы") + "</strong><span>" + esc(m.sender || m.email || "") + "</span><small>" + esc(dateText(m.date)) + (m.hasAttachments ? " · Есть вложения" : "") + "</small>", "smart-open-mail", uidKey(m), "text-button smart-result")).join("") + (smart.mailError ? btn("Повторить поиск почты", "smart-retry-mail") : "") + (smart.more ? btn("Проверить ещё письма", "smart-more-mail").replace("<button ", "<button " + (smart.mailBusy ? "disabled " : "")) : "") + "</section>";
-      const calendar = '<section class="smart-section"><h3>Календарь · ' + smart.events.length + '</h3><p class="note">' + esc(b.start + " — " + b.end) + ". События и незавершённые личные задачи. Отправитель и вложения относятся только к почте.</p>" + (c.query || c.start || c.end ? empty(smart.calendarBusy, smart.calendarError, smart.events.length) : '<p class="note">Для поиска календаря введите слово или задайте даты.</p>') + (smart.notice ? '<p class="note" role="status">' + esc(smart.notice) + "</p>" : "") + smart.events.map((e, i) => btn("<strong>" + esc(e.title || "Без названия") + "</strong><span>" + esc(e.date + " · " + calendarTimeRange(e)) + "</span>" + (e.location ? "<small>" + esc(e.location) + "</small>" : ""), "smart-open-event", String(i), "text-button smart-result")).join("") + (smart.calendarError ? btn("Повторить поиск", "smart-search") : "") + "</section>";
-      const people = '<section class="smart-section"><h3>Контакты · ' + smart.people.length + '</h3><p class="note">Сохранённые контакты и история получателей' + (contactsServer() ? "; доступный справочник СПбГУ." : ".") + " Для справочника нужны хотя бы два символа.</p>" + (c.query ? empty(smart.peopleBusy, smart.peopleError, smart.people.length) : '<p class="note">Введите имя или адрес для поиска контакта.</p>') + smart.people.map((p) => btn("<strong>" + esc(p.sender || p.email) + "</strong><span>" + esc(p.email) + "</span>", "smart-open-contact", p.email, "text-button smart-result")).join("") + (smart.peopleError ? btn("Повторить поиск контактов", "smart-retry-people") : "") + (smart.peopleMore ? btn("Показать ещё контакты", "smart-more-people").replace("<button ", "<button " + (smart.peopleBusy ? "disabled " : "")) : "") + "</section>";
-      return mail + calendar + people;
-    }
-    function renderSmart() {
-      const c = smart.criteria;
-      return page('<form data-smart-search novalidate><div class="search-form"><label class="sr-only" for="smart-query">Поиск по почте, календарю и контактам</label><input id="smart-query" name="smart-query" type="search" maxlength="120" value="' + esc(c.query) + '" placeholder="Письма, события, контакты"><button type="submit" aria-label="Найти">' + icon("search") + "</button>" + searchClear("smart-query", "smart-clear", "Очистить общий поиск", c.query) + '</div><details class="smart-filters"><summary>Фильтры' + ([c.from, c.start, c.end, c.attachments].filter(Boolean).length ? " · " + [c.from, c.start, c.end, c.attachments].filter(Boolean).length : "") + '</summary><label>Папка почты<select name="smart-folder">' + [.../* @__PURE__ */ new Set([...folders, c.folder])].map((folder) => '<option value="' + esc(folder) + '" ' + (folder === c.folder ? "selected" : "") + ">" + esc(folderLabel(folder)) + "</option>").join("") + "</select></label>" + field("Отправитель (почта)", "smart-from", c.from, "text", 200) + '<div class="smart-dates">' + field("С даты", "smart-start", c.start, "date", 10) + field("По дату включительно", "smart-end", c.end, "date", 10) + '</div><label class="settings-row"><span>Только с вложениями (почта)</span><input name="smart-attachments" type="checkbox" ' + (c.attachments ? "checked" : "") + '></label><p class="note">Даты получения писем — по Москве. Календарь: не более 12 месяцев за запрос; без дат — текущий и следующий месяц. Даты и отправитель не ограничивают контакты.</p>' + btn("Сбросить фильтры", "smart-reset-filters", "", "text-button") + '</details><p id="smart-error" role="alert"></p></form><div id="smart-results">' + smartResults() + "</div>");
-    }
     function paintSmart() {
       if (route !== "search" || form) return;
       const el = root.querySelector("#smart-results");
@@ -2015,19 +2058,6 @@
     }
     function contactNumber(p) {
       return local.contacts.find((c) => c.email.toLowerCase() === p.email.toLowerCase())?.number || p.number || local.phoneContacts.find((c) => c.email.toLowerCase() === p.email.toLowerCase())?.number || Object.values(bodyCache).filter((b) => b.message?.email?.toLowerCase() === p.email.toLowerCase()).flatMap((b) => b.phones || [])[0] || "";
-    }
-    function renderFiles() {
-      const entries = typeof Pilot.filesPage === "function" ? fileEntries : Object.entries(bodyCache).flatMap(([key, b]) => (b.attachments || []).map((f) => ({ message: { folder: JSON.parse(key)[0], validity: JSON.parse(key)[1], uid: JSON.parse(key)[2] }, ...f }))).filter((f) => f.name.toLocaleLowerCase("ru").includes(fileQuery.toLocaleLowerCase("ru")));
-      return page((entries.length && typeof Pilot.downloadAttachments === "function" ? '<div class="files-batch-actions">' + btn(icon("download") + " Скачать показанные · " + entries.length, "download-shown-files", "", "reader-small") + '<p class="note">Вложения из загруженного списка; другие страницы — по кнопке ниже.</p></div>' : "") + '<form data-file-search class="search-form"><input name="file-query" type="search" maxlength="200" value="' + esc(fileQuery) + '" aria-label="Поиск файлов" placeholder="Поиск файлов по имени"><button type="submit" aria-label="Найти файлы">' + icon("search") + "</button>" + searchClear("file-query", "clear-file-search", "Очистить поиск файлов", fileQuery) + '</form><label>Папка<select id="files-folder">' + folders.map((name) => '<option value="' + esc(name) + '" ' + (name === fileFolder ? "selected" : "") + ">" + esc(name === "INBOX" ? "Входящие" : name) + "</option>").join("") + '</select></label><p class="note">Вложения из писем этой папки. Проверено писем: ' + fileOffset + " из " + fileTotal + ". " + (fileLoading ? "Поиск продолжается…" : "") + "</p>" + entries.map((f) => {
-        const ref = f.message, key = JSON.stringify([ref.folder, ref.uid, ref.validity, f.path]);
-        return '<div class="list-item"><h4>' + esc(f.name) + '</h4><p class="note">' + esc(ref.sender || "") + " · " + esc(ref.subject || "") + "</p>" + labelChip(local.fileLabels[key]) + attachmentButton(ref, f) + downloadTransferMarkup(key) + '<div class="inline-actions">' + fileDownloadButton(key) + btn("Сохранить в…", "save-file", key) + btn(icon("share-2") + " Поделиться", "share-file", key) + btn("К письму", "file-source", uidKey(ref)) + '</div><label>Метка файла<select data-file-label="' + esc(key) + '">' + labelOptions(local.fileLabels[key]) + "</select></label></div>";
-      }).join("") + (fileMore && !fileLoading ? btn("Загрузить следующие вложения", "more-files", "", "full") : "") + (!entries.length ? '<p class="note">' + (fileLoading ? "Проверяем имена вложений…" : fileListError ? "Не удалось загрузить файлы. Проверьте подключение." : "Файлы не найдены.") + "</p>" + (fileListError ? btn("Повторить загрузку", "retry-files") : "") : ""));
-    }
-    function renderSettings() {
-      return page(btn(icon("tags") + " Категории и правила", "category-settings") + '<h3>Письма и ответы</h3><p class="note">Подпись и шаблоны для ' + esc(account) + ".</p>" + btn("Настроить подпись", "signature-settings") + btn("Мои шаблоны", "templates") + '<h3>Обновление приложения · 0.72</h3><p class="note">Загрузка новой версии из GitHub. Аккаунты и задачи сохраняются.</p>' + btn("Проверить обновление", "check-update") + "<h3>Начальный экран</h3><label>Открывать при запуске<select data-start-screen>" + [["mail", "Почта"], ["calendar", "Расписание дня"]].map(([value, label]) => '<option value="' + value + '" ' + ((local.settings.startScreen || "mail") === value ? "selected" : "") + ">" + label + "</option>").join("") + '</select></label><h3>Офлайн-почта</h3><label class="settings-row"><span>Сохранять открытые письма</span><input type="checkbox" data-setting="offlineMail" ' + (local.settings.offlineMail !== false ? "checked" : "") + '></label><p class="note">До 200 заголовков на папку и 50 открытых текстов. Зашифрованные копии на этом телефоне, отдельно для каждого ящика. Вложения загружаются при подключении. Ответы сохраняются в черновиках и отправляются только по кнопке.</p>' + btn("Удалить сохранённую почту", "clear-offline-mail") + '<h3>Отображение</h3><div class="icon-previews">' + [["spbu", "С надписью СПбГУ", "spbu"], ["classic", "Без надписи", "plain"]].map(([value, title, asset]) => '<button type="button" data-action="choose-icon" data-id="' + value + '" aria-pressed="' + ((typeof Pilot.launcherIcon === "function" ? Pilot.launcherIcon() : "spbu") === value) + '"><img src="icon-' + asset + '.png" alt="' + title + '"><span>' + title + "</span></button>").join("") + '</div><p class="note">Иконка общая для всех ящиков. Лаунчер может обновить её с небольшой задержкой.</p><label>Тема<select data-theme>' + [["system", "Как на телефоне"], ["light", "Светлая"], ["dark", "Тёмная"]].map(([value, title]) => '<option value="' + value + '" ' + ((local.settings.theme || "system") === value ? "selected" : "") + ">" + title + "</option>").join("") + "</select></label>" + [["showTasks", "Задачи и поручения"], ["mailThreads", "Цепочки писем"], ["undoSend", "Отмена отправки (10 секунд)"], ["compact", "Компактный список"], ["large", "Крупный текст"]].map(([key, name]) => `<label class="settings-row"><span>${name}</span><input type="checkbox" data-setting="${key}" ${(key === "showTasks" ? tasksEnabled() : key === "mailThreads" ? threadsEnabled() : key === "undoSend" ? undoSendEnabled() : local.settings[key]) ? "checked" : ""}></label>`).join("") + '<p class="note">Выключите, чтобы скрыть отдельный раздел задач и создание поручений из писем. Задачи и их добавление останутся в календаре. Напоминания настраиваются отдельно. Для текущего ящика.</p><h3>Защита приложения</h3><p class="note">' + (typeof Pilot.appLockEnabled === "function" && Pilot.appLockEnabled() ? "Блокировка включена." : "Блокировка выключена.") + " Для всех ящиков: биометрия или PIN устройства при возвращении из фона. Фоновая почта и расписание работают дальше. Виджеты и уведомления защищаются отдельно настройками Android.</p>" + (typeof Pilot.appLockSettings === "function" ? btn("Настроить блокировку", "app-lock-settings") : "") + '<h3>Уведомления</h3><p class="note">Для ' + esc(account) + ". Проверяются все сохранённые ящики с включёнными уведомлениями; имя ящика указано в уведомлении. Чтобы изменить другой ящик, переключитесь на него.</p>" + [["mailNotifications", "Новые письма"], ["backgroundMail", "Проверять почту при закрытом приложении"], ["taskNotifications", "Сроки задач"]].map(([key, name]) => `<label class="settings-row"><span>${name}</span><input type="checkbox" data-setting="${key}" ${local.settings[key] ? "checked" : ""}></label>`).join("") + '<p class="note">Для текущего аккаунта. При открытом приложении почта обновляется по событиям IMAP IDLE, если сервер поддерживает их, иначе — примерно раз в 30 секунд. При включённой фоновой проверке отдельная служба проверяет текущий ящик примерно раз в минуту и показывает постоянное уведомление. Разрешите работу без ограничений батареи и исключите приложение из спящих, иначе Android может задерживать сеть при выключенном экране. Этот режим расходует дополнительную энергию. При отключении остаётся проверка планировщиком примерно раз в 15 минут, с возможными задержками Android. Напоминания: за час до указанного времени, без времени — в 09:00 по Москве. При выходе уведомления этого ящика останавливаются.</p><p class="note">' + (typeof Pilot.notificationsAllowed === "function" && Pilot.notificationsAllowed() ? "Разрешены в Android." : "Разрешите уведомления в Android.") + '</p><div class="actions">' + btn("Проверить уведомление", "test-notification") + btn("Настройки Android", "notification-settings") + btn("Разрешить работу в фоне", "allow-background-mail") + btn("Настройки батареи", "battery-settings") + "</div>" + (typeof Pilot.backgroundMailStatus === "function" ? '<p class="note">' + esc(Pilot.backgroundMailStatus()) + "</p>" : "") + '<p class="note">Отложенные письма и «Напомнить ответить»: напоминания для всех сохранённых ящиков, отдельные каналы Android «Отложенные письма» и «Напомнить ответить». Выключатели новых писем и задач на них не влияют.</p><h3>Подключение</h3><p class="note">IMAP с TLS и проверкой сертификата. При открытии письмо помечается прочитанным на сервере. Можно снова отметить его непрочитанным.</p><h3>Умная сводка · Gemini</h3><label class="settings-row"><span>Нейроанализ и приветствие</span><input type="checkbox" data-setting="neuralAnalysis" ' + (aiEnabled() ? "checked" : "") + '></label><p class="note">При отключении скрываются приветствие, умная панель и ИИ-действия. Тексты не передаются для анализа. Для текущего ящика; сохранённый ключ остаётся.</p><p class="note">По открытию панели анализируются выбранные письма. Тексты передаются Google Gemini; вложения не отправляются. API-ключ хранится зашифрованным на телефоне.</p>' + btn("Настроить Gemini", "gemini-settings") + '<p class="note">PDF и текст DOCX открываются прямо в приложении; остальные документы — в просмотрщиках телефона.</p>' + btn("Настройки отправки SMTP", "smtp-settings") + btn("Выйти из ящика", "logout"));
-    }
-    function renderProfile() {
-      return page('<div class="profile-avatar">' + esc(account.charAt(0).toUpperCase()) + "</div><h3>" + esc(account) + '</h3><p class="note">Данные входа сохранены на телефоне в зашифрованном виде. «Выйти» закрывает ящик, сохраняя пароль. Удалить сохранённый вход можно в списке аккаунтов.</p><div class="actions">' + btn("Сменить аккаунт", "switch-account", "", "primary") + btn("Выйти из текущего ящика", "logout") + "</div>");
     }
     function renderForm() {
       if (form === "compose") return renderCompose();
