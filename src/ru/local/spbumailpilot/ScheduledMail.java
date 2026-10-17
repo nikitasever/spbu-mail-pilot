@@ -46,21 +46,25 @@ final class ScheduledMail {
     }
     static boolean protects(Context c,SavedAccounts.Login login,String source)throws Exception{synchronized(LOCK){try(SQLiteDatabase d=db(c);Cursor rows=d.rawQuery("SELECT id FROM queue WHERE account=? AND (source=? OR (returned_source=? AND state!='cancelled'))",new String[]{NoticeCenter.scope(login),source,source})){return rows.moveToFirst();}}}
     static JSONObject create(Context c,SavedAccounts.Login login,JSONObject original,long at)throws Exception{
+        return createFrom(c,login,original,at,uploads(c,login),true);
+    }
+    /** Native drafts keep their files until their durable scheduled marker is closed. */
+    static JSONObject createFrom(Context c,SavedAccounts.Login login,JSONObject original,long at,File sourceDirectory,boolean consumeFiles)throws Exception{
         if(at<=System.currentTimeMillis()||at>253402300799000L)throw new IllegalArgumentException("Future time required");
         String source=original.getString("id");if(!source.matches("[A-Za-z0-9_-]{1,100}"))throw new IllegalArgumentException("Draft identity");
         String account=NoticeCenter.scope(login),id=UUID.randomUUID().toString();JSONObject draft=new JSONObject(original.toString());
-        MailSender.message(javax.mail.Session.getInstance(new Properties()),login,draft,uploads(c,login));
+        MailSender.message(javax.mail.Session.getInstance(new Properties()),login,draft,sourceDirectory);
         File directory=files(c,account,id);boolean stored=false;
         synchronized(LOCK){try(SQLiteDatabase d=db(c)){
             recover(d);try(Cursor rows=d.rawQuery("SELECT count(*) FROM queue WHERE account=? AND state NOT IN ('sent','cancelled')",new String[]{account})){rows.moveToFirst();if(rows.getInt(0)>=50)throw new IllegalStateException("Queue full");}
             if(protects(c,login,source))throw new IllegalStateException("Draft already scheduled");
             JSONArray sourceFiles=draft.optJSONArray("attachments"),copied=new JSONArray();
-            if(sourceFiles!=null)for(int i=0;i<sourceFiles.length();i++){JSONObject entry=new JSONObject(sourceFiles.getJSONObject(i).toString());try(InputStream input=new FileInputStream(MailSender.file(uploads(c,login),entry.getString("token")))){File copy=AttachmentFiles.copy(input,directory,entry.optString("name"),AttachmentFiles.MAX_BYTES);try(RandomAccessFile durable=new RandomAccessFile(copy,"rw")){durable.getFD().sync();}entry.put("token",copy.getName()).put("size",copy.length());copied.put(entry);}}
+            if(sourceFiles!=null)for(int i=0;i<sourceFiles.length();i++){JSONObject entry=new JSONObject(sourceFiles.getJSONObject(i).toString());try(InputStream input=new FileInputStream(MailSender.file(sourceDirectory,entry.getString("token")))){File copy=AttachmentFiles.copy(input,directory,entry.optString("name"),AttachmentFiles.MAX_BYTES);try(RandomAccessFile durable=new RandomAccessFile(copy,"rw")){durable.getFD().sync();}entry.put("token",copy.getName()).put("size",copy.length());copied.put(entry);}}
             draft.put("attachments",copied).put("scheduledMessageId","<schedule-"+id+"@mail-pilot.local>");
             JSONObject payload=new JSONObject().put("draft",draft).put("from",login.from).put("to",draft.optString("to")).put("subject",draft.optString("subject"));
             ContentValues v=values("pending",at);v.put("id",id);v.put("account",account);v.put("source",source);v.put("due",at);v.put("payload",encode(account,id,payload));d.insertOrThrow("queue",null,v);stored=true;
         }finally{if(!stored)deleteFiles(directory);}}
-        JSONArray originalFiles=original.optJSONArray("attachments");if(originalFiles!=null)for(int i=0;i<originalFiles.length();i++)try{MailSender.file(uploads(c,login),originalFiles.getJSONObject(i).getString("token")).delete();}catch(Exception ignored){}
+        JSONArray originalFiles=original.optJSONArray("attachments");if(consumeFiles&&originalFiles!=null)for(int i=0;i<originalFiles.length();i++)try{MailSender.file(uploads(c,login),originalFiles.getJSONObject(i).getString("token")).delete();}catch(Exception ignored){}
         boolean ready=reconcile(c);return new JSONObject().put("scheduled",true).put("id",id).put("at",at).put("warning",ready?"":"Письмо сохранено, но Android не подтвердил запуск планировщика. Откройте приложение снова перед сроком.");
     }
     static JSONObject list(Context c,SavedAccounts.Login login)throws Exception{synchronized(LOCK){try(SQLiteDatabase d=db(c)){
@@ -146,7 +150,7 @@ final class ScheduledMail {
             });
             // SMTP ACK comes first; sent is durable before any IMAP copy or file cleanup.
             synchronized(LOCK){try(SQLiteDatabase d=db(c)){JSONObject summary=new JSONObject().put("to",p.optString("to")).put("subject",p.optString("subject")).put("sentAt",System.currentTimeMillis());ContentValues v=values("sent",0);v.put("payload",encode(account,id,summary));if(d.update("queue",v,"id=? AND state='transmitting'",new String[]{id})!=1)throw new IOException("Cannot record SMTP ACK");}}
-            String warning="";try(MailReader reader=new MailReader()){reader.connect(sender.host,sender.port,sender.user,sender.password);reader.saveSent(message);String key=c.getSharedPreferences("draft-keys-"+account,Context.MODE_PRIVATE).getString(p.getJSONObject("draft").optString("id"),null);if(key!=null)ServerDrafts.remove(reader.draftStore(),key);}catch(Exception retained){warning="Письмо отправлено. Копия в «Отправленных» или удаление серверного черновика не подтверждены. Не отправляйте повторно.";}
+            String warning="";try(MailReader reader=new MailReader()){reader.connect(sender.host,sender.port,sender.user,sender.password);reader.saveSent(message);JSONObject serverRef=p.getJSONObject("draft").optJSONObject("serverDraft");if(serverRef!=null&&p.getJSONObject("draft").getString("id").equals(serverRef.optString("key")))ServerDrafts.removeKnown(reader.draftStore(),serverRef,serverRef.getString("key"));if(p.getJSONObject("draft").optBoolean("serverDraftUnconfirmed"))throw new IOException("Unconfirmed server draft upload");String key=c.getSharedPreferences("draft-keys-"+account,Context.MODE_PRIVATE).getString(p.getJSONObject("draft").optString("id"),null);if(key!=null)ServerDrafts.remove(reader.draftStore(),key);}catch(Exception retained){warning="Письмо отправлено. Копия в «Отправленных» или удаление серверного черновика не подтверждены. Не отправляйте повторно.";}
             if(!warning.isEmpty())synchronized(LOCK){try(SQLiteDatabase d=db(c)){JSONObject summary=new JSONObject().put("to",p.optString("to")).put("subject",p.optString("subject")).put("sentAt",System.currentTimeMillis()).put("warning",warning);ContentValues v=new ContentValues();v.put("payload",encode(account,id,summary));d.update("queue",v,"id=? AND state='sent'",new String[]{id});}}
             deleteFiles(files(c,account,id));NoticeCenter.scheduled(c,sender,id,"sent",p.optString("subject"));
         }catch(Exception error){synchronized(LOCK){try(SQLiteDatabase d=db(c);Cursor row=d.rawQuery("SELECT state FROM queue WHERE id=?",new String[]{id})){

@@ -34,6 +34,7 @@ final class MailSender {
         try{transport.sendMessage(message,message.getAllRecipients());}catch(SendFailedException rejected){throw rejected;}catch(Exception unknown){throw new Uncertain(unknown);}
     }
     static MimeMessage message(Session session,SavedAccounts.Login login,JSONObject draft,java.io.File directory)throws Exception{
+        ForwardOriginal.requireReady(draft);
         MimeMessage message=OutgoingMail.build(session,login.from,draft.optString("to"),draft.optString("cc"),draft.optString("bcc"),draft.optString("subject"),draft.optString("body"),draft.optString("inReplyTo"));
         MailThreadHeaders.reply(message,draft.optString("inReplyTo"),draft.optJSONArray("references"));attach(message,draft,directory);String scheduled=draft.optString("scheduledMessageId");if(!scheduled.isEmpty()){if(!scheduled.matches("<schedule-[0-9a-f-]{36}@mail-pilot\\.local>"))throw new IllegalArgumentException("Scheduled message identity");message.setHeader("Message-ID",scheduled);}return message;
     }

@@ -4,8 +4,7 @@
 
 **Актуальная версия — 0.73 (versionCode 88).**
 
-[Передача работ по Compose: восстановление исходников, план и разбор патчей](docs/migration/README.md).
-Документация не означает, что исходники Compose уже загружены в эту ветку.
+[Переход на Kotlin + Jetpack Compose: статус, план и разбор пакетов](docs/migration/README.md).
 
 [Скачать APK 0.73](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.73/spbu-mail-pilot-0.73.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.73)
 

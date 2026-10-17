@@ -21,8 +21,29 @@ final class AiVault {
         return generator.generateKey();
     }
 
- synchronized boolean configured(){return prefs.contains("encrypted");}
- synchronized String load()throws Exception{String value=prefs.getString("encrypted",null);if(value==null)return "";byte[] plain=SessionSecret.decrypt(key(false),Base64.decode(value,Base64.NO_WRAP));try{return new String(plain,StandardCharsets.UTF_8);}finally{Arrays.fill(plain,(byte)0);}}
- synchronized void save(String value)throws Exception{value=value.trim();if(value.isEmpty()||value.length()>512||!value.matches("[A-Za-z0-9_.-]+"))throw new IllegalArgumentException();byte[] plain=value.getBytes(StandardCharsets.UTF_8);try{String packet=Base64.encodeToString(SessionSecret.encrypt(key(true),plain),Base64.NO_WRAP);if(!prefs.edit().putString("encrypted",packet).commit())throw new IllegalStateException();}finally{Arrays.fill(plain,(byte)0);}}
- synchronized void remove()throws Exception{if(!prefs.edit().clear().commit())throw new IllegalStateException();KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);if(store.containsAlias(ALIAS))store.deleteEntry(ALIAS);}
+ private static long revision;
+ static final class Snapshot {
+    final String value;private final long version;
+    Snapshot(String value,long version){this.value=value;this.version=version;}
+    boolean current(){synchronized(AiVault.class){return version==revision;}}
+    @Override public String toString(){return "AiVault.Snapshot(redacted)";}
+ }
+ boolean configured(){synchronized(AiVault.class){return prefs.contains("encrypted");}}
+ long version(){synchronized(AiVault.class){return revision;}}
+ Snapshot snapshot()throws Exception{synchronized(AiVault.class){return new Snapshot(load(),revision);}}
+ String load()throws Exception{synchronized(AiVault.class){String value=prefs.getString("encrypted",null);if(value==null)return "";byte[] plain=SessionSecret.decrypt(key(false),Base64.decode(value,Base64.NO_WRAP));try{return new String(plain,StandardCharsets.UTF_8);}finally{Arrays.fill(plain,(byte)0);}}}
+ void save(String value)throws Exception{save(value,-1);}
+ void save(String value,long expected)throws Exception{synchronized(AiVault.class){
+    if(expected>=0&&expected!=revision)throw new IllegalStateException("AI configuration changed");
+    value=AiConfiguration.key(value);++revision;
+    byte[] plain=value.getBytes(StandardCharsets.UTF_8);
+    try{String packet=Base64.encodeToString(SessionSecret.encrypt(key(true),plain),Base64.NO_WRAP);if(!prefs.edit().putString("encrypted",packet).commit())throw new IllegalStateException();}
+    finally{Arrays.fill(plain,(byte)0);}
+ }}
+ void remove()throws Exception{remove(-1);}
+ void remove(long expected)throws Exception{synchronized(AiVault.class){
+    if(expected>=0&&expected!=revision)throw new IllegalStateException("AI configuration changed");
+    ++revision;if(!prefs.edit().clear().commit())throw new IllegalStateException();
+    KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);if(store.containsAlias(ALIAS))store.deleteEntry(ALIAS);
+ }}
 }
