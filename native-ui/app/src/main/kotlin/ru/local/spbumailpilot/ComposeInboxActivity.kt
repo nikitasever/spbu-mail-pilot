@@ -439,208 +439,302 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
             DropdownMenuItem(text={Text("Все возможности почты")},enabled=!state.busy,onClick={moreScreens=false;fullClient()})
         }
     }
-    Scaffold(topBar = {
-        Column {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-                title = {
-                    if(state.selected==null&&state.thread.anchor==null) {
-                        TextButton(
-                            onClick=model::showFolders,
-                            enabled=state.owner.isNotBlank()&&!state.busy,
-                            shape=RoundedCornerShape(12.dp),
-                            contentPadding=PaddingValues(horizontal=8.dp,vertical=4.dp)
-                        ) {
-                            Column {
-                                Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                    Text(
-                                        NativeFolders.label(state.folder),
-                                        Modifier.weight(1f,fill=false),
-                                        maxLines=1,
-                                        overflow=TextOverflow.Ellipsis,
-                                        style=MaterialTheme.typography.titleLarge,
-                                        fontWeight=FontWeight.SemiBold,
-                                        color=MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Surface(
-                                        shape=RoundedCornerShape(6.dp),
-                                        color=MaterialTheme.colorScheme.primaryContainer,
-                                        modifier=Modifier.padding(start=8.dp)
-                                    ) {
+    Scaffold(
+        topBar = {
+            Column {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                    title = {
+                        val darkOffline = MaterialTheme.colorScheme.background.red < 0.2f
+                        val offlineFg = if (darkOffline) Color(0xFFF0C77A) else Color(0xFF76500B)
+                        if(state.selected==null&&state.thread.anchor==null) {
+                            Surface(
+                                onClick=model::showFolders,
+                                enabled=state.owner.isNotBlank()&&!state.busy,
+                                shape=RoundedCornerShape(12.dp),
+                                color=Color.Transparent
+                            ) {
+                                Column(Modifier.padding(vertical=2.dp)) {
+                                    Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                                         Text(
-                                            "▾",
-                                            Modifier.padding(horizontal=6.dp,vertical=1.dp),
-                                            fontSize=12.sp,
+                                            NativeFolders.label(state.folder),
+                                            Modifier.weight(1f,fill=false),
+                                            maxLines=1,
+                                            overflow=TextOverflow.Ellipsis,
+                                            style=MaterialTheme.typography.titleLarge,
                                             fontWeight=FontWeight.Bold,
-                                            color=MaterialTheme.colorScheme.primary
+                                            color=MaterialTheme.colorScheme.onSurface
                                         )
+                                        Surface(
+                                            shape=RoundedCornerShape(6.dp),
+                                            color=MaterialTheme.colorScheme.primaryContainer,
+                                            modifier=Modifier.padding(start=8.dp)
+                                        ) {
+                                            Text(
+                                                "▾",
+                                                Modifier.padding(horizontal=6.dp,vertical=1.dp),
+                                                fontSize=12.sp,
+                                                fontWeight=FontWeight.Bold,
+                                                color=MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                    Row(
+                                        verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
+                                        horizontalArrangement=Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        if(state.account.isNotBlank()) {
+                                            Text(state.account,fontSize=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        if(state.cached && state.searchKey.isEmpty()) {
+                                            Surface(shape=CircleShape,color=offlineFg,modifier=Modifier.size(6.dp)) {}
+                                            Text("Офлайн-кэш",fontSize=11.sp,fontWeight=FontWeight.Medium,color=offlineFg,maxLines=1)
+                                        }
                                     }
                                 }
-                                if(state.account.isNotBlank())Text(state.account,fontSize=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        } else Column {
+                            Text(if(state.selected!=null) NativeFolders.label(state.folder) else "Цепочка писем",maxLines=1,fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleMedium)
+                            Row(
+                                verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
+                                horizontalArrangement=Arrangement.spacedBy(5.dp)
+                            ) {
+                                if(state.account.isNotBlank()) {
+                                    Text(state.account,fontSize=11.sp,maxLines=1,overflow=TextOverflow.Ellipsis,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if(state.cached) {
+                                    Surface(shape=CircleShape,color=offlineFg,modifier=Modifier.size(5.dp)) {}
+                                    Text("Офлайн-кэш",fontSize=11.sp,fontWeight=FontWeight.Medium,color=offlineFg,maxLines=1)
+                                }
                             }
                         }
-                    } else Column {
-                        Text(if(state.selected!=null)"Письмо" else "Цепочка",maxLines=1,fontWeight=FontWeight.SemiBold,style=MaterialTheme.typography.titleMedium)
-                        if(state.account.isNotBlank())Text(state.account,fontSize=11.sp,maxLines=1,overflow=TextOverflow.Ellipsis,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                },
-                navigationIcon = {
-                    if (state.selected != null||state.thread.anchor!=null) {
-                        TextButton(onClick = model::backToList, contentPadding = PaddingValues(horizontal=10.dp)) {
-                            Text(if(state.selected==null)"К списку" else "Назад", fontWeight = FontWeight.Medium)
+                    },
+                    navigationIcon = {
+                        if (state.selected != null||state.thread.anchor!=null) {
+                            IconButton(onClick = model::backToList) {
+                                Icon(NativeIcons.ArrowBack, contentDescription = if(state.selected==null)"К списку" else "Назад", tint = MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
+                    },
+                    actions = {
+                        if (state.selected == null&&state.thread.anchor==null) {
+                            IconButton(
+                                onClick=model::toggleSearch,
+                                enabled=state.owner.isNotBlank()
+                            ) {
+                                Icon(NativeIcons.Search, contentDescription = "Поиск", tint = if(state.searchOpen || state.searchKey.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            IconButton(
+                                onClick = { model.loadInbox(true) },
+                                enabled = !state.busy
+                            ) {
+                                Icon(NativeIcons.Refresh, contentDescription = "Обновить", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        } else if (state.selected != null) {
+                            if(!state.linked) {
+                                val moveEnabled=!state.busy&&!state.cached&&!state.moveNeedsRefresh
+                                IconButton(
+                                    onClick={model.requestMove("trash")},
+                                    enabled=moveEnabled
+                                ) {
+                                    Icon(NativeIcons.Trash, contentDescription = "В корзину", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            IconButton(
+                                onClick={state.selected?.let {model.openMail(it,keepPosition=true,forceOnline=true)}},
+                                enabled=!state.busy
+                            ) {
+                                Icon(NativeIcons.Refresh, contentDescription = "Обновить письмо", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
-                },
-                actions = {
-                    if (state.selected == null&&state.thread.anchor==null) {
-                        OutlinedButton(
-                            onClick=model::toggleSearch,
-                            enabled=state.owner.isNotBlank(),
-                            shape=RoundedCornerShape(10.dp),
-                            contentPadding=PaddingValues(horizontal=10.dp,vertical=4.dp),
-                            modifier=Modifier.heightIn(min=34.dp).padding(end=6.dp)
-                        ) { Text("Поиск",fontSize=12.sp) }
-                        OutlinedButton(
-                            onClick = { model.loadInbox(true) },
-                            enabled = !state.busy,
-                            shape=RoundedCornerShape(10.dp),
-                            contentPadding=PaddingValues(horizontal=10.dp,vertical=4.dp),
-                            modifier=Modifier.heightIn(min=34.dp).padding(end=8.dp)
-                        ) { Text("Обновить",fontSize=12.sp) }
-                    } else if (state.selected != null) {
-                        OutlinedButton(
-                            onClick={state.selected?.let {model.openMail(it,keepPosition=true,forceOnline=true)}},
-                            enabled=!state.busy,
-                            shape=RoundedCornerShape(10.dp),
-                            contentPadding=PaddingValues(horizontal=10.dp,vertical=4.dp),
-                            modifier=Modifier.heightIn(min=34.dp).padding(end=8.dp)
-                        ) { Text("Обновить письмо",fontSize=12.sp) }
-                    }
+                )
+                HorizontalDivider(thickness=0.5.dp,color=MaterialTheme.colorScheme.outlineVariant)
+            }
+        },
+        floatingActionButton = {
+            if (state.selected == null && state.thread.anchor == null && state.owner.isNotBlank() && !state.searchOpen) {
+                ExtendedFloatingActionButton(
+                    onClick = { if (!state.busy) compose() },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(NativeIcons.ComposePen, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Написать", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 }
-            )
+            }
+        },
+        bottomBar = { Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp) {
+            Column {
             HorizontalDivider(thickness=0.5.dp,color=MaterialTheme.colorScheme.outlineVariant)
-        }
-    }, bottomBar = { Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 2.dp) {
-        Column {
-        HorizontalDivider(thickness=0.5.dp,color=MaterialTheme.colorScheme.outlineVariant)
-        if (state.selected != null) {
-            Row(
-                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal=12.dp,vertical=8.dp),
-                horizontalArrangement=Arrangement.spacedBy(6.dp),
-                verticalAlignment=androidx.compose.ui.Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick=reply,
-                    enabled=state.body!=null&&!state.busy,
-                    shape=RoundedCornerShape(12.dp),
-                    contentPadding=PaddingValues(horizontal=10.dp,vertical=8.dp),
-                    modifier=Modifier.weight(1f).heightIn(min=42.dp)
-                ) { Text("Ответить",fontSize=13.sp,maxLines=1,overflow=TextOverflow.Ellipsis) }
-                OutlinedButton(
-                    onClick=replyAll,
-                    enabled=state.body!=null&&!state.busy,
-                    shape=RoundedCornerShape(12.dp),
-                    contentPadding=PaddingValues(horizontal=10.dp,vertical=8.dp),
-                    modifier=Modifier.weight(1.15f).heightIn(min=42.dp)
-                ) { Text("Ответить всем",fontSize=13.sp,maxLines=1,overflow=TextOverflow.Ellipsis) }
-                Box {
+            if (state.selected != null) {
+                Row(
+                    Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal=12.dp,vertical=8.dp),
+                    horizontalArrangement=Arrangement.spacedBy(8.dp),
+                    verticalAlignment=androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick=reply,
+                        enabled=state.body!=null&&!state.busy,
+                        shape=RoundedCornerShape(12.dp),
+                        contentPadding=PaddingValues(horizontal=12.dp,vertical=8.dp),
+                        modifier=Modifier.weight(1.1f).heightIn(min=42.dp)
+                    ) {
+                        Icon(NativeIcons.Reply, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Ответить",fontSize=13.sp,fontWeight=FontWeight.SemiBold,maxLines=1,overflow=TextOverflow.Ellipsis)
+                    }
                     OutlinedButton(
-                        onClick={moreScreens=true},
-                        enabled=!state.busy,
+                        onClick=replyAll,
+                        enabled=state.body!=null&&!state.busy,
                         shape=RoundedCornerShape(12.dp),
                         contentPadding=PaddingValues(horizontal=10.dp,vertical=8.dp),
-                        modifier=Modifier.heightIn(min=42.dp)
-                    ) { Text("Ещё",fontSize=13.sp,maxLines=1) }
-                    MoreDropdown()
+                        modifier=Modifier.weight(1.1f).heightIn(min=42.dp)
+                    ) { Text("Ответить всем",fontSize=13.sp,maxLines=1,overflow=TextOverflow.Ellipsis) }
+                    Box {
+                        OutlinedButton(
+                            onClick={moreScreens=true},
+                            enabled=!state.busy,
+                            shape=RoundedCornerShape(12.dp),
+                            contentPadding=PaddingValues(horizontal=10.dp,vertical=8.dp),
+                            modifier=Modifier.heightIn(min=42.dp)
+                        ) { Text("Ещё",fontSize=13.sp,maxLines=1) }
+                        MoreDropdown()
+                    }
+                    Box {
+                        IconButton(
+                            onClick={readerActions=true},
+                            enabled=state.body!=null&&!state.busy,
+                            modifier=Modifier.size(42.dp).semantics {contentDescription="Другие действия письма"}
+                        ) { Icon(NativeIcons.MoreHorizontal, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) }
+                        DropdownMenu(expanded=readerActions,onDismissRequest={readerActions=false}) {
+                            DropdownMenuItem(text={Text(if(state.selected?.unread==true)"Пометить прочитанным" else "Пометить непрочитанным")},
+                                enabled=!state.busy,onClick={readerActions=false;state.selected?.let {model.markSeen(it.unread)}})
+                            if(!state.linked){
+                                DropdownMenuItem(text={Text("Отложить письмо")},enabled=!state.busy&&extrasReady,onClick={readerActions=false;setSnooze()})
+                                DropdownMenuItem(text={Text("Проверить ответ собеседника")},enabled=!state.busy&&extrasReady&&ReplyReminder.validId(state.body?.message?.optString("messageId")),onClick={readerActions=false;setFollowup()})
+                                DropdownMenuItem(text={Text("Метка письма")},enabled=!state.busy&&extrasReady,onClick={readerActions=false;setLabel()})
+                                DropdownMenuItem(text={Text("Напомнить ответить")},enabled=!state.busy&&extrasReady,onClick={readerActions=false;setResponse()})
+                            }
+                            if(!state.linked)DropdownMenuItem(text={Text("Событие из письма")},enabled=!state.busy,
+                                onClick={readerActions=false;createEvent()})
+                            if(!state.linked)DropdownMenuItem(text={Text("Связать с событием")},enabled=!state.busy,
+                                onClick={readerActions=false;linkMailToEvent()})
+                            if(!state.linked)DropdownMenuItem(text={Text("Создать задачу")},enabled=!state.busy,
+                                onClick={readerActions=false;createTask()})
+                            if(!state.linked) {
+                                val moveEnabled=!state.busy&&!state.cached&&!state.moveNeedsRefresh
+                                if(state.cached||state.moveNeedsRefresh)Text("Для переноса обновите письмо с сервера.",Modifier.widthIn(max=250.dp).padding(12.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                DropdownMenuItem(text={Text("В архив")},enabled=moveEnabled,onClick={readerActions=false;model.requestMove("archive")})
+                                DropdownMenuItem(text={Text("В спам")},enabled=moveEnabled,onClick={readerActions=false;model.requestMove("spam")})
+                                DropdownMenuItem(text={Text("В корзину")},enabled=moveEnabled,onClick={readerActions=false;model.requestMove("trash")})
+                                DropdownMenuItem(text={Text("Переместить в папку…")},enabled=moveEnabled,onClick={readerActions=false;model.showMoveFolders()})
+                            }
+                            DropdownMenuItem(text={Text("Переслать текст")},enabled=state.body!=null&&!state.busy,
+                                onClick={readerActions=false;forwardText()})
+                            DropdownMenuItem(text={Text("Переслать оригинал EML")},enabled=state.selected!=null&&!state.busy,onClick={readerActions=false;forwardOriginal()})
+                        }
+                    }
                 }
-                Box {
-                    IconButton(
-                        onClick={readerActions=true},
-                        enabled=state.body!=null&&!state.busy,
-                        modifier=Modifier.size(42.dp).semantics {contentDescription="Другие действия письма"}
-                    ) { Text("⋯",fontSize=22.sp,fontWeight=FontWeight.Bold) }
-                    DropdownMenu(expanded=readerActions,onDismissRequest={readerActions=false}) {
-                        DropdownMenuItem(text={Text(if(state.selected?.unread==true)"Пометить прочитанным" else "Пометить непрочитанным")},
-                            enabled=!state.busy,onClick={readerActions=false;state.selected?.let {model.markSeen(it.unread)}})
-                        if(!state.linked){
-                            DropdownMenuItem(text={Text("Отложить письмо")},enabled=!state.busy&&extrasReady,onClick={readerActions=false;setSnooze()})
-                            DropdownMenuItem(text={Text("Проверить ответ собеседника")},enabled=!state.busy&&extrasReady&&ReplyReminder.validId(state.body?.message?.optString("messageId")),onClick={readerActions=false;setFollowup()})
-                            DropdownMenuItem(text={Text("Метка письма")},enabled=!state.busy&&extrasReady,onClick={readerActions=false;setLabel()})
-                            DropdownMenuItem(text={Text("Напомнить ответить")},enabled=!state.busy&&extrasReady,onClick={readerActions=false;setResponse()})
+            } else {
+                Row(
+                    Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.width(52.dp).height(28.dp)
+                        ) {
+                            Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                Icon(NativeIcons.Mail, contentDescription = null, modifier = Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
+                            }
                         }
-                        if(!state.linked)DropdownMenuItem(text={Text("Событие из письма")},enabled=!state.busy,
-                            onClick={readerActions=false;createEvent()})
-                        if(!state.linked)DropdownMenuItem(text={Text("Связать с событием")},enabled=!state.busy,
-                            onClick={readerActions=false;linkMailToEvent()})
-                        if(!state.linked)DropdownMenuItem(text={Text("Создать задачу")},enabled=!state.busy,
-                            onClick={readerActions=false;createTask()})
-                        if(!state.linked) {
-                            val moveEnabled=!state.busy&&!state.cached&&!state.moveNeedsRefresh
-                            if(state.cached||state.moveNeedsRefresh)Text("Для переноса обновите письмо с сервера.",Modifier.widthIn(max=250.dp).padding(12.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                            DropdownMenuItem(text={Text("В архив")},enabled=moveEnabled,onClick={readerActions=false;model.requestMove("archive")})
-                            DropdownMenuItem(text={Text("В спам")},enabled=moveEnabled,onClick={readerActions=false;model.requestMove("spam")})
-                            DropdownMenuItem(text={Text("В корзину")},enabled=moveEnabled,onClick={readerActions=false;model.requestMove("trash")})
-                            DropdownMenuItem(text={Text("Переместить в папку…")},enabled=moveEnabled,onClick={readerActions=false;model.showMoveFolders()})
+                        Text("Почта", Modifier.padding(top = 2.dp), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+                    }
+                    Surface(
+                        onClick = openWorkspace,
+                        enabled = state.owner.isNotBlank() && !state.busy,
+                        color = Color.Transparent,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            Modifier.padding(vertical = 2.dp),
+                            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+                        ) {
+                            Box(Modifier.height(28.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                Icon(NativeIcons.Tasks, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text("Задачи", Modifier.padding(top = 2.dp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                         }
-                        DropdownMenuItem(text={Text("Переслать текст")},enabled=state.body!=null&&!state.busy,
-                            onClick={readerActions=false;forwardText()})
-                        DropdownMenuItem(text={Text("Переслать оригинал EML")},enabled=state.selected!=null&&!state.busy,onClick={readerActions=false;forwardOriginal()})
+                    }
+                    Surface(
+                        onClick = openCalendar,
+                        enabled = state.owner.isNotBlank(),
+                        color = Color.Transparent,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            Modifier.padding(vertical = 2.dp),
+                            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+                        ) {
+                            Box(Modifier.height(28.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                Icon(NativeIcons.Calendar, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text("Календарь", Modifier.padding(top = 2.dp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
+                    }
+                    Surface(
+                        onClick = openContacts,
+                        enabled = state.owner.isNotBlank(),
+                        color = Color.Transparent,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(
+                            Modifier.padding(vertical = 2.dp),
+                            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+                        ) {
+                            Box(Modifier.height(28.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                Icon(NativeIcons.Contacts, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text("Контакты", Modifier.padding(top = 2.dp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
+                    }
+                    Box(Modifier.weight(1f)) {
+                        Surface(
+                            onClick = { moreScreens = true },
+                            enabled = !state.busy,
+                            color = Color.Transparent,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                Modifier.padding(vertical = 2.dp),
+                                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+                            ) {
+                                Box(Modifier.height(28.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                    Icon(NativeIcons.MoreHorizontal, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Text("Ещё", Modifier.padding(top = 2.dp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            }
+                        }
+                        MoreDropdown()
                     }
                 }
             }
-        } else {
-            if (state.owner.isNotBlank()) {
-                Button(
-                    onClick = compose,
-                    enabled = !state.busy,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp).heightIn(min = 42.dp)
-                ) {
-                    Text("✎  Написать", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                }
             }
-            Row(
-                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.weight(1f).heightIn(min = 36.dp)
-                ) {
-                    Box(contentAlignment = androidx.compose.ui.Alignment.Center, modifier = Modifier.padding(vertical = 6.dp)) {
-                        Text("Почта", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, maxLines = 1)
-                    }
-                }
-                TextButton(
-                    onClick=openCalendar,
-                    enabled=state.owner.isNotBlank(),
-                    shape=RoundedCornerShape(10.dp),
-                    contentPadding=PaddingValues(horizontal=8.dp,vertical=6.dp),
-                    modifier=Modifier.weight(1f).heightIn(min=36.dp)
-                ) { Text("Календарь", fontSize = 12.sp, maxLines = 1) }
-                TextButton(
-                    onClick=openContacts,
-                    enabled=state.owner.isNotBlank(),
-                    shape=RoundedCornerShape(10.dp),
-                    contentPadding=PaddingValues(horizontal=8.dp,vertical=6.dp),
-                    modifier=Modifier.weight(1f).heightIn(min=36.dp)
-                ) { Text("Контакты", fontSize = 12.sp, maxLines = 1) }
-                Box(Modifier.weight(1f)) {
-                    TextButton(
-                        onClick={moreScreens=true},
-                        enabled=!state.busy,
-                        shape=RoundedCornerShape(10.dp),
-                        contentPadding=PaddingValues(horizontal=8.dp,vertical=6.dp),
-                        modifier=Modifier.fillMaxWidth().heightIn(min=36.dp)
-                    ) { Text("Ещё", fontSize = 12.sp, maxLines = 1) }
-                    MoreDropdown()
-                }
-            }
-        }
-        }
-    } }) { padding ->
+        } }
+    ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             notice?.let {
                 Surface(
@@ -651,26 +745,6 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                     Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=4.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                         Text(it,Modifier.weight(1f),fontSize=12.sp,color=MaterialTheme.colorScheme.onPrimaryContainer)
                         TextButton(onClick=dismissNotice,contentPadding=PaddingValues(horizontal=8.dp,vertical=0.dp)){Text("Закрыть",fontSize=12.sp)}
-                    }
-                }
-            }
-            if (state.cached && state.searchKey.isEmpty()) {
-                val darkOffline = MaterialTheme.colorScheme.background.red < 0.2f
-                val offlineBg = if (darkOffline) Color(0xFF35230B) else Color(0xFFFFF3DC)
-                val offlineFg = if (darkOffline) Color(0xFFF0C77A) else Color(0xFF76500B)
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    color = offlineBg,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, offlineFg.copy(alpha = 0.35f))
-                ) {
-                    Row(
-                        Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(shape = CircleShape, color = offlineFg, modifier = Modifier.size(6.dp)) {}
-                        Text("Сохранённая почта на этом телефоне", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = offlineFg)
                     }
                 }
             }
@@ -693,49 +767,70 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                     val crit=state.activeCriteria
                     Surface(
                         modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=4.dp),
-                        shape=RoundedCornerShape(10.dp),
+                        shape=RoundedCornerShape(12.dp),
                         color=if(state.pageOffline) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.primaryContainer.copy(alpha=0.45f),
                         border=androidx.compose.foundation.BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant)
                     ) {
                         Column(Modifier.padding(horizontal=12.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                             Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                                 Text(
-                                    if(state.pageOffline) "Результаты на телефоне (сохранённые письма)" else "Результаты на сервере: «${NativeFolders.label(state.folder)}»",
+                                    if(state.pageOffline) "Результаты в кэше" else "Результаты в папке «${NativeFolders.label(state.folder)}»",
                                     fontWeight=FontWeight.SemiBold,
                                     fontSize=13.sp,
                                     color=if(state.pageOffline) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
                                     modifier=Modifier.weight(1f)
                                 )
                                 TextButton(onClick={model.clearSearch()},enabled=!state.busy,contentPadding=PaddingValues(horizontal=8.dp,vertical=0.dp)) {
-                                    Text("Сбросить поиск",fontSize=12.sp)
+                                    Text("Сбросить",fontSize=12.sp)
                                 }
                             }
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                                if(state.query.isNotEmpty()) SuggestionChip(onClick={},label={Text("Текст: «${state.query}»",fontSize=11.sp)})
+                                if(state.query.isNotEmpty()) SuggestionChip(onClick={},label={Text("«${state.query}»",fontSize=11.sp)})
                                 if(crit!=null&&crit.from.isNotEmpty()) SuggestionChip(onClick={},label={Text("От: ${crit.from}",fontSize=11.sp)})
-                                if(crit!=null&&(crit.start.isNotEmpty()||crit.end.isNotEmpty())) SuggestionChip(onClick={},label={Text("Даты МСК: ${crit.start.ifEmpty {"…"}} — ${crit.end.ifEmpty {"…"}}",fontSize=11.sp)})
+                                if(crit!=null&&(crit.start.isNotEmpty()||crit.end.isNotEmpty())) SuggestionChip(onClick={},label={Text("${crit.start.ifEmpty {"…"}} — ${crit.end.ifEmpty {"…"}}",fontSize=11.sp)})
                                 if(crit!=null&&crit.attachments) SuggestionChip(onClick={},label={Text("С вложениями",fontSize=11.sp)})
                                 if(crit!=null&&crit.unread) SuggestionChip(onClick={},label={Text("Непрочитанные",fontSize=11.sp)})
                             }
-                            Text(
-                                if(crit?.isAdvanced==true) "Совпадений в загруженном: ${state.rows.size} · проверено кандидатов: ${state.searchScanned} из ${state.searchCandidates}"
-                                else "Загружено совпадений: ${state.rows.size} из ${state.total}",
-                                fontSize=12.sp,
-                                color=MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
                     }
                 }
                 Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=16.dp,vertical=2.dp),
-                    horizontalArrangement=Arrangement.spacedBy(8.dp)
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=16.dp,vertical=6.dp),
+                    horizontalArrangement=Arrangement.spacedBy(6.dp),
+                    verticalAlignment=androidx.compose.ui.Alignment.CenterVertically
                 ) {
                     listOf("all" to "Все","unread" to "Непрочитанные","attachments" to "С вложениями").forEach {(value,label)->
-                        FilterChip(
-                            selected=state.filter==value,
+                        val active = state.filter == value
+                        Surface(
                             onClick={model.filter(value)},
                             shape=RoundedCornerShape(10.dp),
-                            label={Text(label,fontSize=12.sp,maxLines=1)}
+                            color=if(active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                            border=androidx.compose.foundation.BorderStroke(1.dp,if(active) MaterialTheme.colorScheme.primary.copy(alpha=0.5f) else MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Text(
+                                label,
+                                Modifier.padding(horizontal=11.dp,vertical=6.dp),
+                                fontSize=12.sp,
+                                fontWeight=if(active) FontWeight.SemiBold else FontWeight.Medium,
+                                color=if(active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines=1
+                            )
+                        }
+                    }
+                    Surface(
+                        onClick={model.toggleThreads()},
+                        shape=RoundedCornerShape(10.dp),
+                        color=if(state.threadsEnabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                        border=androidx.compose.foundation.BorderStroke(1.dp,if(state.threadsEnabled) MaterialTheme.colorScheme.primary.copy(alpha=0.5f) else MaterialTheme.colorScheme.outlineVariant),
+                        modifier=Modifier.semantics{contentDescription="Показывать письма сгруппированными в цепочки разговоров"}
+                    ) {
+                        Text(
+                            "Цепочки",
+                            Modifier.padding(horizontal=11.dp,vertical=6.dp),
+                            fontSize=12.sp,
+                            fontWeight=if(state.threadsEnabled) FontWeight.SemiBold else FontWeight.Medium,
+                            color=if(state.threadsEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines=1
                         )
                     }
                 }
@@ -743,30 +838,6 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                     FilterChip(selected=categoryFilter.isEmpty(),onClick={selectCategory("")},shape=RoundedCornerShape(10.dp),label={Text("Все категории",fontSize=12.sp)})
                     categoryRules.filter {it.optBoolean("enabled",true)}.forEach {rule->FilterChip(selected=categoryFilter==rule.optString("id"),
                         onClick={selectCategory(rule.optString("id"))},shape=RoundedCornerShape(10.dp),label={Text(rule.optString("name"),fontSize=12.sp,color=categoryColor(rule.optString("color")))})}
-                }
-                if(categoryFilter.isNotEmpty())Text("Категория среди загруженных писем. «Показать ещё» расширяет выборку.",Modifier.padding(horizontal=16.dp,vertical=2.dp),fontSize=11.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                if(state.filter!="all")Text("Фильтр по загруженным результатам. «Показать ещё» расширяет выборку.",Modifier.padding(horizontal=16.dp,vertical=2.dp),fontSize=11.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=2.dp),
-                    verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
-                    horizontalArrangement=Arrangement.spacedBy(10.dp)
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Группировать в цепочки",fontSize=13.sp,fontWeight=FontWeight.Medium,color=MaterialTheme.colorScheme.onSurface)
-                        Text(
-                            "Цепочки собираются по загруженным письмам этой папки; счётчики относятся только к ним.",
-                            fontSize=11.sp,
-                            lineHeight=13.sp,
-                            maxLines=1,
-                            overflow=TextOverflow.Ellipsis,
-                            color=MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked=state.threadsEnabled,
-                        onCheckedChange={model.toggleThreads()},
-                        modifier=Modifier.semantics{contentDescription="Показывать письма сгруппированными в цепочки разговоров"}
-                    )
                 }
                 HorizontalDivider(Modifier.padding(top=2.dp),thickness=0.5.dp,color=MaterialTheme.colorScheme.outlineVariant)
                 if(activeSelection.isNotEmpty()) {
@@ -926,24 +997,32 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                         }
                     }
                     state.body?.let { body ->
-                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                        androidx.compose.foundation.text.selection.SelectionContainer {
-                            Text(
-                                body.text.ifBlank { "Текстовая часть отсутствует." },
-                                Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp),
-                                fontSize = 15.sp,
-                                lineHeight = 21.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            androidx.compose.foundation.text.selection.SelectionContainer {
+                                Text(
+                                    body.text.ifBlank { "Текстовая часть отсутствует." },
+                                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                                    fontSize = 15.sp,
+                                    lineHeight = 22.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
-                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(bottom = 6.dp))
                         if (body.files.isNotEmpty()) {
                             Row(
-                                Modifier.fillMaxWidth().padding(bottom = 2.dp),
+                                Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 4.dp),
                                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Вложения · ${body.files.size}", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+                                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(NativeIcons.Paperclip, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                                    Text("Вложения · ${body.files.size}", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+                                }
                                 OutlinedButton(
                                     onClick = { saveFiles(state.owner, mail.ref, body.files, false) },
                                     enabled = !state.busy,
@@ -951,69 +1030,77 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                                     modifier = Modifier.heightIn(min = 28.dp)
                                 ) {
-                                    Text("Сохранить все вложения", fontSize = 11.sp)
+                                    Icon(NativeIcons.Download, contentDescription = null, modifier = Modifier.size(12.dp))
+                                    Spacer(Modifier.width(5.dp))
+                                    Text("Скачать все", fontSize = 11.sp)
                                 }
                             }
                             body.files.forEach { file ->
                                 val ext = file.name.substringAfterLast('.', "").uppercase(Locale.ROOT).take(4).ifBlank { "ФАЙЛ" }
+                                val badgePal = NativeIcons.fileBadgePalette(ext)
                                 Surface(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                                    shape = RoundedCornerShape(12.dp),
+                                    onClick = { if (!state.busy && file.path.isNotBlank()) model.fileAction(state.owner, mail.ref, file) },
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                    shape = RoundedCornerShape(14.dp),
                                     color = MaterialTheme.colorScheme.surface,
                                     border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                                 ) {
-                                    Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Surface(
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = MaterialTheme.colorScheme.primaryContainer
-                                            ) {
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = badgePal.container,
+                                            modifier = Modifier.width(42.dp).height(34.dp)
+                                        ) {
+                                            Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
                                                 Text(
                                                     ext,
-                                                    Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                            }
-                                            TextButton(
-                                                onClick = { model.fileAction(state.owner, mail.ref, file) },
-                                                enabled = !state.busy && file.path.isNotBlank(),
-                                                contentPadding = PaddingValues(0.dp),
-                                                modifier = Modifier.weight(1f).heightIn(min = 26.dp)
-                                            ) {
-                                                Text(
-                                                    file.name,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    fontSize = 13.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                    modifier = Modifier.fillMaxWidth()
+                                                    color = badgePal.content
                                                 )
                                             }
                                         }
-                                        Row(
-                                            Modifier.fillMaxWidth().padding(top = 2.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                file.name,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                "Нажмите, чтобы открыть",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Surface(
+                                            onClick = { saveFiles(state.owner, mail.ref, listOf(file), false) },
+                                            enabled = !state.busy && file.path.isNotBlank(),
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.background,
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                            modifier = Modifier.size(34.dp).semantics { contentDescription = "Сохранить ${file.name}" }
                                         ) {
-                                            OutlinedButton(
-                                                onClick = { saveFiles(state.owner, mail.ref, listOf(file), false) },
-                                                enabled = !state.busy && file.path.isNotBlank(),
-                                                shape = RoundedCornerShape(8.dp),
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                                                modifier = Modifier.heightIn(min = 26.dp)
-                                            ) {
-                                                Text("Сохранить", fontSize = 11.sp)
+                                            Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                                Icon(NativeIcons.Download, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
-                                            OutlinedButton(
-                                                onClick = { model.fileAction(state.owner, mail.ref, file, true) },
-                                                enabled = !state.busy && file.path.isNotBlank(),
-                                                shape = RoundedCornerShape(8.dp),
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                                                modifier = Modifier.heightIn(min = 26.dp)
-                                            ) {
-                                                Text("Поделиться файлом", fontSize = 11.sp)
+                                        }
+                                        Surface(
+                                            onClick = { model.fileAction(state.owner, mail.ref, file, true) },
+                                            enabled = !state.busy && file.path.isNotBlank(),
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.background,
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                            modifier = Modifier.size(34.dp).semantics { contentDescription = "Поделиться файлом ${file.name}" }
+                                        ) {
+                                            Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                                Icon(NativeIcons.Share, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                         }
                                     }
@@ -1024,9 +1111,11 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                             onClick = { saveFiles(state.owner, mail.ref, emptyList(), true) },
                             enabled = !state.busy,
                             shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            modifier = Modifier.padding(top = 4.dp).heightIn(min = 32.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(top = 6.dp).heightIn(min = 36.dp)
                         ) {
+                            Icon(NativeIcons.Download, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(6.dp))
                             Text("Сохранить оригинал .eml", fontSize = 12.sp)
                         }
                         NativeReaderActions(model,mail,body.text)
@@ -1063,6 +1152,7 @@ private data class ThreadSummary(val count: Int, val unread: Int, val attachment
 private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,members.count {it.unread},members.any {it.hasAttachments==true})
 
 @Composable private fun MailRowBody(mail: NativeMail,rowColor: Color,chain: ThreadSummary?,owner: String,labels: JSONObject,responses: List<JSONObject>,snoozed: List<JSONObject>,followups: List<JSONObject>,categoryName: String?,categoryTint: Color?,selected: Boolean=false,onToggleSelect: (()->Unit)?=null,onToggleSeen: (()->Unit)?=null,enabled: Boolean=true) {
+    val palette = NativeIcons.avatarPalette(mail.email.ifBlank { mail.sender })
     Row(
         Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=if(LocalCompactInbox.current)8.dp else 11.dp),
         horizontalArrangement=Arrangement.spacedBy(12.dp),
@@ -1073,28 +1163,28 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                 onClick=onToggleSelect,
                 enabled=enabled,
                 shape=CircleShape,
-                color=if(selected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
-                border=androidx.compose.foundation.BorderStroke(1.dp,MaterialTheme.colorScheme.primary.copy(alpha=0.28f)),
+                color=if(selected)MaterialTheme.colorScheme.primary else palette.container,
+                border=androidx.compose.foundation.BorderStroke(1.dp,palette.content.copy(alpha=0.25f)),
                 modifier=Modifier.size(42.dp).semantics {contentDescription=if(selected)"Снять выбор письма" else "Выбрать письмо"}
             ) {
                 Box(contentAlignment=androidx.compose.ui.Alignment.Center) {
                     Text(
                         if(selected)"✓" else avatarLetters(mail.sender),
                         fontSize=14.sp,
-                        fontWeight=FontWeight.SemiBold,
-                        color=if(selected)MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
+                        fontWeight=FontWeight.Bold,
+                        color=if(selected)MaterialTheme.colorScheme.onPrimary else palette.content
                     )
                 }
             }
         } else {
             Surface(
                 shape=CircleShape,
-                color=MaterialTheme.colorScheme.primaryContainer,
-                border=androidx.compose.foundation.BorderStroke(1.dp,MaterialTheme.colorScheme.primary.copy(alpha=0.28f)),
+                color=palette.container,
+                border=androidx.compose.foundation.BorderStroke(1.dp,palette.content.copy(alpha=0.25f)),
                 modifier=Modifier.size(42.dp).clearAndSetSemantics {}
             ) {
                 Box(contentAlignment=androidx.compose.ui.Alignment.Center) {
-                    Text(avatarLetters(mail.sender),fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.primary)
+                    Text(avatarLetters(mail.sender),fontSize=14.sp,fontWeight=FontWeight.Bold,color=palette.content)
                 }
             }
         }
@@ -1200,7 +1290,10 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                                 border=androidx.compose.foundation.BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),
                                 modifier=Modifier.semantics {contentDescription="В цепочке есть вложения"}
                             ) {
-                                Text("Есть вложения",Modifier.padding(horizontal=7.dp,vertical=2.dp),fontSize=11.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                Row(Modifier.padding(horizontal=7.dp,vertical=2.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                                    Icon(NativeIcons.Paperclip,contentDescription=null,modifier=Modifier.size(11.dp),tint=MaterialTheme.colorScheme.primary)
+                                    Text("Вложение",fontSize=11.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
                     }
@@ -1210,7 +1303,10 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                             color=MaterialTheme.colorScheme.surface,
                             border=androidx.compose.foundation.BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant)
                         ) {
-                            Text("Есть вложения",Modifier.padding(horizontal=7.dp,vertical=2.dp),fontSize=11.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(Modifier.padding(horizontal=7.dp,vertical=2.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                                Icon(NativeIcons.Paperclip,contentDescription=null,modifier=Modifier.size(11.dp),tint=MaterialTheme.colorScheme.primary)
+                                Text("Вложение",fontSize=11.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 }

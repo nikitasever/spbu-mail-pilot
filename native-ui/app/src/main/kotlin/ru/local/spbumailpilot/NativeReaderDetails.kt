@@ -98,22 +98,23 @@ private fun readerAvatarLetters(sender: String): String {
     var expanded by rememberSaveable(owner,mail.ref.folder,mail.ref.validity,mail.ref.uid){mutableStateOf(false)}
     var rawHeadersExpanded by rememberSaveable(owner,mail.ref.folder,mail.ref.validity,mail.ref.uid){mutableStateOf(false)}
     val details=remember(message,mail.ref.uid){message?.let {ReaderDetails.from(it,mail.ref.uid)}}
+    val palette = NativeIcons.avatarPalette(mail.email.ifBlank { mail.sender })
     Row(
-        Modifier.fillMaxWidth().padding(top=10.dp,bottom=6.dp),
+        Modifier.fillMaxWidth().padding(top=10.dp,bottom=8.dp),
         horizontalArrangement=Arrangement.spacedBy(12.dp),
         verticalAlignment=Alignment.CenterVertically
     ) {
         Surface(
             shape=CircleShape,
-            color=MaterialTheme.colorScheme.primaryContainer,
-            modifier=Modifier.size(40.dp).clearAndSetSemantics {}
+            color=palette.container,
+            modifier=Modifier.size(42.dp).clearAndSetSemantics {}
         ) {
             Box(contentAlignment=Alignment.Center) {
                 Text(
                     readerAvatarLetters(mail.sender),
                     fontSize=14.sp,
-                    fontWeight=FontWeight.SemiBold,
-                    color=MaterialTheme.colorScheme.primary
+                    fontWeight=FontWeight.Bold,
+                    color=palette.content
                 )
             }
         }
@@ -121,21 +122,31 @@ private fun readerAvatarLetters(sender: String): String {
             SelectionContainer {
                 Column(Modifier.fillMaxWidth()) {
                     Text(mail.sender,fontWeight=FontWeight.SemiBold,fontSize=15.sp,color=MaterialTheme.colorScheme.onSurface)
-                    if(mail.email.isNotBlank()&&!mail.sender.trim().equals(mail.email.trim(),true))
-                        Text(mail.email,Modifier.padding(top=1.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     val date=mailTime(mail.date).ifBlank {mailTime(message?.opt("date") as? String ?: "")}
-                    Text(if(date.isBlank())"Дата не указана" else "$date · МСК",Modifier.padding(top=2.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    val subline = buildString {
+                        if(mail.email.isNotBlank()&&!mail.sender.trim().equals(mail.email.trim(),true)) append(mail.email)
+                        if(date.isNotBlank()) {
+                            if(isNotEmpty()) append(" · ")
+                            append("$date МСК")
+                        }
+                    }
+                    Text(subline.ifBlank { "Дата не указана" },Modifier.padding(top=2.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)
                 }
             }
         }
-        OutlinedButton(
-            onClick={expanded=!expanded},
-            enabled=message!=null,
-            shape=RoundedCornerShape(8.dp),
-            contentPadding=PaddingValues(horizontal=10.dp,vertical=6.dp),
-            modifier=Modifier.heightIn(min=36.dp)
+        Surface(
+            onClick={if(message!=null)expanded=!expanded},
+            shape=RoundedCornerShape(10.dp),
+            color=MaterialTheme.colorScheme.surface,
+            border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant)
         ) {
-            Text(if(expanded)"Скрыть сведения" else "Сведения о письме",fontSize=12.sp)
+            Text(
+                if(expanded)"Скрыть ▴" else "Сведения ▾",
+                Modifier.padding(horizontal=10.dp,vertical=6.dp),
+                fontSize=12.sp,
+                fontWeight=FontWeight.Medium,
+                color=MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
     if(expanded&&details!=null) {

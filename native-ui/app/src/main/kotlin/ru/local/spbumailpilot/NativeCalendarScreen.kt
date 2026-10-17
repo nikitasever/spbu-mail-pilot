@@ -44,6 +44,7 @@ internal fun NativeCalendarScreen(
     val month = YearMonth.from(date)
     val ruLocale = Locale.forLanguageTag("ru")
     val label = DateTimeFormatter.ofPattern("d MMMM, EEEE", ruLocale)
+    val shortDayLabel = DateTimeFormatter.ofPattern("d MMMM, EEE", ruLocale)
     val monthTitle = month.format(DateTimeFormatter.ofPattern("LLLL yyyy", ruLocale))
         .replaceFirstChar { if (it.isLowerCase()) it.titlecase(ruLocale) else it.toString() }
     var searchOpen by remember { mutableStateOf(false) }
@@ -59,58 +60,88 @@ internal fun NativeCalendarScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        "Календарь",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                },
                 navigationIcon = {
-                    TextButton(onClick = model::close, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                        Text("Назад")
+                    IconButton(onClick = model::close) {
+                        Icon(
+                            NativeIcons.ArrowBack,
+                            contentDescription = "Назад",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                },
+                title = {
+                    Column {
+                        Text(
+                            "Календарь",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 19.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            "Время МСК",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 },
                 actions = {
-                    TextButton(
+                    Surface(
+                        onClick = { if (!state.busy) model.today() },
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Text(
+                            "Сегодня",
+                            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    IconButton(onClick = model::openSources, enabled = !state.busy) {
+                        Icon(
+                            NativeIcons.Folder,
+                            contentDescription = "Источники",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(
                         onClick = {
                             if (searchOpen && state.searchQuery.isNotEmpty()) model.clearSearch()
                             searchOpen = !searchOpen
-                        },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) { Text("Поиск") }
-                    TextButton(
-                        onClick = { model.load(true) },
-                        enabled = !state.busy,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) { Text("Обновить") }
+                        }
+                    ) {
+                        Icon(
+                            NativeIcons.Search,
+                            contentDescription = "Поиск",
+                            tint = if (searchOpen || state.searchQuery.isNotEmpty())
+                                MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = { model.load(true) }, enabled = !state.busy) {
+                        Icon(
+                            NativeIcons.Refresh,
+                            contentDescription = "Обновить",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             )
         },
-        bottomBar = {
-            Surface(tonalElevation = 2.dp) {
-                Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
-                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Button(
-                            onClick = { editEvent(state.day, null) },
-                            enabled = !state.busy,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f).heightIn(min = 44.dp)
-                        ) { Text("Новое событие") }
-                        OutlinedButton(
-                            onClick = fullClient,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.heightIn(min = 44.dp)
-                        ) { Text("Все возможности почты", fontSize = 12.sp) }
-                    }
-                }
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { if (!state.busy) editEvent(state.day, null) },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(NativeIcons.Plus, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Новое событие", fontWeight = FontWeight.SemiBold)
             }
         }
     ) { padding ->
@@ -125,9 +156,17 @@ internal fun NativeCalendarScreen(
                         OutlinedTextField(
                             value = state.searchQuery,
                             onValueChange = model::search,
-                            label = { Text("Поиск событий") },
+                            placeholder = { Text("Поиск событий", fontSize = 13.sp) },
+                            leadingIcon = {
+                                Icon(
+                                    NativeIcons.Search,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
                             singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(14.dp),
                             modifier = Modifier.weight(1f)
                         )
                         if (state.searchQuery.isNotEmpty()) {
@@ -135,163 +174,159 @@ internal fun NativeCalendarScreen(
                         }
                     }
                 }
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                 ) {
-                    listOf("day" to "День", "week" to "Неделя", "month" to "Месяц", "agenda" to "Повестка").forEach { (mode, text) ->
-                        val selected = state.mode == mode
-                        Surface(
-                            onClick = { model.mode(mode) },
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                            border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
-                            modifier = Modifier.weight(1f).height(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp)) {
-                                Text(
-                                    text,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    textAlign = TextAlign.Center
-                                )
+                    Row(
+                        Modifier.fillMaxWidth().padding(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        listOf("day" to "День", "week" to "Неделя", "month" to "Месяц", "agenda" to "Повестка").forEach { (mode, text) ->
+                            val active = state.mode == mode
+                            Surface(
+                                onClick = { model.mode(mode) },
+                                modifier = Modifier.weight(1f).height(34.dp),
+                                shape = RoundedCornerShape(9.dp),
+                                color = if (active) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                                        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     }
                 }
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+                state.error?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                state.actionNotice?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                        modifier = Modifier.size(34.dp)
-                    ) {
-                        IconButton(
-                            onClick = { model.shift(-1) },
-                            modifier = Modifier.fillMaxSize().semantics { contentDescription = "Предыдущий период" }
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = if (state.mode == "week" || state.mode == "month") 6.dp else 0.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("‹", fontSize = 20.sp, fontWeight = FontWeight.Medium)
-                        }
-                    }
-                    Text(
-                        if (state.mode == "day") date.format(label) else monthTitle,
-                        Modifier.weight(1f).padding(horizontal = 4.dp),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                        modifier = Modifier.size(34.dp)
-                    ) {
-                        IconButton(
-                            onClick = { model.shift(1) },
-                            modifier = Modifier.fillMaxSize().semantics { contentDescription = "Следующий период" }
-                        ) {
-                            Text("›", fontSize = 20.sp, fontWeight = FontWeight.Medium)
-                        }
-                    }
-                    OutlinedButton(
-                        onClick = model::today,
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier.heightIn(min = 34.dp)
-                    ) { Text("Сегодня", fontSize = 12.sp) }
-                    OutlinedButton(
-                        onClick = model::openSources,
-                        enabled = !state.busy,
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier.heightIn(min = 34.dp)
-                    ) { Text("Источники", fontSize = 12.sp) }
-                }
-                if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                state.error?.let { Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
-                state.actionNotice?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp) }
-                if (state.mode == "week" || state.mode == "month") {
-                    val start = if (state.mode == "week") NativeAgenda.first(state.day, "week")
-                    else month.atDay(1).minusDays(month.atDay(1).dayOfWeek.value - 1L)
-                    val cells = if (state.mode == "week") 7
-                    else ((month.atDay(1).dayOfWeek.value - 1 + month.lengthOfMonth() + 6) / 7) * 7
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс").forEach {
-                            Text(
-                                it,
-                                Modifier.weight(1f),
-                                textAlign = TextAlign.Center,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    for (week in 0 until cells / 7) Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        for (index in 0..6) {
-                            val day = start.plusDays((week * 7 + index).toLong())
-                            val present = state.mode == "week" || YearMonth.from(day) == month
-                            if (!present) Spacer(Modifier.weight(1f).height(56.dp)) else {
-                                val entries = state.entries.filter { NativeAgenda.onDay(it.data, day.toString()) && matchesSearch(it) }
-                                val selected = day == date
-                                val background = when {
-                                    selected -> MaterialTheme.colorScheme.primaryContainer
-                                    index >= 5 -> MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
-                                    else -> MaterialTheme.colorScheme.background
-                                }
-                                Surface(
-                                    onClick = { model.select(day.toString()) },
-                                    modifier = Modifier.weight(1f).height(56.dp).semantics {
-                                        contentDescription = day.format(label) + ", событий и задач: " + entries.size
-                                    },
-                                    color = background,
-                                    border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
-                                    shape = RoundedCornerShape(12.dp)
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.background,
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                IconButton(
+                                    onClick = { model.shift(-1) },
+                                    modifier = Modifier.fillMaxSize().semantics { contentDescription = "Предыдущий период" }
                                 ) {
-                                    Column(
-                                        Modifier.fillMaxSize(),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.Center
-                                    ) {
-                                        Text(
-                                            day.dayOfMonth.toString(),
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                        )
-                                        if (entries.isNotEmpty()) {
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.padding(top = 2.dp)
+                                    Text("‹", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            Text(
+                                if (state.mode == "day") date.format(label) else monthTitle,
+                                Modifier.weight(1f).padding(horizontal = 8.dp),
+                                textAlign = TextAlign.Center,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.background,
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                IconButton(
+                                    onClick = { model.shift(1) },
+                                    modifier = Modifier.fillMaxSize().semantics { contentDescription = "Следующий период" }
+                                ) {
+                                    Text("›", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                        if (state.mode == "week" || state.mode == "month") {
+                            val start = if (state.mode == "week") NativeAgenda.first(state.day, "week")
+                            else month.atDay(1).minusDays(month.atDay(1).dayOfWeek.value - 1L)
+                            val cells = if (state.mode == "week") 7
+                            else ((month.atDay(1).dayOfWeek.value - 1 + month.lengthOfMonth() + 6) / 7) * 7
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс").forEachIndexed { idx, wd ->
+                                    Text(
+                                        wd,
+                                        Modifier.weight(1f),
+                                        textAlign = TextAlign.Center,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (idx >= 5) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            for (week in 0 until cells / 7) Row(
+                                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                for (index in 0..6) {
+                                    val day = start.plusDays((week * 7 + index).toLong())
+                                    val present = state.mode == "week" || YearMonth.from(day) == month
+                                    if (!present) Spacer(Modifier.weight(1f).height(48.dp)) else {
+                                        val entries = state.entries.filter { NativeAgenda.onDay(it.data, day.toString()) && matchesSearch(it) }
+                                        val selected = day == date
+                                        val background = when {
+                                            selected -> MaterialTheme.colorScheme.primaryContainer
+                                            index >= 5 -> MaterialTheme.colorScheme.background.copy(alpha = 0.55f)
+                                            else -> Color.Transparent
+                                        }
+                                        Surface(
+                                            onClick = { model.select(day.toString()) },
+                                            modifier = Modifier.weight(1f).height(48.dp).semantics {
+                                                contentDescription = day.format(label) + ", событий и задач: " + entries.size
+                                            },
+                                            color = background,
+                                            border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Column(
+                                                Modifier.fillMaxSize(),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center
                                             ) {
-                                                entries.map { it.data.optString("kind") }.distinct().forEach { kind ->
-                                                    Surface(
-                                                        shape = CircleShape,
-                                                        color = calendarColor(kind),
-                                                        modifier = Modifier.size(5.dp)
-                                                    ) {}
+                                                Text(
+                                                    day.dayOfMonth.toString(),
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                )
+                                                if (entries.isNotEmpty()) {
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier.padding(top = 3.dp)
+                                                    ) {
+                                                        entries.map { it.data.optString("kind") }.distinct().forEach { kind ->
+                                                            Surface(
+                                                                shape = CircleShape,
+                                                                color = calendarColor(kind),
+                                                                modifier = Modifier.size(5.dp)
+                                                            ) {}
+                                                        }
+                                                    }
                                                 }
                                             }
-                                            Text(
-                                                entries.size.toString(),
-                                                fontSize = 10.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
                                         }
                                     }
                                 }
@@ -300,41 +335,38 @@ internal fun NativeCalendarScreen(
                     }
                 }
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("remote" to "Сервер", "event" to "События", "task" to "Задачи").forEach { (kind, text) ->
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = calendarColor(kind),
-                                modifier = Modifier.size(6.dp)
-                            ) {}
-                            Text(text, color = calendarColor(kind), fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                        }
-                    }
-                }
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-                ) {
-                    Column(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    Text(
+                        date.format(shortDayLabel),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        state.notice?.let {
-                            Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        listOf("remote" to "Сервер", "event" to "События", "task" to "Задачи").forEach { (kind, text) ->
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = calendarColor(kind),
+                                    modifier = Modifier.size(6.dp)
+                                ) {}
+                                Text(
+                                    text,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
-                        Text(
-                            "Время Москвы · Свои события редактируются на телефоне. Серверные события доступны для чтения.",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }
@@ -346,22 +378,31 @@ internal fun NativeCalendarScreen(
             days.forEach { day ->
                 val entries = state.entries.filter { NativeAgenda.onDay(it.data, day.toString()) && matchesSearch(it) }
                 if ((day == date && needle.isEmpty()) || entries.isNotEmpty()) {
-                    item(key = "day:$day") {
-                        Text(
-                            day.format(label),
-                            Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                    if (days.size > 1) {
+                        item(key = "day:$day") {
+                            Text(
+                                day.format(label),
+                                Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                     if (entries.isEmpty()) item(key = "empty:$day") {
-                        Text(
-                            if (state.busy) "Загружаем…" else "Нет событий и задач в доступных данных.",
-                            Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                if (state.busy) "Загружаем расписание…" else "На выбранный день событий и задач нет.",
+                                Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                     entries.forEach { entry ->
                         item(key = "$day:${entry.key}") {
@@ -382,7 +423,7 @@ internal fun NativeCalendarScreen(
                     }
                 }
             }
-            item { Spacer(Modifier.height(16.dp)) }
+            item { Spacer(Modifier.height(84.dp)) }
         }
     }
 
@@ -640,112 +681,204 @@ private fun NativeCalendarCard(
 ) {
     val data = entry.data
     val kind = data.optString("kind")
+    val accentColor = calendarColor(kind)
+    val rawRange = NativeAgenda.timeRange(data)
+    val rangeParts = rawRange.split("–", "-").map { it.trim() }.filter { it.isNotEmpty() }
+    val startTime = data.optString("time").ifBlank {
+        val first = rangeParts.firstOrNull().orEmpty()
+        if (first.isBlank() || first.equals("Весь день", ignoreCase = true)) "Весь" else first
+    }
+    val endTime = data.optString("endTime").ifBlank {
+        when {
+            rangeParts.size > 1 -> rangeParts[1]
+            startTime == "Весь" -> "день"
+            else -> ""
+        }
+    }
+    val sourceLabel = data.optString("calendarTitle").ifBlank {
+        when (kind) {
+            "remote" -> "Календарь подразделения"
+            "task" -> "Задача"
+            else -> "Личное событие"
+        }
+    }
     var expanded by remember(entry.key) { mutableStateOf(false) }
     Surface(
         onClick = { expanded = !expanded },
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
     ) {
-        Row(Modifier.fillMaxWidth().padding(12.dp)) {
-            Surface(
-                shape = RoundedCornerShape(2.dp),
-                color = calendarColor(kind),
-                modifier = Modifier.width(4.dp).height(36.dp)
-            ) {}
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    NativeAgenda.timeRange(data),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = calendarColor(kind)
-                )
-                Text(
-                    data.optString("title", "Без названия"),
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                if (data.optString("calendarTitle").isNotBlank()) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    Modifier.width(54.dp),
+                    horizontalAlignment = Alignment.Start
+                ) {
                     Text(
-                        data.optString("calendarTitle"),
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        startTime,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1
                     )
+                    if (endTime.isNotBlank()) {
+                        Text(
+                            endTime,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
                 }
-                if (expanded) {
-                    listOf("location", "description", "notes").forEach { field ->
-                        if (data.optString(field).isNotBlank()) {
-                            Text(data.optString(field), Modifier.padding(top = 8.dp), fontSize = 14.sp)
-                        }
+                Surface(
+                    shape = RoundedCornerShape(2.dp),
+                    color = accentColor,
+                    modifier = Modifier.width(4.dp).height(38.dp)
+                ) {}
+                Column(
+                    Modifier.weight(1f).padding(start = 10.dp, end = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        data.optString("title", "Без названия"),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = if (expanded) 4 else 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = accentColor,
+                            modifier = Modifier.size(6.dp)
+                        ) {}
+                        Text(
+                            sourceLabel,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
                 if (kind == "event" || kind == "remote") {
                     Row(
-                        Modifier.padding(top = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (kind == "event") {
-                            OutlinedButton(
-                                onClick = edit,
-                                enabled = enabled,
+                            Surface(
+                                onClick = { if (enabled) edit() },
                                 shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                modifier = Modifier.heightIn(min = 34.dp)
-                            ) { Text("Изменить своё событие", fontSize = 12.sp) }
+                                color = MaterialTheme.colorScheme.background
+                            ) {
+                                Icon(
+                                    NativeIcons.ComposePen,
+                                    contentDescription = "Изменить своё событие",
+                                    modifier = Modifier.padding(6.dp).size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
-                        OutlinedButton(
-                            onClick = createTask,
-                            enabled = enabled,
+                        Surface(
+                            onClick = { if (enabled) createTask() },
                             shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            modifier = Modifier.heightIn(min = 34.dp)
-                        ) { Text("Создать задачу", fontSize = 12.sp) }
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    NativeIcons.Tasks,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(13.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    "Задача",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
                 }
-                if (links.length() > 0) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                    ) {
-                        Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
+            }
+            if (expanded) {
+                listOf("location", "description", "notes").forEach { field ->
+                    if (data.optString(field).isNotBlank()) {
+                        Text(
+                            data.optString(field),
+                            Modifier.padding(start = 68.dp, top = 6.dp),
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            if (links.length() > 0) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.background.copy(alpha = 0.6f),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                NativeIcons.Mail,
+                                contentDescription = null,
+                                modifier = Modifier.size(13.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                             Text(
                                 "Связанные письма · ${links.length()}",
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.primary
                             )
-                            for (index in 0 until links.length()) {
-                                val link = links.getJSONObject(index)
-                                val mail = link.optJSONObject("mail")
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                        }
+                        for (index in 0 until links.length()) {
+                            val link = links.getJSONObject(index)
+                            val mail = link.optJSONObject("mail")
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(
+                                    onClick = { openMail(link.toString()) },
+                                    enabled = enabled,
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                    modifier = Modifier.weight(1f)
                                 ) {
-                                    TextButton(
-                                        onClick = { openMail(link.toString()) },
-                                        enabled = enabled,
-                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text(
-                                            mail?.optString("subject")?.ifBlank { "Открыть письмо" } ?: "Повреждённая ссылка",
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
-                                            fontSize = 12.sp
-                                        )
-                                    }
-                                    TextButton(
-                                        onClick = { unlinkMail(link.optString("id")) },
-                                        enabled = enabled,
-                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text("Отвязать", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                                    }
+                                    Text(
+                                        mail?.optString("subject")?.ifBlank { "Открыть письмо" } ?: "Повреждённая ссылка",
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                TextButton(
+                                    onClick = { unlinkMail(link.optString("id")) },
+                                    enabled = enabled,
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text("Отвязать", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                                 }
                             }
                         }

@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
@@ -16,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -39,105 +42,122 @@ import androidx.compose.ui.unit.sp
     val editable=!state.conflicted && !state.serverDelete && !state.scheduleOpen && !state.aiOpen && !state.discardOpen && !state.writingOpen && !state.picking && !state.busy && state.remaining == 0 && state.status == NativeDraft.EDITING && state.from.isNotBlank() && state.accountValid
     if(state.aiOpen){NativeWritingAiScreen(model);return}
     BackHandler { if(state.serverDelete)model.cancelServerDelete() else if(state.discardOpen)model.cancelDiscard() else if(state.writingOpen)model.closeWritingTools() else if(model.recipients.state.request!=null)model.recipients.clear() else model.close() }
-    Scaffold(modifier=Modifier.imePadding(), topBar={ TopAppBar(
-        title={ Text(if(state.forwardTextOnly||state.forwardEml)"Пересылка" else "Черновик", fontWeight=FontWeight.SemiBold) },
-        navigationIcon={ TextButton(onClick=model::close,enabled=!state.busy) { Text("Назад") } },
-        actions={ TextButton(onClick=model::requestDiscard,enabled=editable) { Text("Удалить", color=if(editable) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) } }) },
-        bottomBar={ Surface(tonalElevation=3.dp) {
-            Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
-                HorizontalDivider(thickness=0.5.dp, color=MaterialTheme.colorScheme.outlineVariant)
-                Column(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=8.dp)) {
-                    when {
-                        state.conflicted -> {
-                            Text("Это окно больше не может изменять черновик. Показанный текст можно скопировать; затем откройте нужный черновик из списка.", fontSize=13.sp, modifier=Modifier.padding(bottom=6.dp))
-                            OutlinedButton(onClick=model::close,enabled=!state.busy,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth()){Text("Закрыть")}
-                        }
-                        state.remaining > 0 -> {
-                            Text("Отправим через ${state.remaining} с",fontSize=14.sp, modifier=Modifier.padding(bottom=6.dp))
-                            OutlinedButton(onClick=model::cancelSend,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth()) { Text("Отменить отправку") }
-                        }
-                        unresolved -> {
-                            Text("Результат отправки неизвестен. Проверьте «Отправленные» и получателя перед повтором.",fontSize=13.sp, modifier=Modifier.padding(bottom=4.dp))
-                            TextButton(onClick=fullClient,modifier=Modifier.fillMaxWidth()) { Text("Открыть почтовый клиент") }
-                            OutlinedButton(onClick={confirmRetry=true},enabled=!state.busy,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth()) { Text("Разрешить повтор после проверки") }
-                        }
-                        state.status == NativeDraft.SCHEDULING -> {
-                            Text("Планирование требует сверки с очередью. Закройте и снова откройте черновик; отправка из него заблокирована.", fontSize=13.sp, modifier=Modifier.padding(bottom=6.dp))
-                            OutlinedButton(onClick=model::close,enabled=!state.busy,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth()){Text("Закрыть для сверки")}
-                        }
-                        state.status == NativeDraft.SCHEDULED -> {
-                            Text("Письмо передано в очередь «По расписанию»", fontSize=13.sp, modifier=Modifier.padding(bottom=6.dp))
-                            Button(onClick=model::close,enabled=!state.busy,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth()){Text("Готово")}
-                        }
-                        state.status == NativeDraft.SENT -> {
-                            Text("Письмо отправлено",color=MaterialTheme.colorScheme.primary, fontSize=13.sp, modifier=Modifier.padding(bottom=6.dp))
-                            Button(onClick=model::close,enabled=!state.busy,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth()) { Text("Готово") }
-                        }
-                        else -> {
+    Scaffold(
+        modifier=Modifier.imePadding(),
+        topBar={
+            TopAppBar(
+                navigationIcon={
+                    IconButton(onClick=model::close, enabled=!state.busy) {
+                        Icon(NativeIcons.ArrowBack, contentDescription="Назад", tint=MaterialTheme.colorScheme.onSurface)
+                    }
+                },
+                title={
+                    Column {
+                        Text(
+                            if(state.forwardTextOnly||state.forwardEml) "Пересылка" else "Новое письмо",
+                            fontWeight=FontWeight.Bold,
+                            fontSize=18.sp
+                        )
+                        Row(
+                            verticalAlignment=Alignment.CenterVertically,
+                            horizontalArrangement=Arrangement.spacedBy(5.dp)
+                        ) {
+                            Surface(
+                                shape=CircleShape,
+                                color=if(state.saved) Color(0xFF63C995) else MaterialTheme.colorScheme.primary,
+                                modifier=Modifier.size(6.dp)
+                            ) {}
                             Text(
-                                if(state.importing) "Добавление файлов…" else if(state.busy) "Подготовка…" else if(state.saved) "Сохранено на телефоне" else "Сохранение…",
+                                if(state.importing) "Добавление файлов…" else if(state.busy) "Подготовка…" else if(state.saved) "Черновик сохранён" else "Сохранение…",
                                 fontSize=11.sp,
-                                color=MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier=Modifier.padding(bottom=4.dp)
+                                color=MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(8.dp), verticalAlignment=Alignment.CenterVertically) {
-                                Button(
-                                    onClick=model::send,
-                                    enabled=editable&&!state.originalPending,
-                                    shape=RoundedCornerShape(12.dp),
-                                    modifier=Modifier.weight(1.25f).heightIn(min=44.dp)
+                        }
+                    }
+                },
+                actions={
+                    IconButton(onClick=pickFiles, enabled=editable) {
+                        Icon(NativeIcons.Paperclip, contentDescription="Прикрепить файл", tint=MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    IconButton(onClick=model::requestDiscard, enabled=editable) {
+                        Icon(NativeIcons.Trash, contentDescription="Удалить", tint=if(editable) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            )
+        },
+        bottomBar={
+            Surface(tonalElevation=3.dp) {
+                Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
+                    HorizontalDivider(thickness=0.5.dp, color=MaterialTheme.colorScheme.outlineVariant)
+                    Column(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=10.dp)) {
+                        when {
+                            state.conflicted -> {
+                                Text("Это окно больше не может изменять черновик. Показанный текст можно скопировать; затем откройте нужный черновик из списка.", fontSize=13.sp, modifier=Modifier.padding(bottom=6.dp))
+                                OutlinedButton(onClick=model::close,enabled=!state.busy,shape=RoundedCornerShape(14.dp),modifier=Modifier.fillMaxWidth()){Text("Закрыть")}
+                            }
+                            state.remaining > 0 -> {
+                                Text("Отправим через ${state.remaining} с",fontSize=14.sp, modifier=Modifier.padding(bottom=6.dp))
+                                OutlinedButton(onClick=model::cancelSend,shape=RoundedCornerShape(14.dp),modifier=Modifier.fillMaxWidth()) { Text("Отменить отправку") }
+                            }
+                            unresolved -> {
+                                Text("Результат отправки неизвестен. Проверьте «Отправленные» и получателя перед повтором.",fontSize=13.sp, modifier=Modifier.padding(bottom=4.dp))
+                                TextButton(onClick=fullClient,modifier=Modifier.fillMaxWidth()) { Text("Открыть почтовый клиент") }
+                                OutlinedButton(onClick={confirmRetry=true},enabled=!state.busy,shape=RoundedCornerShape(14.dp),modifier=Modifier.fillMaxWidth()) { Text("Разрешить повтор после проверки") }
+                            }
+                            state.status == NativeDraft.SCHEDULING -> {
+                                Text("Планирование требует сверки с очередью. Закройте и снова откройте черновик; отправка из него заблокирована.", fontSize=13.sp, modifier=Modifier.padding(bottom=6.dp))
+                                OutlinedButton(onClick=model::close,enabled=!state.busy,shape=RoundedCornerShape(14.dp),modifier=Modifier.fillMaxWidth()){Text("Закрыть для сверки")}
+                            }
+                            state.status == NativeDraft.SCHEDULED -> {
+                                Text("Письмо передано в очередь «По расписанию»", fontSize=13.sp, modifier=Modifier.padding(bottom=6.dp))
+                                Button(onClick=model::close,enabled=!state.busy,shape=RoundedCornerShape(14.dp),modifier=Modifier.fillMaxWidth()){Text("Готово")}
+                            }
+                            state.status == NativeDraft.SENT -> {
+                                Text("Письмо отправлено",color=MaterialTheme.colorScheme.primary, fontSize=13.sp, modifier=Modifier.padding(bottom=6.dp))
+                                Button(onClick=model::close,enabled=!state.busy,shape=RoundedCornerShape(14.dp),modifier=Modifier.fillMaxWidth()) { Text("Готово") }
+                            }
+                            else -> {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement=Arrangement.spacedBy(8.dp),
+                                    verticalAlignment=Alignment.CenterVertically
                                 ) {
-                                    Text(if(state.busy) "Подождите…" else "Отправить")
-                                }
-                                OutlinedButton(
-                                    onClick=model::openSchedule,
-                                    enabled=editable&&!state.originalPending,
-                                    shape=RoundedCornerShape(12.dp),
-                                    modifier=Modifier.weight(1f).heightIn(min=44.dp)
-                                ) {
-                                    Text("По расписанию")
+                                    Button(
+                                        onClick=model::send,
+                                        enabled=editable&&!state.originalPending,
+                                        shape=RoundedCornerShape(14.dp),
+                                        contentPadding=PaddingValues(horizontal=12.dp, vertical=8.dp),
+                                        modifier=Modifier.weight(1.1f).heightIn(min=46.dp)
+                                    ) {
+                                        Icon(NativeIcons.Send, contentDescription=null, modifier=Modifier.size(16.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(if(state.busy) "Подождите…" else "Отправить", fontWeight=FontWeight.SemiBold, fontSize=14.sp, maxLines=1)
+                                    }
+                                    OutlinedButton(
+                                        onClick=model::openSchedule,
+                                        enabled=editable&&!state.originalPending,
+                                        shape=RoundedCornerShape(14.dp),
+                                        contentPadding=PaddingValues(horizontal=10.dp, vertical=8.dp),
+                                        modifier=Modifier.weight(1.1f).heightIn(min=46.dp)
+                                    ) {
+                                        Icon(NativeIcons.Clock, contentDescription=null, modifier=Modifier.size(15.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("По расписанию", fontSize=13.sp, maxLines=1, overflow=TextOverflow.Ellipsis)
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-        } }) { padding ->
+        }
+    ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal=16.dp)) {
             if(state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             if(state.serverWorking){
-                Text("Работа с серверной копией…",Modifier.padding(vertical=8.dp))
+                Text("Работа с серверной копией…",Modifier.padding(vertical=6.dp),fontSize=12.sp)
                 if(state.serverTotal>0)Text("${Formatter.formatShortFileSize(context,state.serverBytes)} / ${Formatter.formatShortFileSize(context,state.serverTotal)}",fontSize=12.sp)
                 TextButton(onClick=model::cancelServerTransfer){Text("Остановить соединение")}
-            }
-            val showCopyToggle = !copies && state.cc.isBlank() && state.bcc.isBlank()
-            if(state.from.isNotBlank() || showCopyToggle) {
-                Row(
-                    Modifier.fillMaxWidth().padding(top=4.dp),
-                    verticalAlignment=Alignment.CenterVertically,
-                    horizontalArrangement=Arrangement.SpaceBetween
-                ) {
-                    if(state.from.isNotBlank()) {
-                        Text(
-                            "От: ${state.from}",
-                            fontSize=13.sp,
-                            color=MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier=Modifier.weight(1f)
-                        )
-                    } else {
-                        Spacer(Modifier.weight(1f))
-                    }
-                    if(showCopyToggle) {
-                        TextButton(
-                            onClick={copies=true},
-                            enabled=editable,
-                            contentPadding=PaddingValues(horizontal=8.dp, vertical=0.dp),
-                            modifier=Modifier.heightIn(min=32.dp)
-                        ) {
-                            Text("Копия и скрытая копия", fontSize=12.sp)
-                        }
-                    }
-                }
             }
             state.error?.let { Text(it,Modifier.padding(vertical=6.dp),color=MaterialTheme.colorScheme.error,fontSize=13.sp) }
             state.notice?.let { Text(it,Modifier.padding(vertical=6.dp),fontSize=13.sp) }
@@ -145,23 +165,89 @@ import androidx.compose.ui.unit.sp
             if(state.forwardEml)Text(if(state.originalPending)"Добавьте оригинал EML перед отправкой. Он содержит исходные заголовки, оформление и вложения; верхние Bcc/Resent-Bcc исключены." else "Оригинал EML прикреплён отдельным файлом. Комментарий выше него можно редактировать.",Modifier.padding(vertical=6.dp),fontSize=13.sp)
             if(state.originalFiles>0)OutlinedButton(onClick={confirmOriginalFiles=true},enabled=editable,shape=RoundedCornerShape(10.dp),modifier=Modifier.fillMaxWidth().padding(top=4.dp)){Text(if(state.forwardEml)"Добавить оригинал EML" else "Добавить вложения исходного письма · ${state.originalFiles}")}
             if(confirmOriginalFiles)AlertDialog(onDismissRequest={confirmOriginalFiles=false},title={Text(if(state.forwardEml)"Добавить оригинал EML?" else "Добавить исходные вложения?")},text={Text(if(state.forwardEml)"Будет скачано целое письмо до 100 МБ. Файл содержит исходные заголовки и все вложения. Верхние заголовки Bcc/Resent-Bcc будут исключены. Проверьте содержимое перед пересылкой. Нужны сеть и место на телефоне." else "Будут скачаны все ${state.originalFiles} файлов в этот черновик. Понадобятся сеть и место на телефоне. Исходное письмо не изменится.")},confirmButton={TextButton(onClick={confirmOriginalFiles=false;model.originalFiles()},enabled=editable){Text("Скачать и добавить")}},dismissButton={TextButton(onClick={confirmOriginalFiles=false}){Text("Отмена")}})
-            RecipientField("Кому","to",state.to,editable,model)
-            if(copies || state.cc.isNotBlank() || state.bcc.isNotBlank()) {
-                RecipientField("Копия","cc",state.cc,editable,model)
-                RecipientField("Скрытая копия","bcc",state.bcc,editable,model)
+
+            Surface(
+                shape=RoundedCornerShape(16.dp),
+                color=MaterialTheme.colorScheme.surface,
+                border=BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier=Modifier.fillMaxWidth().padding(top=4.dp)
+            ) {
+                Column(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal=14.dp, vertical=10.dp),
+                        verticalAlignment=Alignment.CenterVertically
+                    ) {
+                        Text("От", modifier=Modifier.width(36.dp), fontSize=13.sp, color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        if(state.from.isNotBlank()) {
+                            Surface(
+                                shape=RoundedCornerShape(8.dp),
+                                color=MaterialTheme.colorScheme.primaryContainer.copy(alpha=0.6f)
+                            ) {
+                                Text(
+                                    state.from,
+                                    Modifier.padding(horizontal=8.dp, vertical=3.dp),
+                                    fontSize=12.sp,
+                                    fontWeight=FontWeight.Medium,
+                                    color=MaterialTheme.colorScheme.primary,
+                                    maxLines=1,
+                                    overflow=TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        Spacer(Modifier.weight(1f))
+                        if(!copies && state.cc.isBlank() && state.bcc.isBlank()) {
+                            Surface(
+                                onClick={if(editable) copies=true},
+                                enabled=editable,
+                                shape=RoundedCornerShape(8.dp),
+                                color=MaterialTheme.colorScheme.background,
+                                border=BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
+                            ) {
+                                Text(
+                                    "Копия / Скр.",
+                                    Modifier.padding(horizontal=8.dp, vertical=4.dp),
+                                    fontSize=11.sp,
+                                    color=MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider(thickness=0.5.dp, color=MaterialTheme.colorScheme.outlineVariant)
+                    Column(Modifier.fillMaxWidth().padding(horizontal=10.dp, vertical=6.dp)) {
+                        RecipientField("Кому","to",state.to,editable,model)
+                        if(copies || state.cc.isNotBlank() || state.bcc.isNotBlank()) {
+                            RecipientField("Копия","cc",state.cc,editable,model)
+                            RecipientField("Скрытая копия","bcc",state.bcc,editable,model)
+                        }
+                        ComposeField("Тема",state.subject,editable,{model.edit("subject",it)},focus={model.recipients.clear()})
+                    }
+                }
             }
-            ComposeField("Тема",state.subject,editable,{model.edit("subject",it)},focus={model.recipients.clear()})
+
             Row(Modifier.fillMaxWidth().padding(top=8.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                OutlinedButton(onClick=pickFiles,enabled=editable,shape=RoundedCornerShape(10.dp),contentPadding=PaddingValues(horizontal=10.dp,vertical=6.dp),modifier=Modifier.weight(1.2f).heightIn(min=38.dp)) {
-                    Text("Прикрепить файл",fontSize=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis)
-                }
-                OutlinedButton(onClick=model::showTemplates,enabled=editable,shape=RoundedCornerShape(10.dp),contentPadding=PaddingValues(horizontal=10.dp,vertical=6.dp),modifier=Modifier.weight(0.9f).heightIn(min=38.dp)) {
-                    Text("Шаблоны",fontSize=12.sp,maxLines=1)
-                }
-                OutlinedButton(onClick=model::insertSignature,enabled=editable,shape=RoundedCornerShape(10.dp),contentPadding=PaddingValues(horizontal=10.dp,vertical=6.dp),modifier=Modifier.weight(0.9f).heightIn(min=38.dp)) {
-                    Text("Подпись",fontSize=12.sp,maxLines=1)
+                ComposerActionChip("Вложение", editable, weight=1.05f, icon=NativeIcons.Paperclip, onClick=pickFiles)
+                ComposerActionChip("Шаблоны", editable, weight=0.95f, onClick=model::showTemplates)
+                ComposerActionChip("Подпись", editable, weight=0.9f, onClick=model::insertSignature)
+                if(state.status==NativeDraft.EDITING) {
+                    ComposerActionChip(
+                        if(state.serverBackup=="saved") "✓ На сервере" else "☁ На сервер",
+                        editable && !state.serverWorking,
+                        weight=1.1f,
+                        onClick={model.serverCopy()}
+                    )
                 }
             }
+            if(state.status==NativeDraft.EDITING && state.serverReference) {
+                TextButton(
+                    onClick=model::requestServerDelete,
+                    enabled=editable,
+                    contentPadding=PaddingValues(horizontal=8.dp,vertical=0.dp),
+                    modifier=Modifier.heightIn(min=28.dp)
+                ) {
+                    Text("Удалить подтверждённую серверную копию", fontSize=11.sp, color=MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
             if(state.importing) {
                 Text(state.transferName,Modifier.padding(top=8.dp))
                 Text(Formatter.formatShortFileSize(context,state.transferBytes),fontSize=12.sp)
@@ -169,11 +255,14 @@ import androidx.compose.ui.unit.sp
             }
             if(state.files.isNotEmpty()) Text("Вложения · ${state.files.size}/10",Modifier.padding(top=10.dp),fontSize=13.sp,fontWeight=FontWeight.Medium)
             state.files.forEach { file ->
-                Surface(shape=RoundedCornerShape(10.dp),color=MaterialTheme.colorScheme.surface,border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),modifier=Modifier.fillMaxWidth().padding(top=6.dp)) {
-                    Column(Modifier.padding(10.dp)) {
-                        Text(file.name,fontSize=13.sp,fontWeight=FontWeight.Medium)
-                        Text(Formatter.formatShortFileSize(context,file.size),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                        TextButton(onClick={model.removeFile(file.token)},enabled=editable) { Text("Убрать из письма") }
+                Surface(shape=RoundedCornerShape(12.dp),color=MaterialTheme.colorScheme.surface,border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),modifier=Modifier.fillMaxWidth().padding(top=6.dp)) {
+                    Row(Modifier.padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Icon(NativeIcons.Paperclip, contentDescription=null, modifier=Modifier.size(16.dp), tint=MaterialTheme.colorScheme.primary)
+                        Column(Modifier.weight(1f)) {
+                            Text(file.name,fontSize=13.sp,fontWeight=FontWeight.Medium,maxLines=1,overflow=TextOverflow.Ellipsis)
+                            Text(Formatter.formatShortFileSize(context,file.size),fontSize=11.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        TextButton(onClick={model.removeFile(file.token)},enabled=editable) { Text("Убрать из письма",fontSize=12.sp) }
                     }
                 }
             }
@@ -182,29 +271,7 @@ import androidx.compose.ui.unit.sp
                 OutlinedButton(onClick={model.openAi("reply")},enabled=editable,shape=RoundedCornerShape(10.dp),modifier=Modifier.weight(1f).heightIn(min=38.dp)){Text("Предложить ответ",fontSize=12.sp)}
             }
             ComposerBody(model,editable)
-            if(state.status==NativeDraft.EDITING){
-                Surface(
-                    shape=RoundedCornerShape(12.dp),
-                    color=MaterialTheme.colorScheme.surface,
-                    border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),
-                    modifier=Modifier.fillMaxWidth().padding(top=10.dp,bottom=12.dp)
-                ) {
-                    Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            when(state.serverBackup){
-                                "saved"->"Серверная копия есть. Новые правки сохраняются на телефоне; для обновления копии загрузите их отдельно."
-                                "uncertain"->"Серверная загрузка не подтверждена. Копия могла сохраниться; повторная явная загрузка сверит ту же ревизию."
-                                else->"Копия черновика хранится только на телефоне."
-                            },
-                            fontSize=12.sp,
-                            color=MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        OutlinedButton(onClick={model.serverCopy()},enabled=editable,shape=RoundedCornerShape(10.dp),modifier=Modifier.fillMaxWidth().heightIn(min=38.dp)){Text("Сохранить копию на сервере",fontSize=13.sp)}
-                        if(state.serverReference)TextButton(onClick=model::requestServerDelete,enabled=editable,modifier=Modifier.fillMaxWidth()){Text("Удалить подтверждённую серверную копию")}
-                    }
-                }
-            }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
         }
     }
     if(state.serverDelete)AlertDialog(onDismissRequest=model::cancelServerDelete,title={Text("Удалить серверную копию?")},text={Text("Будет удалена только подтверждённая копия этого черновика на сервере. Текст и файлы на телефоне останутся. Неподтверждённая загрузка могла создать другую копию; её удаление не гарантируется.")},confirmButton={TextButton(onClick={model.serverCopy(true)}){Text("Удалить копию")}},dismissButton={TextButton(onClick=model::cancelServerDelete){Text("Отмена")}})
@@ -249,11 +316,48 @@ import androidx.compose.ui.unit.sp
         dismissButton={TextButton(onClick=model::cancelDiscard) {Text("Оставить")}},
         confirmButton={TextButton(onClick=model::discard) {Text("Удалить черновик",color=MaterialTheme.colorScheme.error)}})
 }
+
+@Composable private fun RowScope.ComposerActionChip(
+    label: String,
+    enabled: Boolean,
+    weight: Float = 1f,
+    icon: ImageVector? = null,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick=onClick,
+        enabled=enabled,
+        shape=RoundedCornerShape(10.dp),
+        color=MaterialTheme.colorScheme.surface,
+        border=BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier=Modifier.weight(weight).height(36.dp)
+    ) {
+        Row(
+            Modifier.fillMaxSize().padding(horizontal=6.dp),
+            verticalAlignment=Alignment.CenterVertically,
+            horizontalArrangement=Arrangement.Center
+        ) {
+            if(icon != null) {
+                Icon(icon, contentDescription=null, modifier=Modifier.size(13.dp), tint=MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(4.dp))
+            }
+            Text(
+                label,
+                fontSize=11.sp,
+                fontWeight=FontWeight.Medium,
+                color=if(enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines=1,
+                overflow=TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
 @Composable private fun ComposeField(label: String,value: String,editable: Boolean,change: (String)->Unit,email: Boolean=false,focus: ()->Unit={}) {
     OutlinedTextField(value=value,onValueChange=change,readOnly=!editable,label={Text(label)},singleLine=true,
         shape=RoundedCornerShape(12.dp),
         keyboardOptions=KeyboardOptions(keyboardType=if(email) KeyboardType.Email else KeyboardType.Text),
-        modifier=Modifier.onFocusChanged { if(it.isFocused)focus() }.fillMaxWidth().padding(top=4.dp))
+        modifier=Modifier.onFocusChanged { if(it.isFocused)focus() }.fillMaxWidth().padding(top=2.dp))
 }
 
 @Composable private fun RecipientField(label: String,field: String,value: String,editable: Boolean,model: NativeComposerModel) {
@@ -266,7 +370,7 @@ import androidx.compose.ui.unit.sp
             model.recipientInput(field,next.text,if(next.selection.collapsed)next.selection.end else -1,next.composition!=null)
         }
     },readOnly=!editable,label={Text(label)},singleLine=true,shape=RoundedCornerShape(12.dp),keyboardOptions=KeyboardOptions(keyboardType=KeyboardType.Email),
-        modifier=Modifier.fillMaxWidth().padding(top=4.dp).onFocusChanged { focus ->
+        modifier=Modifier.fillMaxWidth().padding(top=2.dp).onFocusChanged { focus ->
             if(focus.isFocused&&editable)model.recipientInput(field,input.text,if(input.selection.collapsed)input.selection.end else -1,input.composition!=null)
         })
     val suggestions=model.recipients.state
@@ -300,6 +404,6 @@ import androidx.compose.ui.unit.sp
     }
     OutlinedTextField(value=input,onValueChange={ next ->
         if(next.text.length<=100000){input=next;model.bodyInput(next.text,next.selection.start,next.selection.end,next.composition!=null)}
-    },readOnly=!editable,label={Text("Текст письма")},shape=RoundedCornerShape(14.dp),
-        modifier=Modifier.focusRequester(focus).onFocusChanged {if(it.isFocused)model.recipients.clear()}.fillMaxWidth().heightIn(min=160.dp).padding(top=8.dp),minLines=6)
+    },readOnly=!editable,label={Text("Текст письма")},shape=RoundedCornerShape(16.dp),
+        modifier=Modifier.focusRequester(focus).onFocusChanged {if(it.isFocused)model.recipients.clear()}.fillMaxWidth().heightIn(min=210.dp).padding(top=8.dp),minLines=8)
 }

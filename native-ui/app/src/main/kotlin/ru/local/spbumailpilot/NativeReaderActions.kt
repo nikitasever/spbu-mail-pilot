@@ -37,8 +37,10 @@ import androidx.compose.ui.unit.sp
                 enabled=!model.state.busy,
                 shape=RoundedCornerShape(10.dp),
                 contentPadding=PaddingValues(horizontal=12.dp,vertical=6.dp),
-                modifier=Modifier.heightIn(min=38.dp)
+                modifier=Modifier.heightIn(min=36.dp)
             ) {
+                Icon(NativeIcons.Share, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(6.dp))
                 Text("Поделиться текстом",fontSize=12.sp)
             }
             if(targets.links.isNotEmpty()||targets.phones.isNotEmpty()) {
@@ -46,7 +48,7 @@ import androidx.compose.ui.unit.sp
                     onClick={expanded=!expanded},
                     shape=RoundedCornerShape(10.dp),
                     contentPadding=PaddingValues(horizontal=12.dp,vertical=6.dp),
-                    modifier=Modifier.heightIn(min=38.dp)
+                    modifier=Modifier.heightIn(min=36.dp)
                 ) {
                     Text(if(expanded)"Скрыть ссылки и номера" else "Ссылки и номера · ${targets.links.size+targets.phones.size}",fontSize=12.sp)
                 }

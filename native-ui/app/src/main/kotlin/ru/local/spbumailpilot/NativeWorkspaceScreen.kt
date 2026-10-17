@@ -6,13 +6,16 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,6 +34,15 @@ internal fun NativeWorkspaceScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = model::back, enabled = !state.busy) {
+                        Icon(
+                            NativeIcons.ArrowBack,
+                            contentDescription = "Назад",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                },
                 title = {
                     Text(
                         if (editor != null) when (state.kind) {
@@ -38,15 +50,19 @@ internal fun NativeWorkspaceScreen(
                             "events" -> "Своё событие"
                             else -> "Заметка"
                         } else if (state.eventRoute) "Своё событие" else "Личные записи",
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 19.sp
                     )
-                },
-                navigationIcon = {
-                    TextButton(onClick = model::back, enabled = !state.busy) { Text("Назад") }
                 },
                 actions = {
                     if (editor == null) {
-                        TextButton(onClick = model::load, enabled = !state.busy) { Text("Обновить") }
+                        IconButton(onClick = model::load, enabled = !state.busy) {
+                            Icon(
+                                NativeIcons.Refresh,
+                                contentDescription = "Обновить",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             )
@@ -63,25 +79,37 @@ internal fun NativeWorkspaceScreen(
                             Button(
                                 onClick = { model.edit() },
                                 enabled = !state.busy,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp)
                             ) {
-                                Text(if (state.kind == "tasks") "Добавить задачу" else "Добавить заметку")
+                                Icon(NativeIcons.Plus, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    if (state.kind == "tasks") "Добавить задачу" else "Добавить заметку",
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
                         } else if (editor != null) {
                             Button(
                                 onClick = model::save,
                                 enabled = !state.busy,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.weight(1f).heightIn(min = 44.dp)
-                            ) { Text("Сохранить") }
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.weight(1f).heightIn(min = 46.dp)
+                            ) { Text("Сохранить", fontWeight = FontWeight.SemiBold) }
                             if (state.expected != null) {
                                 OutlinedButton(
                                     onClick = model::requestDelete,
                                     enabled = !state.busy,
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.heightIn(min = 44.dp)
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.heightIn(min = 46.dp)
                                 ) {
+                                    Icon(
+                                        NativeIcons.Trash,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(15.dp),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                    Spacer(Modifier.width(6.dp))
                                     Text("Удалить", color = MaterialTheme.colorScheme.error)
                                 }
                             }
@@ -92,9 +120,9 @@ internal fun NativeWorkspaceScreen(
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            state.error?.let { Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
-            state.notice?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp) }
+            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+            state.error?.let { Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+            state.notice?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
             if (editor != null) {
                 Column(
                     Modifier
@@ -104,17 +132,12 @@ internal fun NativeWorkspaceScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     fun value(key: String) = editor.optString(key)
-                    Text(
-                        "Изменения сохраняются кнопкой «Сохранить».",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                     val mailSource = state.eventMail ?: editor.optJSONObject("mail")
                     val calSource = editor.optJSONObject("calendarSource")
                     if (mailSource != null || calSource != null) {
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(
@@ -122,24 +145,46 @@ internal fun NativeWorkspaceScreen(
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 mailSource?.let { source ->
-                                    Text(
-                                        "Исходное письмо: " + source.optString("subject").ifBlank { "Без темы" },
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            NativeIcons.Mail,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            "Исходное письмо: " + source.optString("subject").ifBlank { "Без темы" },
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                                 calSource?.let { source ->
-                                    Text(
-                                        "Из события календаря: " + source.optString("calendarTitle", "Календарь"),
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            NativeIcons.Calendar,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            "Из события календаря: " + source.optString("calendarTitle", "Календарь"),
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -153,12 +198,6 @@ internal fun NativeWorkspaceScreen(
                         enabled = !state.busy
                     )
                     if (state.kind != "notes") {
-                        Text(
-                            if (state.kind == "events") "Локальное событие на этом телефоне. Дата: 1970–2100, время Москвы."
-                            else "Дата и время Москвы. Можно оставить срок пустым.",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                         WorkspaceDateTime(
                             editor.optString("id"),
                             value("date"),
@@ -172,7 +211,11 @@ internal fun NativeWorkspaceScreen(
                                 onClick = { openCalendarDay(value("date")) },
                                 enabled = !state.busy && SharedStateMerge.same(editor, state.expected),
                                 shape = RoundedCornerShape(10.dp)
-                            ) { Text("Показать в календаре") }
+                            ) {
+                                Icon(NativeIcons.Calendar, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Показать в календаре")
+                            }
                         }
                         if (state.kind == "tasks") {
                             Row(
@@ -201,12 +244,6 @@ internal fun NativeWorkspaceScreen(
                                     Modifier.weight(1.1f)
                                 ) { model.field("reminder", it) }
                             }
-                            Text(
-                                "По умолчанию — за час; без времени — в 09:00 в день срока. Для уведомлений нужны разрешение Android и включённые уведомления задач.",
-                                fontSize = 11.sp,
-                                lineHeight = 15.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
                     }
                     if (state.kind != "events") {
@@ -221,40 +258,52 @@ internal fun NativeWorkspaceScreen(
                             enabled = !state.busy
                         )
                     }
-                    if (editor.has("mail") || editor.has("calendarSource")) {
-                        Text(
-                            "Связь с письмом или календарём сохранится. Общее событие не меняется.",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                 }
             } else if (!state.eventRoute && state.taskMail == null && state.eventMail == null) {
-                Row(
-                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                 ) {
-                    FilterChip(
-                        selected = state.kind == "tasks",
-                        onClick = { model.kind("tasks") },
-                        label = { Text("Задачи") },
-                        shape = RoundedCornerShape(10.dp),
-                        enabled = !state.busy && state.tasksEnabled
-                    )
-                    FilterChip(
-                        selected = state.kind == "notes",
-                        onClick = { model.kind("notes") },
-                        label = { Text("Заметки") },
-                        shape = RoundedCornerShape(10.dp),
-                        enabled = !state.busy
-                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        listOf("tasks" to "Задачи", "notes" to "Заметки").forEach { (kindKey, label) ->
+                            val active = state.kind == kindKey
+                            Surface(
+                                onClick = { if (!state.busy && (kindKey != "tasks" || state.tasksEnabled)) model.kind(kindKey) },
+                                modifier = Modifier.weight(1f).height(34.dp),
+                                shape = RoundedCornerShape(9.dp),
+                                color = if (active) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        label,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                                        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
                 OutlinedTextField(
                     state.query,
                     model::query,
-                    label = { Text("Поиск в записях") },
+                    placeholder = { Text("Поиск в записях", fontSize = 13.sp) },
+                    leadingIcon = {
+                        Icon(
+                            NativeIcons.Search,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
                 )
                 if (state.kind == "tasks") {
@@ -267,7 +316,7 @@ internal fun NativeWorkspaceScreen(
                                 selected = state.filter == value,
                                 onClick = { model.filter(value) },
                                 shape = RoundedCornerShape(10.dp),
-                                label = { Text(label) }
+                                label = { Text(label, fontSize = 12.sp) }
                             )
                         }
                     }
@@ -293,127 +342,177 @@ internal fun NativeWorkspaceScreen(
                 LazyColumn(Modifier.weight(1f)) {
                     if (visible.isEmpty() && !state.busy) {
                         item {
-                            Text(
-                                "Здесь пока нет записей по выбранным условиям.",
-                                Modifier.padding(20.dp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    "Здесь пока нет записей по выбранным условиям.",
+                                    Modifier.padding(16.dp),
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                     items(visible, key = { it.optString("id") }) { row ->
                         val priority = row.optString("priority")
+                        val isDone = row.optBoolean("done")
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
+                            onClick = { if (!state.busy) model.edit(row.optString("id")) },
+                            shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.surface,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
                         ) {
-                            Column(
+                            Row(
                                 Modifier.fillMaxWidth().padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.Top
                             ) {
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.Top
-                                ) {
-                                    Text(
-                                        row.optString("title"),
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    if (state.kind == "tasks" && (priority == "urgent" || priority == "important")) {
-                                        val isUrgent = priority == "urgent"
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = if (isUrgent) MaterialTheme.colorScheme.errorContainer
-                                            else MaterialTheme.colorScheme.primaryContainer,
-                                            modifier = Modifier.padding(start = 8.dp)
-                                        ) {
-                                            Text(
-                                                if (isUrgent) "Срочно" else "Важно",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = if (isUrgent) MaterialTheme.colorScheme.error
-                                                else MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                    }
-                                }
                                 if (state.kind == "tasks") {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Surface(
+                                        onClick = { if (!state.busy) model.done(row.optString("id")) },
+                                        shape = CircleShape,
+                                        color = if (isDone) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                        border = BorderStroke(
+                                            1.8.dp,
+                                            if (isDone) MaterialTheme.colorScheme.primary
+                                            else when (priority) {
+                                                "urgent" -> MaterialTheme.colorScheme.error
+                                                "important" -> MaterialTheme.colorScheme.primary
+                                                else -> MaterialTheme.colorScheme.outline
+                                            }
+                                        ),
+                                        modifier = Modifier.padding(top = 2.dp).size(22.dp)
                                     ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = MaterialTheme.colorScheme.background
-                                        ) {
-                                            Text(
-                                                (row.optString("date") + " " + row.optString("time")).trim()
-                                                    .ifBlank { "Без срока" },
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                        row.optJSONObject("calendarSource")?.let { source ->
-                                            Text(
-                                                "Календарь: " + source.optString("calendarTitle", "Календарь"),
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
+                                        if (isDone) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Text(
+                                                    "✓",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onPrimary
+                                                )
+                                            }
                                         }
                                     }
                                 }
-                                val text = row.optString(if (state.kind == "tasks") "notes" else "body")
-                                if (text.isNotBlank()) {
-                                    Text(
-                                        text,
-                                        maxLines = 3,
-                                        overflow = TextOverflow.Ellipsis,
-                                        fontSize = 14.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Row(
-                                    Modifier.padding(top = 2.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                Column(
+                                    Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    OutlinedButton(
-                                        onClick = { model.edit(row.optString("id")) },
-                                        enabled = !state.busy,
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                        modifier = Modifier.heightIn(min = 34.dp)
-                                    ) { Text("Открыть", fontSize = 12.sp) }
-                                    if (state.kind == "tasks") {
-                                        OutlinedButton(
-                                            onClick = { model.done(row.optString("id")) },
-                                            enabled = !state.busy,
-                                            shape = RoundedCornerShape(8.dp),
-                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                            modifier = Modifier.heightIn(min = 34.dp)
-                                        ) {
-                                            Text(
-                                                if (row.optBoolean("done")) "Вернуть в работу" else "Выполнить",
-                                                fontSize = 12.sp
-                                            )
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Text(
+                                            row.optString("title"),
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (isDone) MaterialTheme.colorScheme.onSurfaceVariant
+                                            else MaterialTheme.colorScheme.onSurface,
+                                            textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        if (state.kind == "tasks" && (priority == "urgent" || priority == "important")) {
+                                            val isUrgent = priority == "urgent"
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = if (isUrgent) MaterialTheme.colorScheme.errorContainer
+                                                else MaterialTheme.colorScheme.primaryContainer,
+                                                modifier = Modifier.padding(start = 8.dp)
+                                            ) {
+                                                Text(
+                                                    if (isUrgent) "Срочно" else "Важно",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = if (isUrgent) MaterialTheme.colorScheme.error
+                                                    else MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                )
+                                            }
                                         }
                                     }
-                                }
-                                if (state.kind == "tasks" && row.optJSONObject("mail") != null) {
-                                    TextButton(
-                                        onClick = { openMail(row.optString("id")) },
-                                        enabled = !state.busy,
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                        modifier = Modifier.heightIn(min = 32.dp)
-                                    ) { Text("Открыть исходное письмо", fontSize = 12.sp) }
+                                    if (state.kind == "tasks") {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = MaterialTheme.colorScheme.background
+                                            ) {
+                                                Row(
+                                                    Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    Icon(
+                                                        NativeIcons.Clock,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(12.dp),
+                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                    Text(
+                                                        (row.optString("date") + " " + row.optString("time")).trim()
+                                                            .ifBlank { "Без срока" },
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+                                            row.optJSONObject("calendarSource")?.let { source ->
+                                                Text(
+                                                    source.optString("calendarTitle", "Календарь"),
+                                                    fontSize = 12.sp,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                    }
+                                    val text = row.optString(if (state.kind == "tasks") "notes" else "body")
+                                    if (text.isNotBlank()) {
+                                        Text(
+                                            text,
+                                            maxLines = 3,
+                                            overflow = TextOverflow.Ellipsis,
+                                            fontSize = 13.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    if (state.kind == "tasks" && row.optJSONObject("mail") != null) {
+                                        Surface(
+                                            onClick = { if (!state.busy) openMail(row.optString("id")) },
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                        ) {
+                                            Row(
+                                                Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                            ) {
+                                                Icon(
+                                                    NativeIcons.Mail,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(12.dp),
+                                                    tint = MaterialTheme.colorScheme.primary
+                                                )
+                                                Text(
+                                                    "Открыть исходное письмо",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
