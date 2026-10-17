@@ -41,7 +41,7 @@ import androidx.compose.ui.unit.sp
             targets.phones.forEach {number->
                 Text(number,fontSize=13.sp)
                 Row {
-                    TextButton(onClick={perform("Открыт набор номера."){context.startActivity(Intent(Intent.ACTION_DIAL,Uri.fromParts("tel",PhoneNumbers.normalize(number),null)))}}){Text("Набрать номер")}
+                    TextButton(onClick={perform("Открыт набор номера."){NativeDialer.dial(context,owner,number){status=it}}}){Text("Набрать номер")}
                     TextButton(onClick={perform("Номер скопирован."){clipboard.setText(AnnotatedString(number))}}){Text("Копировать")}
                 }
             }

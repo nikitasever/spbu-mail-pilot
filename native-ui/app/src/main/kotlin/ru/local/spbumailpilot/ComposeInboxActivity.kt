@@ -54,6 +54,8 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
     private val digest by lazy { ViewModelProvider(this)[NativeDigestModel::class.java] }
     private val aiSettings by lazy { ViewModelProvider(this)[NativeAiSettingsModel::class.java] }
     private val settings by lazy { ViewModelProvider(this)[NativeSettingsModel::class.java] }
+    private val calls by lazy { ViewModelProvider(this)[NativeCallsModel::class.java] }
+    private val relatedSearch by lazy { ViewModelProvider(this)[NativeRelatedSearchModel::class.java] }
     private val exports by lazy { ViewModelProvider(this)[NativeExportModel::class.java] }
     private lateinit var exportPicker:androidx.activity.result.ActivityResultLauncher<Uri?>
     private val navigation by lazy { ViewModelProvider(this)[NativeNavigationModel::class.java] }
@@ -143,10 +145,19 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             }
             val fullClient = { startActivity(Intent(this, MainActivity::class.java)); Unit }
             val pending=navigation.pending
-            val navigationAllowed=!files.state.open&&!serverDrafts.state.open&&!serverDrafts.state.busy&&!drafts.state.open&&!drafts.state.busy&&!scheduled.state.open&&!scheduled.state.busy&&!digest.state.open&&!aiSettings.state.open&&!aiSettings.state.busy&&!accounts.state.open&&!accounts.state.busy&&!settings.state.open&&!settings.state.busy&&!exports.state.open&&!composer.state.open&&!inbox.state.busy&&!inbox.state.foldersOpen&&!inbox.state.moveOpen&&
+            val navigationAllowed=!calls.state.open&&!files.state.open&&!serverDrafts.state.open&&!serverDrafts.state.busy&&!drafts.state.open&&!drafts.state.busy&&!scheduled.state.open&&!scheduled.state.busy&&!digest.state.open&&!aiSettings.state.open&&!aiSettings.state.busy&&!accounts.state.open&&!accounts.state.busy&&!settings.state.open&&!settings.state.busy&&!exports.state.open&&!composer.state.open&&!inbox.state.busy&&!inbox.state.foldersOpen&&!inbox.state.moveOpen&&
                 !workspace.state.busy&&workspace.state.editor==null&&!workspace.state.leaveOpen&&!workspace.state.deleteOpen&&
                 !categories.state.busy&&categories.state.editor==null&&!categories.state.leaveOpen&&
                 !extras.state.busy&&extras.state.target==null&&contacts.canExternalNavigation()&&writingSettings.canExternalNavigation()
+            val mailRouteVisible=!calls.state.open&&!files.state.open&&!serverDrafts.state.open&&!drafts.state.open&&!scheduled.state.open&&!digest.state.open&&
+                !aiSettings.state.open&&!accounts.state.open&&!settings.state.open&&!exports.state.open&&!composer.state.open&&
+                !contacts.state.open&&!calendar.state.open&&!workspace.state.open&&!categories.state.open&&!extras.state.open&&!writingSettings.state.open
+            LaunchedEffect(mailRouteVisible,resumed,unlockEpoch){
+                val visible=mailRouteVisible&&resumed&&!AppLock.locked(this@ComposeInboxActivity)
+                inbox.watchVisible(visible)
+                if(visible)relatedSearch.resume() else relatedSearch.pause()
+            }
+            LaunchedEffect(inbox.state.owner){if(relatedSearch.state.owner.isNotEmpty()&&relatedSearch.state.owner!=inbox.state.owner)relatedSearch.clear()}
             LaunchedEffect(settings.state.ready,settings.state.owner,inbox.state.owner,accounts.state.ready,resumed,unlockEpoch){
                 if(resumed&&!AppLock.locked(this@ComposeInboxActivity)&&accounts.state.ready&&settings.state.ready&&settings.state.owner==inbox.state.owner){
                     val canOpen=navigationAllowed&&!contacts.state.open&&!calendar.state.open&&!workspace.state.open&&!categories.state.open&&!extras.state.open&&!writingSettings.state.open&&inbox.state.selected==null
@@ -179,12 +190,14 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             else if(inbox.state.linked) holder.SaveableStateProvider("linked-reader") {
                 NativeInbox(inbox,{reply()},{reply(true)},::forwardText,{},fullClient,null,{},categoryRules=categories.state.rules.takeIf {categories.state.owner==inbox.state.owner} ?: emptyList(),
                     labels=extras.state.labels.takeIf {extras.state.owner==inbox.state.owner} ?: JSONObject(),
-                    responses=extras.state.responses.takeIf {extras.state.owner==inbox.state.owner} ?: emptyList(),snoozed=extras.state.snoozed.takeIf {extras.state.owner==inbox.state.owner} ?: emptyList(),followups=extras.state.followups.takeIf {extras.state.owner==inbox.state.owner} ?: emptyList(),forwardOriginal=::forwardOriginal)
+                    responses=extras.state.responses.takeIf {extras.state.owner==inbox.state.owner} ?: emptyList(),snoozed=extras.state.snoozed.takeIf {extras.state.owner==inbox.state.owner} ?: emptyList(),followups=extras.state.followups.takeIf {extras.state.owner==inbox.state.owner} ?: emptyList(),forwardOriginal=::forwardOriginal,foreground=resumed)
             }
+            else if(calls.state.open) NativeCallsScreen(calls)
             else if(files.state.open) NativeFilesScreen(files,{key->
                 val source=files.mail(key)
                 if(source==null||!inbox.openLinked(files.state.owner,source))files.linkError()
-            },{key->files.file(key)?.let {(ref,file)->exports.begin(files.state.owner,ref,listOf(file),false)}})
+            },{key->files.file(key)?.let {(ref,file)->exports.begin(files.state.owner,ref,listOf(file),false)}},
+                saveSelected={files.selectedExport()?.let {exports.beginLibrary(it)}})
             else if(serverDrafts.state.open) NativeServerDraftsScreen(serverDrafts){owner,id->composer.open(owner,restoreOnly=true,expectedId=id)}
             else if(drafts.state.open) NativeDraftsScreen(drafts,{owner,id->composer.open(owner,restoreOnly=true,expectedId=id)},{owner->composer.open(owner)},{serverDrafts.open(drafts.state.owner)})
             else if(scheduled.state.open) NativeScheduledScreen(scheduled){owner,id->composer.open(owner,restoreOnly=true,expectedId=id)}
@@ -239,6 +252,8 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
                         openDrafts={if(navigationAllowed)drafts.open(inbox.state.owner)},
                         openScheduled={if(navigationAllowed)scheduled.open(inbox.state.owner)},
                         openDigest={if(navigationAllowed&&inbox.state.selected==null)digest.open(inbox.state.owner,inbox.state.folder,inbox.state.rows)},
+                        foreground=resumed,openCalls={if(navigationAllowed)calls.open(inbox.state.owner)},related=relatedSearch,onSearchContact={email->composer.open(inbox.state.owner,recipient=email)},
+                        onSearchEvent={event->calendar.clearSearch();calendar.openDay(inbox.state.owner,event.getString("date"),"mail")},
                         openFiles={if(navigationAllowed)files.open(inbox.state.owner,inbox.state.folder)},forwardOriginal=::forwardOriginal,saveFiles={owner,ref,files,original->inbox.readerAction(owner,ref){if(original||files.isNotEmpty()&&files.all {inbox.state.body?.files?.contains(it)==true})exports.begin(owner,ref,files,original)}}) }
             }
                 }
@@ -252,7 +267,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
     override fun onResume() {
         super.onResume(); resumed = true; files.resume();serverDrafts.resume();drafts.resume();scheduled.resume();digest.resume();aiSettings.resume();accounts.resume();settings.resume();composer.resume()
         restoreComposer()
-        exports.resume();inbox.resume();contacts.resume();calendar.resume();workspace.resume();categories.resume();extras.resume();writingSettings.resume()
+        calls.resume();relatedSearch.resume();exports.resume();inbox.resume();contacts.resume();calendar.resume();workspace.resume();categories.resume();extras.resume();writingSettings.resume()
     }
 
     private fun restoreComposer(){
@@ -264,7 +279,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
     }
     override fun appLockChanged() {
         unlockEpoch++
-        if(resumed&&!AppLock.locked(this)){files.resume();serverDrafts.resume();drafts.resume();scheduled.resume();digest.resume();aiSettings.resume();accounts.resume();settings.resume();composer.resume();restoreComposer();exports.resume();inbox.resume();contacts.resume();calendar.resume();workspace.resume();categories.resume();extras.resume();writingSettings.resume()}
+        if(resumed&&!AppLock.locked(this)){files.resume();serverDrafts.resume();drafts.resume();scheduled.resume();digest.resume();aiSettings.resume();accounts.resume();settings.resume();composer.resume();restoreComposer();calls.resume();relatedSearch.resume();exports.resume();inbox.resume();contacts.resume();calendar.resume();workspace.resume();categories.resume();extras.resume();writingSettings.resume()}
     }
     override fun onNewIntent(intent: Intent) {super.onNewIntent(intent);setIntent(intent);receiveNavigation(intent)}
     private fun receiveNavigation(intent: Intent){
@@ -292,7 +307,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
         }
         super.onSaveInstanceState(outState)
     }
-    override fun onPause() { files.pause();serverDrafts.pause();drafts.pause();scheduled.pause();digest.pause();aiSettings.pause();accounts.pause();settings.pause();exports.pause(isChangingConfigurations);composer.pause();contacts.pause();calendar.pause();workspace.pause();categories.pause();extras.pause();writingSettings.pause(); resumed = false; inbox.pause(isChangingConfigurations); super.onPause() }
+    override fun onPause() { calls.pause();relatedSearch.pause();files.pause();serverDrafts.pause();drafts.pause();scheduled.pause();digest.pause();aiSettings.pause();accounts.pause();settings.pause();exports.pause(isChangingConfigurations);composer.pause();contacts.pause();calendar.pause();workspace.pause();categories.pause();extras.pause();writingSettings.pause(); resumed = false; inbox.pause(isChangingConfigurations); super.onPause() }
     @Deprecated("System credential result is also used by the existing app lock")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (!AppLock.result(this, requestCode, resultCode)) super.onActivityResult(requestCode, resultCode, data)
@@ -348,7 +363,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
         MaterialTheme(colorScheme = scheme, content = content)
     }
 }
-@Composable internal fun NativeInbox(model: NativeInboxModel, reply: () -> Unit, replyAll: () -> Unit, forwardText: () -> Unit, compose: () -> Unit, fullClient: () -> Unit, notice: String?, dismissNotice: () -> Unit, openContacts: ()->Unit = {}, openCalendar: ()->Unit = {}, openWorkspace: ()->Unit = {}, createTask: ()->Unit = {}, createEvent: ()->Unit = {}, linkMailToEvent: ()->Unit = {}, categoryRules: List<JSONObject> = emptyList(),categoryFilter: String="",selectCategory: (String)->Unit = {},openCategories: ()->Unit = {},labels: JSONObject=JSONObject(),responses: List<JSONObject> = emptyList(),setLabel: ()->Unit = {},setResponse: ()->Unit = {},openResponses: ()->Unit = {},extrasReady: Boolean=true,snoozed: List<JSONObject> = emptyList(),setSnooze: ()->Unit = {},setFollowup: ()->Unit = {},followups: List<JSONObject> = emptyList(),openWritingSettings: ()->Unit = {},openAccounts: ()->Unit = {},openSettings: ()->Unit = {},digestEnabled:Boolean=false,openDigest: ()->Unit = {},openScheduled: ()->Unit = {},openDrafts: ()->Unit = {},saveFiles: (String,MailRef,List<NativeFile>,Boolean)->Unit = {_,_,_,_->},forwardOriginal:()->Unit = {},openFiles:()->Unit = {}) {
+@Composable internal fun NativeInbox(model: NativeInboxModel, reply: () -> Unit, replyAll: () -> Unit, forwardText: () -> Unit, compose: () -> Unit, fullClient: () -> Unit, notice: String?, dismissNotice: () -> Unit, openContacts: ()->Unit = {}, openCalendar: ()->Unit = {}, openWorkspace: ()->Unit = {}, createTask: ()->Unit = {}, createEvent: ()->Unit = {}, linkMailToEvent: ()->Unit = {}, categoryRules: List<JSONObject> = emptyList(),categoryFilter: String="",selectCategory: (String)->Unit = {},openCategories: ()->Unit = {},labels: JSONObject=JSONObject(),responses: List<JSONObject> = emptyList(),setLabel: ()->Unit = {},setResponse: ()->Unit = {},openResponses: ()->Unit = {},extrasReady: Boolean=true,snoozed: List<JSONObject> = emptyList(),setSnooze: ()->Unit = {},setFollowup: ()->Unit = {},followups: List<JSONObject> = emptyList(),openWritingSettings: ()->Unit = {},openAccounts: ()->Unit = {},openSettings: ()->Unit = {},digestEnabled:Boolean=false,openDigest: ()->Unit = {},openScheduled: ()->Unit = {},openDrafts: ()->Unit = {},saveFiles: (String,MailRef,List<NativeFile>,Boolean)->Unit = {_,_,_,_->},forwardOriginal:()->Unit = {},openFiles:()->Unit = {},related:NativeRelatedSearchModel?=null,onSearchContact:(String)->Unit = {},onSearchEvent:(JSONObject)->Unit = {},openCalls:()->Unit = {},foreground:Boolean=true) {
     var moreScreens by remember {mutableStateOf(false)}
     val state=model.state
     val scope=ThreadScope(state.owner,state.folder,state.searchKey,state.filter)
@@ -447,6 +462,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                     DropdownMenuItem(text={Text("Письма на потом")},enabled=state.owner.isNotBlank()&&!state.linked&&!state.busy&&extrasReady,onClick={moreScreens=false;openResponses()})
                     DropdownMenuItem(text={Text("Шаблоны и подпись")},enabled=state.owner.isNotBlank()&&!state.linked&&!state.busy,onClick={moreScreens=false;openWritingSettings()})
                     DropdownMenuItem(text={Text("Категории и правила")},enabled=state.owner.isNotBlank()&&!state.linked&&!state.busy,onClick={moreScreens=false;openCategories()})
+                    DropdownMenuItem(text={Text("Звонки и история")},enabled=state.owner.isNotBlank()&&!state.linked&&!state.busy,onClick={moreScreens=false;openCalls()})
                     DropdownMenuItem(text={Text("Задачи и заметки")},enabled=state.owner.isNotBlank()&&!state.linked&&!state.busy,onClick={moreScreens=false;openWorkspace()})
                     DropdownMenuItem(text={Text("Аккаунты и SMTP")},enabled=!state.linked&&!state.busy,onClick={moreScreens=false;openAccounts()})
                     DropdownMenuItem(text={Text("Настройки")},enabled=state.owner.isNotBlank()&&!state.linked&&!state.busy,onClick={moreScreens=false;openSettings()})
@@ -456,13 +472,26 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
         }
         }
     } }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
+            if(state.serverChanged&&!state.busy)Row(Modifier.fillMaxWidth().padding(horizontal=16.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
+                Text("В папке есть обновления",Modifier.weight(1f),fontSize=13.sp)
+                TextButton(onClick={model.loadInbox(true)},enabled=state.selected==null&&state.selectedRefs.isEmpty()&&!state.linked){Text("Обновить")}
+            }
             notice?.let { Row(Modifier.fillMaxWidth().padding(horizontal=16.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                 Text(it,Modifier.weight(1f),fontSize=13.sp)
                 TextButton(onClick=dismissNotice){Text("Закрыть")}
             } }
-            if (state.cached && state.searchKey.isEmpty()) Text("Сохранённая почта на этом телефоне", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), fontSize = 12.sp)
+            if(state.cached)CopyAgeText(if(state.selected==null)state.pageCachedAt else state.bodyCachedAt,foreground)
             if(state.selected==null&&state.thread.anchor==null&&state.owner.isNotBlank()) {
+                if(state.searchOpen||related?.state?.criteria!=null&&related.state.enabled)BoxWithConstraints(Modifier.fillMaxWidth()){
+                    val panelHeight=maxHeight*0.55f
+                    Column(Modifier.fillMaxWidth().heightIn(max=panelHeight).verticalScroll(rememberScrollState())){
+                if(state.searchOpen&&related!=null)Row(Modifier.fillMaxWidth().padding(horizontal=16.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                    FilterChip(selected=!related.state.enabled,onClick={if(related.state.enabled)related.toggle()},label={Text("Письма")})
+                    FilterChip(selected=related.state.enabled,onClick={if(!related.state.enabled)related.toggle()},label={Text("Везде")})
+                }
+                if(state.searchOpen&&related!=null&&related.state.enabled&&related.state.criteria==null)
+                    Text("Нажмите «На телефоне» или «На сервере», чтобы искать также контакты и события.",Modifier.padding(horizontal=16.dp),fontSize=12.sp)
                 if(state.searchOpen) NativeInboxSearch(
                     state,
                     model::searchText,
@@ -473,10 +502,13 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                     model::searchUnread,
                     model::toggleAdvancedSearch,
                     model::resetSearchFilters,
-                    model::cancelSearch,
-                    {model.search(false)},
-                    {model.search(true)}
+                    {model.cancelSearch();related?.clear()},
+                    {model.search(false)?.let {related?.search(state.owner,it,false)}},
+                    {model.search(true)?.let {related?.search(state.owner,it,true)}}
                 )
+                if(related!=null)NativeRelatedResults(related,onSearchContact,onSearchEvent)
+                    }
+                }
                 if(state.searchKey.isNotEmpty()) {
                     val crit=state.activeCriteria
                     Surface(
@@ -493,7 +525,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                     color=if(state.pageOffline) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
                                     modifier=Modifier.weight(1f)
                                 )
-                                TextButton(onClick={model.clearSearch()},enabled=!state.busy,contentPadding=PaddingValues(horizontal=8.dp,vertical=0.dp)) {
+                                TextButton(onClick={model.clearSearch();related?.clear()},enabled=!state.busy,contentPadding=PaddingValues(horizontal=8.dp,vertical=0.dp)) {
                                     Text("Сбросить поиск",fontSize=12.sp)
                                 }
                             }
@@ -808,28 +840,39 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
         }
     }
 }
+@Composable private fun CopyAgeText(at:Long,active:Boolean){
+    val now by produceState(System.currentTimeMillis(),at,active){
+        if(active&&at>0)while(true){value=System.currentTimeMillis();delay(60000)}
+    }
+    Text("Сохранённая почта на телефоне · "+NativeCopyAge.label(at,now),Modifier.padding(horizontal=16.dp,vertical=8.dp),fontSize=12.sp)
+}
 @Composable internal fun NativeFolderList(state: InboxState,close: ()->Unit,reload: ()->Unit,select: (String)->Unit) {
+    NativeFolderChoices(if(state.movePicker)"Куда переместить" else "Почтовые папки",state.folder,state.folders,
+        state.foldersBusy,state.foldersOnline,state.foldersError,close,reload,select,state.movePicker)
+}
+@Composable internal fun NativeFolderChoices(title:String,current:String,folders:List<NativeFolders.Entry>,busy:Boolean,online:Boolean,error:String?,
+    close:()->Unit,reload:()->Unit,select:(String)->Unit,excludeCurrent:Boolean=false) {
         Column(Modifier.fillMaxWidth().heightIn(max=560.dp).navigationBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal=16.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                Text(if(state.movePicker)"Куда переместить" else "Почтовые папки",Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)
+                Text(title,Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)
                 TextButton(onClick=close){Text("Закрыть")}
             }
-            Text(if(state.foldersOnline)"Список с сервера" else "Папки сохранённых писем",Modifier.padding(horizontal=16.dp,vertical=4.dp),fontSize=12.sp)
-            if(state.foldersBusy)LinearProgressIndicator(Modifier.fillMaxWidth())
-            state.foldersError?.let {Text(it,Modifier.padding(16.dp),color=MaterialTheme.colorScheme.error,fontSize=13.sp)}
+            Text(if(online)"Список с сервера" else "Папки сохранённых писем",Modifier.padding(horizontal=16.dp,vertical=4.dp),fontSize=12.sp)
+            if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
+            error?.let {Text(it,Modifier.padding(16.dp),color=MaterialTheme.colorScheme.error,fontSize=13.sp)}
             LazyColumn(Modifier.weight(1f,fill=false)) {
-                items(state.folders,key={it.name}) {folder ->
-                    TextButton(onClick={select(folder.name)},enabled=!state.movePicker||folder.name!=state.folder,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).padding(horizontal=8.dp)) {
+                items(folders,key={it.name}) {folder ->
+                    TextButton(onClick={select(folder.name)},enabled=!busy&&(!excludeCurrent||folder.name!=current),modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).padding(horizontal=8.dp)) {
                         Column(Modifier.weight(1f)) {
                             Text(folder.title,Modifier.fillMaxWidth(),maxLines=2,overflow=TextOverflow.Ellipsis)
                             if(folder.title!=folder.name)Text(folder.name,Modifier.fillMaxWidth(),fontSize=11.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        if(folder.name==state.folder)Text("Выбрана",fontSize=12.sp)
+                        if(folder.name==current)Text("Выбрана",fontSize=12.sp)
                     }
                 }
             }
-            OutlinedButton(onClick=reload,enabled=!state.foldersBusy,modifier=Modifier.fillMaxWidth().padding(16.dp)) {
-                Text(if(state.foldersOnline)"Обновить папки с сервера" else "Загрузить папки с сервера")
+            OutlinedButton(onClick=reload,enabled=!busy,modifier=Modifier.fillMaxWidth().padding(16.dp)) {
+                Text(if(online)"Обновить папки с сервера" else "Загрузить папки с сервера")
             }
         }
 }

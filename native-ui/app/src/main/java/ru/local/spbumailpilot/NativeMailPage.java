@@ -6,11 +6,13 @@ import java.util.LinkedHashMap;
 final class NativeMailPage {
     final String folder,validity,snapshot;
     final int next,total;
+    final long cachedAt;
     final boolean more;
     final JSONArray messages;
     private NativeMailPage(JSONObject page,NativeMailPage previous)throws Exception{
         folder=page.getString("folder");validity=page.getString("validity");snapshot=page.getString("snapshot");
         next=page.getInt("nextOffset");total=page.getInt("total");more=page.getBoolean("hasMore");
+        cachedAt=Math.max(0,page.optLong("cachedAt",previous==null?0:previous.cachedAt));
         int offset=previous==null?0:previous.next;
         if(!validity.matches("[1-9][0-9]{0,19}")||folder.isEmpty()||snapshot.isEmpty()||snapshot.length()>200||next<offset||next>total||more!=(next<total)||more&&next==offset)
             throw new IllegalArgumentException("Invalid page cursor");

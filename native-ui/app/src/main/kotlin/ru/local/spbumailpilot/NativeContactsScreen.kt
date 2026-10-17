@@ -118,10 +118,10 @@ import androidx.compose.ui.unit.sp
             if(person.number.isNotBlank())OutlinedButton(onClick={
                 model.detail()?.let {contact->
                     if(contact.number.length<=60&&contact.number.matches(Regex("[+0-9() .-]+"))) {
-                        status=runCatching<String?> {context.startActivity(android.content.Intent(android.content.Intent.ACTION_DIAL,android.net.Uri.fromParts("tel",contact.number,null)));null}.getOrElse {"Не удалось открыть набор номера."}
+                        status=runCatching<String?> {NativeDialer.dial(context,state.owner,contact.number){status=it};null}.getOrElse {"Не удалось открыть набор номера. Проверьте полный номер."}
                     }else status="Этот номер нельзя передать в набор номера."
                 }
-            },enabled=!state.busy,modifier=Modifier.fillMaxWidth()){Text("Позвонить")}
+            },enabled=!state.busy,modifier=Modifier.fillMaxWidth()){Text("Набрать номер")}
             OutlinedButton(onClick={model.detail()?.let {clipboard.setText(AnnotatedString(it.email));status="Адрес скопирован."}},enabled=!state.busy,modifier=Modifier.fillMaxWidth()){Text("Копировать адрес")}
             OutlinedButton(onClick=model::edit,enabled=!state.busy,modifier=Modifier.fillMaxWidth()){Text(if(person.local)"Изменить" else "Сохранить на телефоне")}
             Text("Изменения сохраняются для текущего ящика на этом телефоне. Серверная адресная книга не изменяется.",fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)

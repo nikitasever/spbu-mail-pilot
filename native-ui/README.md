@@ -2,6 +2,7 @@
 
 Разработческая миграция поверх общего Java-ядра. WebView сохранён для постепенного перехода.
 Полный перечень и оставшиеся работы: [docs/migration](../docs/migration/README.md).
+Текущие результаты компиляции и тестов: [completion-checks](../docs/migration/completion-checks.md).
 
 Требуются JDK 17+, Android SDK 34, Build Tools 35.0.0; Gradle 8.9 закреплён wrapper и SHA-256.
 Из корня восстановить зависимости (их SHA-256 проверяется):
@@ -18,11 +19,12 @@ cd native-ui
 Host-проверки из корня:
 
 ```sh
+npm ci --ignore-scripts
 bash native-ui/test-compose.sh
+bash native-ui/test-global-search.sh
 bash native-ui/test-advanced-search.sh
 bash native-ui/test-accounts-settings.sh
 bash native-ui/test-contacts-edit.sh
-npm ci --ignore-scripts
 npm test
 ```
 

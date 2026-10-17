@@ -22,7 +22,10 @@ import androidx.compose.ui.unit.sp
                 if(state.name.isNotBlank())Text(state.name,fontSize=13.sp)
                 if(state.size>0)Text("${state.bytes/1024} / ${state.size/1024} КиБ",fontSize=12.sp)
             }
-            if(state.phase=="result")Text("Сохранено: ${state.saved} из ${state.total}. Ошибок: ${state.failures}.")
+            if(state.phase=="result"){
+                Text("Сохранено: ${state.saved} из ${state.total}. Ошибок: ${state.failures}.")
+                if(state.canRetry)OutlinedButton(onClick=model::retry,modifier=Modifier.fillMaxWidth()){Text("Повторить файлы с ошибкой")}
+            }
             if(state.notice.isNotBlank())Text(state.notice)
             state.failureNames.forEach {Text(it,fontSize=12.sp)}
         }

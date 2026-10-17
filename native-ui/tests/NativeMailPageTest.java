@@ -11,6 +11,9 @@ public final class NativeMailPageTest {
     }
     public static void main(String[] args)throws Exception{
         NativeMailPage first=NativeMailPage.first(page("INBOX","7","1",0,125,false));
+        NativeMailPage timed=NativeMailPage.first(page("INBOX","7","1",0,125,false).put("cachedAt",123456789L));
+        check(timed.cachedAt==123456789L&&timed.append(page("INBOX","7","1",50,125,false)).cachedAt==123456789L);
+        check(first.cachedAt==0);
         check(first.messages.length()==50&&first.next==50&&first.more);
         NativeMailPage second=first.append(page("INBOX","7","1",50,125,false));
         NativeMailPage last=second.append(page("INBOX","7","1",100,125,false));

@@ -5,6 +5,8 @@
 SHA-256 архива: `f6fbb3da10089da27f2917f7cf28e72fdde70b1becd6fc6985f47aba221c2ce1`.
 
 - [Проверка импортированного проекта и результаты тестов](source-import-review.md).
+- [Текущие изменения и проверки завершения](completion-checks.md).
+- [Сверка функций старого интерфейса](parity-review.md).
 - [Что ещё проверить и сделать](remaining-work.md).
 - [Состав восстановления и происхождение файлов](source-recovery.md).
 - [Исторический обзор отклонённых package3/package4](packages3-4-review.md).

@@ -1,5 +1,7 @@
 # Проверка объединённого ZIP Gemini
 
+Исторический результат первичного импорта. Android SDK впоследствии подготовлен, компиляция и выбранные JUnit проходят; актуально: [completion-checks.md](completion-checks.md).
+
 Дата: 17 октября 2026. Архив: `spbu-mail-pilot-compose-source.zip`.
 SHA-256: `f6fbb3da10089da27f2917f7cf28e72fdde70b1becd6fc6985f47aba221c2ce1`.
 

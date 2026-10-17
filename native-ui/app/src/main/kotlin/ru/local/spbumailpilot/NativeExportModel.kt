@@ -12,7 +12,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 internal data class ExportState(val open:Boolean=false,val phase:String="confirm",val original:Boolean=false,val total:Int=0,
     val done:Int=0,val saved:Int=0,val failures:Int=0,val name:String="",val bytes:Long=0,val size:Long=-1,val notice:String="",val pickerRequested:Boolean=false,
-    val failureNames:List<String> = emptyList())
+    val failureNames:List<String> = emptyList(),val canRetry:Boolean=false){
+    override fun toString()="ExportState(open=$open,phase=$phase,total=$total,saved=$saved,failures=$failures)"
+}
 
 /** Shared bulk engine owns .part/rename/collision handling; lifecycle owns only a transient plan. */
 internal class NativeExportModel(app:Application):AndroidViewModel(app) {
@@ -25,26 +27,39 @@ internal class NativeExportModel(app:Application):AndroidViewModel(app) {
     @Volatile private var closed=false
     @Volatile private var foreground=false
     private var plan:NativeExportPlan?=null
+    private var failedPlan:NativeExportPlan?=null
     private val picker=NativeExportPicker()
     private var destination:Uri?=null
     private var cancelFlag=AtomicBoolean(false)
     var state by mutableStateOf(ExportState());private set
     private fun owner()=CredentialVault(context).load()?.let {NoticeCenter.scope(it)}
     fun begin(account:String,ref:MailRef,files:List<NativeFile>,original:Boolean){
+        prepare(account) {
+            val rows=JSONArray();files.forEach {rows.put(org.json.JSONObject().put("path",it.path))}
+            NativeExportPlan.from(account,ref.folder,ref.uid,ref.validity,rows,original)
+        }
+    }
+    fun beginLibrary(request:NativeExportPlan){prepare(request.owner){request}}
+    private fun prepare(account:String,create:()->NativeExportPlan){
         if(!foreground||closed||AppLock.locked(context))return
         if(plan!=null||picker.pending()){state=if(plan==null)ExportState(open=true,phase="result",notice="Завершите предыдущий выбор папки и повторите сохранение.") else state.copy(open=true,notice="Завершите предыдущее сохранение.");return}
         try {
             check(owner()==account)
-            val rows=JSONArray();files.forEach {rows.put(org.json.JSONObject().put("path",it.path))}
-            plan=NativeExportPlan.from(account,ref.folder,ref.uid,ref.validity,rows,original)
+            plan=create()
+            failedPlan=null
             destination=null;cancelFlag=AtomicBoolean(false)
-            state=ExportState(open=true,original=original,total=plan!!.refs.size)
-        }catch(_:Exception){plan=null;state=ExportState(open=true,phase="result",notice="Не удалось подготовить сохранение. Откройте письмо заново.")}
+            state=ExportState(open=true,original=plan!!.original,total=plan!!.refs.size)
+        }catch(_:Exception){plan=null;state=ExportState(open=true,phase="result",notice="Не удалось подготовить сохранение. Обновите исходный список и выберите файлы заново.")}
     }
     fun confirm(){
         val p=plan ?: return
         if(!foreground||AppLock.locked(context)||state.phase!="confirm"||runCatching {owner()!=p.owner}.getOrDefault(true))return
         state=state.copy(phase="picker",pickerRequested=true,notice="Выберите папку в системном окне.")
+    }
+    fun retry(){
+        if(state.phase!="result"||!state.canRetry)return
+        val request=failedPlan ?: return
+        prepare(request.owner){request} // Explicit confirmation and a fresh destination choice; successful files are excluded.
     }
     fun takePickerRequest():Boolean {
         val p=plan ?: return false
@@ -72,7 +87,7 @@ internal class NativeExportModel(app:Application):AndroidViewModel(app) {
     fun pause(recreating:Boolean){foreground=false;if(!recreating&&state.phase=="transfer")cancel()}
     fun cancel(){
         if(state.phase=="transfer"){cancelFlag.set(true);gate.next();state=state.copy(notice="Отмена сохранения…");return}
-        plan=null;destination=null;state=ExportState() // Keep launched identity until its result is consumed.
+        plan=null;failedPlan=null;destination=null;state=ExportState() // Keep launched identity until its result is consumed.
     }
     private fun startIfReady(){
         val request=plan ?: return;val tree=destination ?: return
@@ -108,10 +123,12 @@ internal class NativeExportModel(app:Application):AndroidViewModel(app) {
                 })
                 main.post {if(!closed&&plan===request){
                     plan=null;destination=null
-                    if(runCatching {owner()==request.owner}.getOrDefault(false))state=state.copy(phase="result",done=result.total,saved=result.saved,failures=result.failures.size,
-                        notice=if(result.cancelled)"Сохранение остановлено. Уже сохранённые файлы оставлены в папке." else "Сохранение завершено.",
-                        failureNames=result.failures.map {it.name+if(it.reason=="unsupported_destination")" — папка не поддерживает завершение временных файлов" else " — не удалось сохранить"})
-                    else state=ExportState(open=true,phase="result",notice="Аккаунт изменился. Сохранение остановлено.")
+                    if(runCatching {owner()==request.owner}.getOrDefault(false)){
+                        failedPlan=request.failed(result.failures)
+                        state=state.copy(phase="result",done=result.saved+result.failures.size,saved=result.saved,failures=result.failures.size,canRetry=failedPlan!=null,
+                            notice=if(result.cancelled)"Сохранение остановлено. Уже сохранённые файлы оставлены в папке. Не начатые файлы можно выбрать заново." else "Сохранение завершено.",
+                            failureNames=result.failures.map {it.name+if(it.reason=="unsupported_destination")" — папка не поддерживает завершение временных файлов" else " — не удалось сохранить"})
+                    }else {failedPlan=null;state=ExportState(open=true,phase="result",notice="Аккаунт изменился. Сохранение остановлено.")}
                 }}
             }catch(_:Exception){main.post {if(!closed&&plan===request){plan=null;destination=null;state=state.copy(phase="result",notice="Сохранение не завершено. Проверьте сеть и доступ к папке. Повтор выполняется только вручную.")}}}
             finally {reader?.let {gate.detach(ticket,it);runCatching {it.close()}}}
