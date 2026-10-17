@@ -31,8 +31,11 @@ class NativePreviewTest {
             mail("39","Ректорат","Материалы ректорского совещания","Повестка и презентации к совещанию.","08:45",false),
             mail("38","Рабочая группа","RE: Обсуждение расписания","Спасибо, изменения согласованы.","08:12",false),
             mail("37","Библиотека СПбГУ","Доступ к электронным ресурсам","Обновление списка доступных изданий.","08:02",false))
+        val agenda=listOf(
+            CalendarEntry("meeting",JSONObject().put("id","meeting").put("title","Защита Шахматовой (ауд. 191)").put("date","2026-10-15").put("time","15:00").put("endDate","2026-10-15").put("endTime","16:00").put("kind","remote").put("calendarTitle","Календарь СПбГУ")),
+            CalendarEntry("task",JSONObject().put("id","task").put("title","Проверить спецификацию по 191 аудитории").put("date","2026-10-15").put("time","17:00").put("kind","task")))
         val model=inbox(InboxState(account="demo@spbu.ru",owner=owner,rows=rows,total=1330,hasMore=true,cached=true,pageOffline=true))
-        paparazzi.snapshot(name="inbox"){InboxTheme{NativeInbox(model,{},{},{},{},{},null,{})}}
+        paparazzi.snapshot(name="inbox"){InboxTheme{NativeInbox(model,{},{},{},{},{},null,{},savedAccountsCount=2,todayAgendaEntries=agenda,calendarSourcesCount=1)}}
     }
     @Test fun search() {
         val rows=listOf(mail("42","Учебный отдел","Материалы к защите завтра в 15:00","Коллеги, направляем материалы.","10:24",true))
@@ -43,7 +46,7 @@ class NativePreviewTest {
         val model=NativeContactsModel(PreviewApplication(paparazzi.context))
         val field=model.javaClass.getDeclaredField("state\$delegate").apply {isAccessible=true}
         @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<ContactsState>).value=ContactsState(open=true,owner=owner,account="demo@spbu.ru",book="company",supported=true,letter="П",applied="^:П",people=listOf(ContactPerson("Перминов Виктор Олегович","demo-perminov@spbu.ru"),ContactPerson("Петрова Елена Александровна","demo-petrova@spbu.ru")),more=true)
-        paparazzi.snapshot(name="contacts"){InboxTheme{NativeContactsScreen(model,{},{})}}
+        paparazzi.snapshot(name="contacts"){InboxTheme{NativeContactsScreen(model,{},{},bottomBar={NativeMainBottomBar("contacts",true,2,2,{},{},{},{},{})})}}
     }
     @Test fun calendar() {
         val model=NativeCalendarModel(PreviewApplication(paparazzi.context))
@@ -51,15 +54,15 @@ class NativePreviewTest {
         val entries=listOf(
             JSONObject().put("id","meeting").put("title","Материалы к защите Шахматовой").put("date","2026-10-15").put("time","15:00").put("endDate","2026-10-15").put("endTime","16:00").put("kind","remote").put("calendarTitle","Календарь подразделения"),
             JSONObject().put("id","task").put("title","Проверить спецификацию по 191 аудитории").put("date","2026-10-15").put("time","17:00").put("kind","task"))
-        @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<CalendarState>).value=CalendarState(open=true,owner=owner,day="2026-10-15",entries=entries.map {CalendarEntry(it.getString("id"),it)},notice="Сохранённые события календарей.")
-        paparazzi.snapshot(name="calendar"){InboxTheme{NativeCalendarScreen(model,{})}}
+        @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<CalendarState>).value=CalendarState(open=true,owner=owner,day="2026-10-15",entries=entries.map {CalendarEntry(it.getString("id"),it)},sources=listOf(CalendarSource("spbu-cal","Календарь СПбГУ","https://mail.spbu.ru/caldav","demo@spbu.ru",true,"","2026-10-15T10:00:00Z")),notice="Сохранённые события календарей.")
+        paparazzi.snapshot(name="calendar"){InboxTheme{NativeCalendarScreen(model,{},accountEmail="demo@spbu.ru",bottomBar={NativeMainBottomBar("calendar",true,2,2,{},{},{},{},{})})}}
     }
     @Test fun workspaceTasks() {
         val model=NativeWorkspaceModel(PreviewApplication(paparazzi.context))
         val task=JSONObject().put("id","demo-task").put("title","Проверить материалы к защите").put("date","2026-10-16").put("time","15:00").put("priority","important").put("done",false).put("notes","Уточнить подключение удалённого участника")
         val field=model.javaClass.getDeclaredField("state\$delegate").apply {isAccessible=true}
         @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<WorkspaceState>).value=WorkspaceState(open=true,owner=owner,rows=listOf(task))
-        paparazzi.snapshot(name="tasks"){InboxTheme{NativeWorkspaceScreen(model)}}
+        paparazzi.snapshot(name="tasks"){InboxTheme{NativeWorkspaceScreen(model,accountEmail="demo@spbu.ru",bottomBar={NativeMainBottomBar("tasks",true,2,2,{},{},{},{},{})})}}
     }
     @Test fun workspaceNote() {
         val model=NativeWorkspaceModel(PreviewApplication(paparazzi.context))

@@ -2,6 +2,7 @@ package ru.local.spbumailpilot
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,7 +27,10 @@ import java.util.Locale
 internal fun NativeWorkspaceScreen(
     model: NativeWorkspaceModel,
     openCalendarDay: (String) -> Unit = {},
-    openMail: (String) -> Unit = {}
+    openMail: (String) -> Unit = {},
+    accountEmail: String = "",
+    onSwitchAccount: () -> Unit = {},
+    bottomBar: @Composable () -> Unit = {}
 ) {
     val state = model.state
     val editor = state.editor
@@ -44,15 +48,30 @@ internal fun NativeWorkspaceScreen(
                     }
                 },
                 title = {
-                    Text(
-                        if (editor != null) when (state.kind) {
-                            "tasks" -> "Задача"
-                            "events" -> "Своё событие"
-                            else -> "Заметка"
-                        } else if (state.eventRoute) "Своё событие" else "Личные записи",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 19.sp
-                    )
+                    Column {
+                        Text(
+                            if (editor != null) when (state.kind) {
+                                "tasks" -> "Задача"
+                                "events" -> "Своё событие"
+                                else -> "Заметка"
+                            } else if (state.eventRoute) "Своё событие" else "Задачи и заметки",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 19.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (editor == null && accountEmail.isNotBlank()) {
+                            Text(
+                                "$accountEmail ▾",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 2.dp).clickable(onClick = onSwitchAccount)
+                            )
+                        }
+                    }
                 },
                 actions = {
                     if (editor == null) {
@@ -68,53 +87,58 @@ internal fun NativeWorkspaceScreen(
             )
         },
         bottomBar = {
-            Surface(tonalElevation = 2.dp) {
-                Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
-                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (editor == null && !state.eventRoute && state.taskMail == null && state.eventMail == null) {
-                            Button(
-                                onClick = { model.edit() },
-                                enabled = !state.busy,
-                                shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp)
-                            ) {
-                                Icon(NativeIcons.Plus, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    if (state.kind == "tasks") "Добавить задачу" else "Добавить заметку",
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        } else if (editor != null) {
-                            Button(
-                                onClick = model::save,
-                                enabled = !state.busy,
-                                shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier.weight(1f).heightIn(min = 46.dp)
-                            ) { Text("Сохранить", fontWeight = FontWeight.SemiBold) }
-                            if (state.expected != null) {
-                                OutlinedButton(
-                                    onClick = model::requestDelete,
+            Column(Modifier.fillMaxWidth()) {
+                Surface(tonalElevation = 2.dp) {
+                    Column(Modifier.fillMaxWidth()) {
+                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (editor == null && !state.eventRoute && state.taskMail == null && state.eventMail == null) {
+                                Button(
+                                    onClick = { model.edit() },
                                     enabled = !state.busy,
                                     shape = RoundedCornerShape(14.dp),
-                                    modifier = Modifier.heightIn(min = 46.dp)
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
                                 ) {
-                                    Icon(
-                                        NativeIcons.Trash,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(15.dp),
-                                        tint = MaterialTheme.colorScheme.error
+                                    Icon(NativeIcons.Plus, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        if (state.kind == "tasks") "Добавить задачу" else "Добавить заметку",
+                                        fontWeight = FontWeight.SemiBold
                                     )
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("Удалить", color = MaterialTheme.colorScheme.error)
+                                }
+                            } else if (editor != null) {
+                                Button(
+                                    onClick = model::save,
+                                    enabled = !state.busy,
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.weight(1f).heightIn(min = 46.dp)
+                                ) { Text("Сохранить", fontWeight = FontWeight.SemiBold) }
+                                if (state.expected != null) {
+                                    OutlinedButton(
+                                        onClick = model::requestDelete,
+                                        enabled = !state.busy,
+                                        shape = RoundedCornerShape(14.dp),
+                                        modifier = Modifier.heightIn(min = 46.dp)
+                                    ) {
+                                        Icon(
+                                            NativeIcons.Trash,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(15.dp),
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Удалить", color = MaterialTheme.colorScheme.error)
+                                    }
                                 }
                             }
                         }
                     }
+                }
+                if (editor == null && !state.eventRoute && state.taskMail == null && state.eventMail == null) {
+                    bottomBar()
                 }
             }
         }

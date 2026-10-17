@@ -2,6 +2,7 @@ package ru.local.spbumailpilot
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -37,7 +38,10 @@ internal fun NativeCalendarScreen(
     fullClient: () -> Unit,
     editEvent: (String, String?) -> Unit = { _, _ -> },
     openMail: (String) -> Unit = {},
-    createTask: (JSONObject) -> Unit = {}
+    createTask: (JSONObject) -> Unit = {},
+    accountEmail: String = "",
+    onSwitchAccount: () -> Unit = {},
+    bottomBar: @Composable () -> Unit = {}
 ) {
     val state = model.state
     val date = LocalDate.parse(state.day)
@@ -78,13 +82,25 @@ internal fun NativeCalendarScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Text(
-                            "Время МСК",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        if (accountEmail.isNotBlank()) {
+                            Text(
+                                "$accountEmail ▾",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 2.dp).clickable(onClick = onSwitchAccount)
+                            )
+                        } else {
+                            Text(
+                                "Время МСК",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 },
                 actions = {
@@ -132,6 +148,7 @@ internal fun NativeCalendarScreen(
                 }
             )
         },
+        bottomBar = bottomBar,
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { if (!state.busy) editEvent(state.day, null) },
@@ -209,6 +226,55 @@ internal fun NativeCalendarScreen(
                 if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
                 state.error?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                 state.actionNotice?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
+                if (state.sources.isEmpty()) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        "Синхронизация календаря (CalDAV)",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        "Подключите серверный календарь СПбГУ, Mail.ru или Яндекс в 1 касание",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Button(
+                                    onClick = model::connectAccountCalendar,
+                                    enabled = !state.busy,
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier.heightIn(min = 34.dp)
+                                ) {
+                                    Text("Подключить", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    state.notice?.let { noticeText ->
+                        Text(
+                            noticeText,
+                            Modifier.padding(horizontal = 18.dp, vertical = 2.dp),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
                 Surface(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                     shape = RoundedCornerShape(18.dp),
@@ -456,6 +522,13 @@ internal fun NativeCalendarScreen(
                             }
                         }
                     }
+                    if (state.sources.isEmpty()) {
+                        OutlinedButton(
+                            onClick = { model.closeSources(); model.connectAccountCalendar() },
+                            enabled = !state.busy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Автоподключение по аккаунту") }
+                    }
                     Button(
                         onClick = model::openConnect,
                         enabled = !state.busy,
@@ -476,7 +549,7 @@ internal fun NativeCalendarScreen(
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("mailru" to "Mail.ru", "other" to "Другой CalDAV", "manual" to "По ссылке").forEach { (mode, text) ->
+                        listOf("spbu" to "СПбГУ", "mailru" to "Mail.ru", "other" to "Другой CalDAV", "manual" to "По ссылке").forEach { (mode, text) ->
                             FilterChip(
                                 selected = state.connectMode == mode,
                                 onClick = { model.setConnectMode(mode) },
@@ -493,7 +566,7 @@ internal fun NativeCalendarScreen(
                         enabled = !state.busy,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    if (state.connectMode != "mailru") {
+                    if (state.connectMode !in listOf("spbu", "mailru")) {
                         OutlinedTextField(
                             value = state.connectUrl,
                             onValueChange = { model.setConnectField("url", it) },

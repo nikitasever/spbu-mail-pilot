@@ -35,7 +35,9 @@ import androidx.compose.ui.unit.sp
 internal fun NativeContactsScreen(
     model: NativeContactsModel,
     write: (String) -> Unit,
-    fullClient: () -> Unit
+    fullClient: () -> Unit,
+    onSwitchAccount: () -> Unit = {},
+    bottomBar: @Composable () -> Unit = {}
 ) {
     val state = model.state
     if (state.editor != null) {
@@ -121,11 +123,13 @@ internal fun NativeContactsScreen(
                         )
                         if (state.account.isNotBlank()) {
                             Text(
-                                state.account,
+                                "${state.account} ▾",
                                 fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 2.dp).clickable(onClick = onSwitchAccount)
                             )
                         }
                     }
@@ -175,37 +179,40 @@ internal fun NativeContactsScreen(
             )
         },
         bottomBar = {
-            Surface(tonalElevation = 2.dp) {
-                Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
-                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Button(
-                            onClick = model::create,
-                            enabled = !state.busy && !state.importOpen,
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                            modifier = Modifier.weight(1.05f).heightIn(min = 46.dp)
+            Column(Modifier.fillMaxWidth()) {
+                Surface(tonalElevation = 2.dp) {
+                    Column(Modifier.fillMaxWidth()) {
+                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Icon(NativeIcons.Plus, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Новый контакт", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        OutlinedButton(
-                            onClick = model::startImport,
-                            enabled = !state.busy && !state.importOpen,
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                            modifier = Modifier.weight(1f).heightIn(min = 46.dp)
-                        ) {
-                            Icon(NativeIcons.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Импорт VCF/CSV", fontWeight = FontWeight.Medium, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Button(
+                                onClick = model::create,
+                                enabled = !state.busy && !state.importOpen,
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                modifier = Modifier.weight(1.05f).heightIn(min = 44.dp)
+                            ) {
+                                Icon(NativeIcons.Plus, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Новый контакт", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            OutlinedButton(
+                                onClick = model::startImport,
+                                enabled = !state.busy && !state.importOpen,
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                modifier = Modifier.weight(1f).heightIn(min = 44.dp)
+                            ) {
+                                Icon(NativeIcons.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Импорт VCF/CSV", fontWeight = FontWeight.Medium, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                     }
                 }
+                bottomBar()
             }
         }
     ) { padding ->

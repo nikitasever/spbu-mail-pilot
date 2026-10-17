@@ -45,10 +45,22 @@ import androidx.compose.ui.unit.sp
             }
             if(s.editor!=null){
                 if(s.editor=="login"){
+                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                        listOf("mail.spbu.ru" to "СПбГУ","imap.mail.ru" to "Mail.ru","imap.yandex.ru" to "Яндекс").forEach {(presetHost,label)->
+                            val selected=s.host.equals(presetHost,ignoreCase=true)
+                            FilterChip(
+                                selected=selected,
+                                onClick={model.field("host",presetHost);model.field("port","993")},
+                                label={Text(label,fontSize=12.sp)},
+                                shape=RoundedCornerShape(10.dp),
+                                enabled=!s.busy
+                            )
+                        }
+                    }
                     Surface(shape=RoundedCornerShape(12.dp),color=MaterialTheme.colorScheme.surface,border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),modifier=Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                             Text("Пароль хранится в зашифрованном хранилище Android. Вход проверяется по IMAP с TLS. После ухода в фон пароль нужно ввести снова.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Для Mail.ru: imap.mail.ru, порт 993 и пароль для внешнего приложения.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Для Mail.ru и Яндекса используйте полный адрес почты и пароль для внешнего приложения.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     OutlinedTextField(s.user,{model.field("user",it)},label={Text("Логин или полный email")},singleLine=true,shape=RoundedCornerShape(12.dp),enabled=!s.busy,modifier=Modifier.fillMaxWidth())
@@ -70,28 +82,34 @@ import androidx.compose.ui.unit.sp
                 }
                 Button(onClick=model::save,enabled=!s.busy,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().heightIn(min=44.dp)){Text(if(s.editor=="login")"Подключить ящик" else if(s.editor=="password")"Проверить и сохранить пароль" else "Сохранить SMTP")}
             }else{
-                Text("Выход сохраняет пароль и локальные данные. Другой ящик открывается с отдельным состоянием экранов.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Переключайте ящики в одно нажатие прямо из верхней панели приложения или управляйте сохранёнными входами ниже.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 for(row in s.rows) {
+                    val palette=NativeIcons.avatarPalette(row.user)
                     Surface(
-                        shape=RoundedCornerShape(14.dp),
+                        shape=RoundedCornerShape(16.dp),
                         color=MaterialTheme.colorScheme.surface,
                         border=BorderStroke(if(row.active) 1.5.dp else 1.dp, if(row.active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
                         modifier=Modifier.fillMaxWidth()
                     ) {
-                        Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween) {
+                        Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                Surface(shape=androidx.compose.foundation.shape.CircleShape,color=palette.container,border=BorderStroke(1.dp,palette.content.copy(alpha=0.3f)),modifier=Modifier.size(40.dp)) {
+                                    Box(contentAlignment=Alignment.Center) {
+                                        Text(avatarLetters(row.user),fontSize=14.sp,fontWeight=FontWeight.Bold,color=palette.content)
+                                    }
+                                }
                                 Column(Modifier.weight(1f)) {
                                     Text(row.user,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
-                                    Text(row.host+(if(row.active)" · Текущий" else ""),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(row.host+(if(row.active)" · Текущий ящик" else ""),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 if(row.active) {
-                                    Surface(shape=RoundedCornerShape(6.dp),color=MaterialTheme.colorScheme.primaryContainer) {
-                                        Text("Активен",Modifier.padding(horizontal=8.dp,vertical=3.dp),fontSize=11.sp,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.primary)
+                                    Surface(shape=RoundedCornerShape(8.dp),color=MaterialTheme.colorScheme.primaryContainer) {
+                                        Text("Активен",Modifier.padding(horizontal=9.dp,vertical=4.dp),fontSize=11.sp,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.primary)
                                     }
                                 }
                             }
                             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                if(!row.active) OutlinedButton(onClick={model.switch(row.id)},enabled=!s.busy,shape=RoundedCornerShape(10.dp)){Text("Открыть ящик")}
+                                if(!row.active) Button(onClick={model.switch(row.id)},enabled=!s.busy,shape=RoundedCornerShape(10.dp)){Text("Переключить")}
                                 else OutlinedButton(onClick=model::smtp,enabled=!s.busy,shape=RoundedCornerShape(10.dp)){Text("Настроить SMTP")}
                                 OutlinedButton(onClick={model.changePassword(row.id)},enabled=!s.busy,shape=RoundedCornerShape(10.dp)){Text("Обновить сохранённый пароль")}
                             }

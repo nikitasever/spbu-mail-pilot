@@ -14,6 +14,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -142,11 +143,17 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
                 if(resumed&&!AppLock.locked(this@ComposeInboxActivity))files.takeFile()?.let {try{showFile(it)}catch(_:Exception){files.fileError()}}
             }
             val fullClient = { startActivity(Intent(this, MainActivity::class.java)); Unit }
+            var accountSwitcherOpen by remember { mutableStateOf(false) }
             val pending=navigation.pending
             val navigationAllowed=!files.state.open&&!serverDrafts.state.open&&!serverDrafts.state.busy&&!drafts.state.open&&!drafts.state.busy&&!scheduled.state.open&&!scheduled.state.busy&&!digest.state.open&&!aiSettings.state.open&&!aiSettings.state.busy&&!accounts.state.open&&!accounts.state.busy&&!settings.state.open&&!settings.state.busy&&!exports.state.open&&!composer.state.open&&!inbox.state.busy&&!inbox.state.foldersOpen&&!inbox.state.moveOpen&&
                 !workspace.state.busy&&workspace.state.editor==null&&!workspace.state.leaveOpen&&!workspace.state.deleteOpen&&
                 !categories.state.busy&&categories.state.editor==null&&!categories.state.leaveOpen&&
                 !extras.state.busy&&extras.state.target==null&&contacts.canExternalNavigation()&&writingSettings.canExternalNavigation()
+            LaunchedEffect(inbox.state.owner,resumed,unlockEpoch){
+                if(resumed&&!AppLock.locked(this@ComposeInboxActivity)&&inbox.state.owner.isNotBlank()){
+                    calendar.ensureLoaded(inbox.state.owner)
+                }
+            }
             LaunchedEffect(settings.state.ready,settings.state.owner,inbox.state.owner,accounts.state.ready,resumed,unlockEpoch){
                 if(resumed&&!AppLock.locked(this@ComposeInboxActivity)&&accounts.state.ready&&settings.state.ready&&settings.state.owner==inbox.state.owner){
                     val canOpen=navigationAllowed&&!contacts.state.open&&!calendar.state.open&&!workspace.state.open&&!categories.state.open&&!extras.state.open&&!writingSettings.state.open&&inbox.state.selected==null
@@ -159,6 +166,56 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             LaunchedEffect(pending,navigationAllowed,resumed,inbox.state.owner,unlockEpoch) {
                 if(pending!=null&&navigationAllowed&&resumed&&!AppLock.locked(this@ComposeInboxActivity))openNavigation(pending)
             }
+            val openQuickAccountSwitcher = {
+                if (!accounts.state.busy && !inbox.state.linked) {
+                    accounts.load()
+                    accountSwitcherOpen = true
+                }
+            }
+            val goToMail = {
+                contacts.closeForNavigation()
+                calendar.close()
+                workspace.leave(true)
+                inbox.backToList()
+            }
+            val goToCalendar = {
+                if (inbox.state.owner.isNotBlank()) {
+                    contacts.closeForNavigation()
+                    workspace.leave(true)
+                    calendar.open(inbox.state.owner)
+                }
+            }
+            val goToTasks = {
+                if (inbox.state.owner.isNotBlank()) {
+                    contacts.closeForNavigation()
+                    calendar.close()
+                    workspace.open(inbox.state.owner)
+                }
+            }
+            val goToContacts = {
+                if (inbox.state.owner.isNotBlank()) {
+                    calendar.close()
+                    workspace.leave(true)
+                    contacts.open(inbox.state.owner)
+                }
+            }
+            val goToSettings = {
+                if (inbox.state.owner.isNotBlank()) {
+                    contacts.closeForNavigation()
+                    calendar.close()
+                    workspace.leave(true)
+                    settings.open()
+                } else {
+                    accounts.open()
+                }
+            }
+            val todayIso = remember { java.time.LocalDate.now(ZoneId.of("Europe/Moscow")).toString() }
+            val todayEntries = remember(calendar.state.owner, inbox.state.owner, calendar.state.entries, todayIso) {
+                if (calendar.state.owner == inbox.state.owner) {
+                    calendar.state.entries.filter { NativeAgenda.onDay(it.data, todayIso) }
+                } else emptyList()
+            }
+            val unreadCount = remember(inbox.state.rows) { inbox.state.rows.count { it.unread } }
             Column(Modifier.fillMaxSize()) {
                 if(pending!=null&&!AppLock.locked(this@ComposeInboxActivity))Surface(tonalElevation=3.dp) {
                     Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
@@ -199,20 +256,78 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             }
             else if(categories.state.open) holder.SaveableStateProvider("categories") {NativeCategoriesScreen(categories)}
             else if(workspace.state.open) holder.SaveableStateProvider(if(workspace.state.taskMail!=null||workspace.state.eventMail!=null)"mail-task" else "workspace") {
-                NativeWorkspaceScreen(workspace,openCalendarDay={day->val owner=workspace.state.owner;workspace.leave(true);calendar.openDay(owner,day,"workspace")}){id->workspace.sourceMail(id)?.let {if(!inbox.openLinked(workspace.state.owner,it))workspace.linkError()} ?: workspace.linkError()}
+                NativeWorkspaceScreen(
+                    model = workspace,
+                    openCalendarDay = { day -> val owner = workspace.state.owner; workspace.leave(true); calendar.openDay(owner, day, "workspace") },
+                    openMail = { id -> workspace.sourceMail(id)?.let { if (!inbox.openLinked(workspace.state.owner, it)) workspace.linkError() } ?: workspace.linkError() },
+                    accountEmail = inbox.state.account,
+                    onSwitchAccount = openQuickAccountSwitcher,
+                    bottomBar = {
+                        NativeMainBottomBar(
+                            activeTab = "tasks",
+                            enabled = inbox.state.owner.isNotBlank() && !workspace.state.busy,
+                            unreadCount = unreadCount,
+                            todayEventsCount = todayEntries.size,
+                            onMail = goToMail,
+                            onCalendar = goToCalendar,
+                            onTasks = {},
+                            onContacts = goToContacts,
+                            onMore = goToSettings
+                        )
+                    }
+                )
             }
             else if(calendar.state.open) holder.SaveableStateProvider("calendar") {
-                NativeCalendarScreen(calendar,fullClient,{day,id->workspace.openEvent(calendar.state.owner,day,id)},{id->
-                    calendar.sourceMail(id)?.let {if(!inbox.openLinked(calendar.state.owner,it))calendar.linkError()} ?: calendar.linkError()
-                },{event->
-                    val owner=calendar.state.owner
-                    calendar.close()
-                    workspace.openCalendarTask(owner,event)
-                })
+                NativeCalendarScreen(
+                    model = calendar,
+                    fullClient = fullClient,
+                    editEvent = { day, id -> workspace.openEvent(calendar.state.owner, day, id) },
+                    openMail = { id ->
+                        calendar.sourceMail(id)?.let { if (!inbox.openLinked(calendar.state.owner, it)) calendar.linkError() } ?: calendar.linkError()
+                    },
+                    createTask = { event ->
+                        val owner = calendar.state.owner
+                        calendar.close()
+                        workspace.openCalendarTask(owner, event)
+                    },
+                    accountEmail = inbox.state.account,
+                    onSwitchAccount = openQuickAccountSwitcher,
+                    bottomBar = {
+                        NativeMainBottomBar(
+                            activeTab = "calendar",
+                            enabled = inbox.state.owner.isNotBlank() && !calendar.state.busy,
+                            unreadCount = unreadCount,
+                            todayEventsCount = todayEntries.size,
+                            onMail = goToMail,
+                            onCalendar = {},
+                            onTasks = goToTasks,
+                            onContacts = goToContacts,
+                            onMore = goToSettings
+                        )
+                    }
+                )
             }
-            else if(contacts.state.open) NativeContactsScreen(contacts,{email->
-                contacts.person(email)?.let {composer.open(contacts.state.owner,recipient=it.email)}
-            },fullClient)
+            else if(contacts.state.open) NativeContactsScreen(
+                model = contacts,
+                write = { email ->
+                    contacts.person(email)?.let { composer.open(contacts.state.owner, recipient = it.email) }
+                },
+                fullClient = fullClient,
+                onSwitchAccount = openQuickAccountSwitcher,
+                bottomBar = {
+                    NativeMainBottomBar(
+                        activeTab = "contacts",
+                        enabled = inbox.state.owner.isNotBlank() && !contacts.state.busy,
+                        unreadCount = unreadCount,
+                        todayEventsCount = todayEntries.size,
+                        onMail = goToMail,
+                        onCalendar = goToCalendar,
+                        onTasks = goToTasks,
+                        onContacts = {},
+                        onMore = goToSettings
+                    )
+                }
+            )
             else holder.SaveableStateProvider("inbox") {
                 key(inbox.state.owner) { NativeInbox(inbox, { reply() }, { reply(true) }, ::forwardText,
                     { if (resumed && !AppLock.locked(this@ComposeInboxActivity)) composer.open(inbox.state.owner) }, fullClient,
@@ -239,9 +354,21 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
                         openDrafts={if(navigationAllowed)drafts.open(inbox.state.owner)},
                         openScheduled={if(navigationAllowed)scheduled.open(inbox.state.owner)},
                         openDigest={if(navigationAllowed&&inbox.state.selected==null)digest.open(inbox.state.owner,inbox.state.folder,inbox.state.rows)},
-                        openFiles={if(navigationAllowed)files.open(inbox.state.owner,inbox.state.folder)},forwardOriginal=::forwardOriginal,saveFiles={owner,ref,files,original->inbox.readerAction(owner,ref){if(original||files.isNotEmpty()&&files.all {inbox.state.body?.files?.contains(it)==true})exports.begin(owner,ref,files,original)}}) }
+                        openFiles={if(navigationAllowed)files.open(inbox.state.owner,inbox.state.folder)},forwardOriginal=::forwardOriginal,saveFiles={owner,ref,files,original->inbox.readerAction(owner,ref){if(original||files.isNotEmpty()&&files.all {inbox.state.body?.files?.contains(it)==true})exports.begin(owner,ref,files,original)}},
+                        onSwitchAccount=openQuickAccountSwitcher,
+                        savedAccountsCount=accounts.state.rows.size,
+                        todayAgendaEntries=todayEntries,
+                        calendarSourcesCount=if(calendar.state.owner==inbox.state.owner&&calendar.state.notice!=null) calendar.state.sources.size else -1,
+                        onConnectCalendar={calendar.open(inbox.state.owner);calendar.connectAccountCalendar()}) }
             }
                 }
+            }
+            if (accountSwitcherOpen) {
+                NativeAccountSwitcherDialog(
+                    accounts = accounts,
+                    activeAccountEmail = inbox.state.account,
+                    onDismiss = { accountSwitcherOpen = false }
+                )
             }
             NativeMailEventPickerDialog(calendar)
             NativeMailExtrasDialogs(extras)
@@ -397,7 +524,51 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
         MaterialTheme(colorScheme = scheme, shapes = shapes, content = content)
     }
 }
-@Composable internal fun NativeInbox(model: NativeInboxModel, reply: () -> Unit, replyAll: () -> Unit, forwardText: () -> Unit, compose: () -> Unit, fullClient: () -> Unit, notice: String?, dismissNotice: () -> Unit, openContacts: ()->Unit = {}, openCalendar: ()->Unit = {}, openWorkspace: ()->Unit = {}, createTask: ()->Unit = {}, createEvent: ()->Unit = {}, linkMailToEvent: ()->Unit = {}, categoryRules: List<JSONObject> = emptyList(),categoryFilter: String="",selectCategory: (String)->Unit = {},openCategories: ()->Unit = {},labels: JSONObject=JSONObject(),responses: List<JSONObject> = emptyList(),setLabel: ()->Unit = {},setResponse: ()->Unit = {},openResponses: ()->Unit = {},extrasReady: Boolean=true,snoozed: List<JSONObject> = emptyList(),setSnooze: ()->Unit = {},setFollowup: ()->Unit = {},followups: List<JSONObject> = emptyList(),openWritingSettings: ()->Unit = {},openAccounts: ()->Unit = {},openSettings: ()->Unit = {},digestEnabled:Boolean=false,openDigest: ()->Unit = {},openScheduled: ()->Unit = {},openDrafts: ()->Unit = {},saveFiles: (String,MailRef,List<NativeFile>,Boolean)->Unit = {_,_,_,_->},forwardOriginal:()->Unit = {},openFiles:()->Unit = {}) {
+@Composable internal fun NativeInbox(
+    model: NativeInboxModel,
+    reply: () -> Unit,
+    replyAll: () -> Unit,
+    forwardText: () -> Unit,
+    compose: () -> Unit,
+    fullClient: () -> Unit,
+    notice: String?,
+    dismissNotice: () -> Unit,
+    openContacts: ()->Unit = {},
+    openCalendar: ()->Unit = {},
+    openWorkspace: ()->Unit = {},
+    createTask: ()->Unit = {},
+    createEvent: ()->Unit = {},
+    linkMailToEvent: ()->Unit = {},
+    categoryRules: List<JSONObject> = emptyList(),
+    categoryFilter: String="",
+    selectCategory: (String)->Unit = {},
+    openCategories: ()->Unit = {},
+    labels: JSONObject=JSONObject(),
+    responses: List<JSONObject> = emptyList(),
+    setLabel: ()->Unit = {},
+    setResponse: ()->Unit = {},
+    openResponses: ()->Unit = {},
+    extrasReady: Boolean=true,
+    snoozed: List<JSONObject> = emptyList(),
+    setSnooze: ()->Unit = {},
+    setFollowup: ()->Unit = {},
+    followups: List<JSONObject> = emptyList(),
+    openWritingSettings: ()->Unit = {},
+    openAccounts: ()->Unit = {},
+    openSettings: ()->Unit = {},
+    digestEnabled:Boolean=false,
+    openDigest: ()->Unit = {},
+    openScheduled: ()->Unit = {},
+    openDrafts: ()->Unit = {},
+    saveFiles: (String,MailRef,List<NativeFile>,Boolean)->Unit = {_,_,_,_->},
+    forwardOriginal:()->Unit = {},
+    openFiles:()->Unit = {},
+    onSwitchAccount: ()->Unit = openAccounts,
+    savedAccountsCount: Int = 1,
+    todayAgendaEntries: List<CalendarEntry> = emptyList(),
+    calendarSourcesCount: Int = -1,
+    onConnectCalendar: ()->Unit = openCalendar
+) {
     var moreScreens by remember {mutableStateOf(false)}
     val state=model.state
     val scope=ThreadScope(state.owner,state.folder,state.searchKey,state.filter)
@@ -420,12 +591,14 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
     val eligible: (NativeMail)->Boolean={NativeMailSearch.matches(state.filter,it.unread,it.hasAttachments)&&(categoryFilter.isEmpty()||category(it)?.optString("id")==categoryFilter)}
     val displayRows=buildDisplayRows(loadedRows,state.owner,state.threadsEnabled,eligible)
     val visible=loadedRows.filter(eligible)
+    val unreadTotal=remember(loadedRows){loadedRows.count {it.unread}}
     val visibleRefs=remember(displayRows){displayRows.map {when(it){is InboxDisplayRow.Single->it.mail.ref;is InboxDisplayRow.Group->it.members.first().ref}}.toSet()}
     val activeSelection=state.activeSelection(visibleRefs)
     BackHandler(state.selected == null && state.thread.anchor == null && activeSelection.isNotEmpty()) { model.clearSelection() }
     BackHandler(state.selected != null || state.thread.anchor != null) { model.backToList() }
     @Composable fun MoreDropdown() {
         DropdownMenu(expanded=moreScreens,onDismissRequest={moreScreens=false}) {
+            DropdownMenuItem(text={Text("Сменить аккаунт")},enabled=!state.linked&&!state.busy,onClick={moreScreens=false;onSwitchAccount()})
             DropdownMenuItem(text={Text("Черновики на телефоне")},enabled=state.selected==null&&!state.busy&&!state.linked,onClick={moreScreens=false;openDrafts()})
             DropdownMenuItem(text={Text("Файлы писем")},enabled=state.selected==null&&!state.busy&&!state.linked,onClick={moreScreens=false;openFiles()})
             DropdownMenuItem(text={Text("По расписанию")},enabled=state.selected==null&&!state.busy&&!state.linked,onClick={moreScreens=false;openScheduled()})
@@ -448,59 +621,73 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                         val darkOffline = MaterialTheme.colorScheme.background.red < 0.2f
                         val offlineFg = if (darkOffline) Color(0xFFF0C77A) else Color(0xFF76500B)
                         if(state.selected==null&&state.thread.anchor==null) {
-                            Surface(
-                                onClick=model::showFolders,
-                                enabled=state.owner.isNotBlank()&&!state.busy,
-                                shape=RoundedCornerShape(12.dp),
-                                color=Color.Transparent
-                            ) {
-                                Column(Modifier.padding(vertical=2.dp)) {
-                                    Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                        Text(
-                                            NativeFolders.label(state.folder),
-                                            Modifier.weight(1f,fill=false),
-                                            maxLines=1,
-                                            overflow=TextOverflow.Ellipsis,
-                                            style=MaterialTheme.typography.titleLarge,
-                                            fontWeight=FontWeight.Bold,
-                                            color=MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Surface(
-                                            shape=RoundedCornerShape(6.dp),
-                                            color=MaterialTheme.colorScheme.primaryContainer,
-                                            modifier=Modifier.padding(start=8.dp)
-                                        ) {
-                                            Text(
-                                                "▾",
-                                                Modifier.padding(horizontal=6.dp,vertical=1.dp),
-                                                fontSize=12.sp,
-                                                fontWeight=FontWeight.Bold,
-                                                color=MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                    }
-                                    Row(
-                                        verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
-                                        horizontalArrangement=Arrangement.spacedBy(5.dp)
+                            Column {
+                                Row(
+                                    verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
+                                    modifier=Modifier.clickable(enabled=state.owner.isNotBlank()&&!state.busy,onClick=model::showFolders)
+                                ) {
+                                    Text(
+                                        NativeFolders.label(state.folder),
+                                        Modifier.weight(1f,fill=false),
+                                        maxLines=1,
+                                        overflow=TextOverflow.Ellipsis,
+                                        fontSize=20.sp,
+                                        fontWeight=FontWeight.Bold,
+                                        color=MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Surface(
+                                        shape=RoundedCornerShape(6.dp),
+                                        color=MaterialTheme.colorScheme.primaryContainer,
+                                        modifier=Modifier.padding(start=8.dp)
                                     ) {
+                                        Text(
+                                            "▾",
+                                            Modifier.padding(horizontal=6.dp,vertical=1.dp),
+                                            fontSize=11.sp,
+                                            fontWeight=FontWeight.Bold,
+                                            color=MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                                Row(
+                                    verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
+                                    horizontalArrangement=Arrangement.spacedBy(6.dp),
+                                    modifier=Modifier.padding(top=2.dp)
+                                ) {
+                                    Text(
                                         if(state.account.isNotBlank()) {
-                                            Text(state.account,fontSize=12.sp,maxLines=1,overflow=TextOverflow.Ellipsis,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                        if(state.cached && state.searchKey.isEmpty()) {
-                                            Surface(shape=CircleShape,color=offlineFg,modifier=Modifier.size(6.dp)) {}
-                                            Text("Офлайн-кэш",fontSize=11.sp,fontWeight=FontWeight.Medium,color=offlineFg,maxLines=1)
-                                        }
+                                            if(savedAccountsCount>1) "${state.account} · $savedAccountsCount ящ. ▾" else "${state.account} ▾"
+                                        } else "Войти в аккаунт ▾",
+                                        fontSize=11.sp,
+                                        fontWeight=FontWeight.SemiBold,
+                                        maxLines=1,
+                                        overflow=TextOverflow.Ellipsis,
+                                        color=MaterialTheme.colorScheme.primary,
+                                        modifier=Modifier.clickable(enabled=!state.busy&&!state.linked,onClick=onSwitchAccount)
+                                    )
+                                    if(state.cached && state.searchKey.isEmpty()) {
+                                        Surface(shape=CircleShape,color=offlineFg,modifier=Modifier.size(5.dp)) {}
+                                        Text("Офлайн-кэш",fontSize=11.sp,fontWeight=FontWeight.Medium,color=offlineFg,maxLines=1)
                                     }
                                 }
                             }
                         } else Column {
-                            Text(if(state.selected!=null) NativeFolders.label(state.folder) else "Цепочка писем",maxLines=1,fontWeight=FontWeight.Bold,style=MaterialTheme.typography.titleMedium)
+                            Text(if(state.selected!=null) NativeFolders.label(state.folder) else "Цепочка писем",maxLines=1,fontWeight=FontWeight.Bold,fontSize=18.sp)
                             Row(
                                 verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,
-                                horizontalArrangement=Arrangement.spacedBy(5.dp)
+                                horizontalArrangement=Arrangement.spacedBy(5.dp),
+                                modifier=Modifier.padding(top=2.dp)
                             ) {
                                 if(state.account.isNotBlank()) {
-                                    Text(state.account,fontSize=11.sp,maxLines=1,overflow=TextOverflow.Ellipsis,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(
+                                        "${state.account} ▾",
+                                        fontSize=11.sp,
+                                        fontWeight=FontWeight.SemiBold,
+                                        maxLines=1,
+                                        overflow=TextOverflow.Ellipsis,
+                                        color=MaterialTheme.colorScheme.primary,
+                                        modifier=Modifier.clickable(enabled=!state.busy&&!state.linked,onClick=onSwitchAccount)
+                                    )
                                 }
                                 if(state.cached) {
                                     Surface(shape=CircleShape,color=offlineFg,modifier=Modifier.size(5.dp)) {}
@@ -529,6 +716,24 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                 enabled = !state.busy
                             ) {
                                 Icon(NativeIcons.Refresh, contentDescription = "Обновить", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            val accPal = NativeIcons.avatarPalette(state.account.ifBlank { "SPbU" })
+                            Surface(
+                                onClick = onSwitchAccount,
+                                enabled = !state.busy && !state.linked,
+                                shape = CircleShape,
+                                color = accPal.container,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, accPal.content.copy(alpha = 0.35f)),
+                                modifier = Modifier.padding(end = 6.dp).size(32.dp).semantics { contentDescription = "Сменить аккаунт" }
+                            ) {
+                                Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                    Text(
+                                        avatarLetters(state.account.ifBlank { "Я" }),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = accPal.content
+                                    )
+                                }
                             }
                         } else if (state.selected != null) {
                             if(!state.linked) {
@@ -566,174 +771,96 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                 }
             }
         },
-        bottomBar = { Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp) {
-            Column {
-            HorizontalDivider(thickness=0.5.dp,color=MaterialTheme.colorScheme.outlineVariant)
+        bottomBar = {
             if (state.selected != null) {
-                Row(
-                    Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal=12.dp,vertical=8.dp),
-                    horizontalArrangement=Arrangement.spacedBy(8.dp),
-                    verticalAlignment=androidx.compose.ui.Alignment.CenterVertically
-                ) {
-                    Button(
-                        onClick=reply,
-                        enabled=state.body!=null&&!state.busy,
-                        shape=RoundedCornerShape(12.dp),
-                        contentPadding=PaddingValues(horizontal=12.dp,vertical=8.dp),
-                        modifier=Modifier.weight(1.1f).heightIn(min=42.dp)
-                    ) {
-                        Icon(NativeIcons.Reply, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Ответить",fontSize=13.sp,fontWeight=FontWeight.SemiBold,maxLines=1,overflow=TextOverflow.Ellipsis)
-                    }
-                    OutlinedButton(
-                        onClick=replyAll,
-                        enabled=state.body!=null&&!state.busy,
-                        shape=RoundedCornerShape(12.dp),
-                        contentPadding=PaddingValues(horizontal=10.dp,vertical=8.dp),
-                        modifier=Modifier.weight(1.1f).heightIn(min=42.dp)
-                    ) { Text("Ответить всем",fontSize=13.sp,maxLines=1,overflow=TextOverflow.Ellipsis) }
-                    Box {
-                        OutlinedButton(
-                            onClick={moreScreens=true},
-                            enabled=!state.busy,
-                            shape=RoundedCornerShape(12.dp),
-                            contentPadding=PaddingValues(horizontal=10.dp,vertical=8.dp),
-                            modifier=Modifier.heightIn(min=42.dp)
-                        ) { Text("Ещё",fontSize=13.sp,maxLines=1) }
-                        MoreDropdown()
-                    }
-                    Box {
-                        IconButton(
-                            onClick={readerActions=true},
-                            enabled=state.body!=null&&!state.busy,
-                            modifier=Modifier.size(42.dp).semantics {contentDescription="Другие действия письма"}
-                        ) { Icon(NativeIcons.MoreHorizontal, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) }
-                        DropdownMenu(expanded=readerActions,onDismissRequest={readerActions=false}) {
-                            DropdownMenuItem(text={Text(if(state.selected?.unread==true)"Пометить прочитанным" else "Пометить непрочитанным")},
-                                enabled=!state.busy,onClick={readerActions=false;state.selected?.let {model.markSeen(it.unread)}})
-                            if(!state.linked){
-                                DropdownMenuItem(text={Text("Отложить письмо")},enabled=!state.busy&&extrasReady,onClick={readerActions=false;setSnooze()})
-                                DropdownMenuItem(text={Text("Проверить ответ собеседника")},enabled=!state.busy&&extrasReady&&ReplyReminder.validId(state.body?.message?.optString("messageId")),onClick={readerActions=false;setFollowup()})
-                                DropdownMenuItem(text={Text("Метка письма")},enabled=!state.busy&&extrasReady,onClick={readerActions=false;setLabel()})
-                                DropdownMenuItem(text={Text("Напомнить ответить")},enabled=!state.busy&&extrasReady,onClick={readerActions=false;setResponse()})
+                Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp) {
+                    Column {
+                        HorizontalDivider(thickness=0.5.dp,color=MaterialTheme.colorScheme.outlineVariant)
+                        Row(
+                            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal=12.dp,vertical=8.dp),
+                            horizontalArrangement=Arrangement.spacedBy(8.dp),
+                            verticalAlignment=androidx.compose.ui.Alignment.CenterVertically
+                        ) {
+                            Button(
+                                onClick=reply,
+                                enabled=state.body!=null&&!state.busy,
+                                shape=RoundedCornerShape(12.dp),
+                                contentPadding=PaddingValues(horizontal=12.dp,vertical=8.dp),
+                                modifier=Modifier.weight(1.1f).heightIn(min=42.dp)
+                            ) {
+                                Icon(NativeIcons.Reply, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Ответить",fontSize=13.sp,fontWeight=FontWeight.SemiBold,maxLines=1,overflow=TextOverflow.Ellipsis)
                             }
-                            if(!state.linked)DropdownMenuItem(text={Text("Событие из письма")},enabled=!state.busy,
-                                onClick={readerActions=false;createEvent()})
-                            if(!state.linked)DropdownMenuItem(text={Text("Связать с событием")},enabled=!state.busy,
-                                onClick={readerActions=false;linkMailToEvent()})
-                            if(!state.linked)DropdownMenuItem(text={Text("Создать задачу")},enabled=!state.busy,
-                                onClick={readerActions=false;createTask()})
-                            if(!state.linked) {
-                                val moveEnabled=!state.busy&&!state.cached&&!state.moveNeedsRefresh
-                                if(state.cached||state.moveNeedsRefresh)Text("Для переноса обновите письмо с сервера.",Modifier.widthIn(max=250.dp).padding(12.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                                DropdownMenuItem(text={Text("В архив")},enabled=moveEnabled,onClick={readerActions=false;model.requestMove("archive")})
-                                DropdownMenuItem(text={Text("В спам")},enabled=moveEnabled,onClick={readerActions=false;model.requestMove("spam")})
-                                DropdownMenuItem(text={Text("В корзину")},enabled=moveEnabled,onClick={readerActions=false;model.requestMove("trash")})
-                                DropdownMenuItem(text={Text("Переместить в папку…")},enabled=moveEnabled,onClick={readerActions=false;model.showMoveFolders()})
+                            OutlinedButton(
+                                onClick=replyAll,
+                                enabled=state.body!=null&&!state.busy,
+                                shape=RoundedCornerShape(12.dp),
+                                contentPadding=PaddingValues(horizontal=10.dp,vertical=8.dp),
+                                modifier=Modifier.weight(1.1f).heightIn(min=42.dp)
+                            ) { Text("Ответить всем",fontSize=13.sp,maxLines=1,overflow=TextOverflow.Ellipsis) }
+                            Box {
+                                OutlinedButton(
+                                    onClick={moreScreens=true},
+                                    enabled=!state.busy,
+                                    shape=RoundedCornerShape(12.dp),
+                                    contentPadding=PaddingValues(horizontal=10.dp,vertical=8.dp),
+                                    modifier=Modifier.heightIn(min=42.dp)
+                                ) { Text("Ещё",fontSize=13.sp,maxLines=1) }
+                                MoreDropdown()
                             }
-                            DropdownMenuItem(text={Text("Переслать текст")},enabled=state.body!=null&&!state.busy,
-                                onClick={readerActions=false;forwardText()})
-                            DropdownMenuItem(text={Text("Переслать оригинал EML")},enabled=state.selected!=null&&!state.busy,onClick={readerActions=false;forwardOriginal()})
+                            Box {
+                                IconButton(
+                                    onClick={readerActions=true},
+                                    enabled=state.body!=null&&!state.busy,
+                                    modifier=Modifier.size(42.dp).semantics {contentDescription="Другие действия письма"}
+                                ) { Icon(NativeIcons.MoreHorizontal, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface) }
+                                DropdownMenu(expanded=readerActions,onDismissRequest={readerActions=false}) {
+                                    DropdownMenuItem(text={Text(if(state.selected?.unread==true)"Пометить прочитанным" else "Пометить непрочитанным")},
+                                        enabled=!state.busy,onClick={readerActions=false;state.selected?.let {model.markSeen(it.unread)}})
+                                    if(!state.linked){
+                                        DropdownMenuItem(text={Text("Отложить письмо")},enabled=!state.busy&&extrasReady,onClick={readerActions=false;setSnooze()})
+                                        DropdownMenuItem(text={Text("Проверить ответ собеседника")},enabled=!state.busy&&extrasReady&&ReplyReminder.validId(state.body?.message?.optString("messageId")),onClick={readerActions=false;setFollowup()})
+                                        DropdownMenuItem(text={Text("Метка письма")},enabled=!state.busy&&extrasReady,onClick={readerActions=false;setLabel()})
+                                        DropdownMenuItem(text={Text("Напомнить ответить")},enabled=!state.busy&&extrasReady,onClick={readerActions=false;setResponse()})
+                                    }
+                                    if(!state.linked)DropdownMenuItem(text={Text("Событие из письма")},enabled=!state.busy,
+                                        onClick={readerActions=false;createEvent()})
+                                    if(!state.linked)DropdownMenuItem(text={Text("Связать с событием")},enabled=!state.busy,
+                                        onClick={readerActions=false;linkMailToEvent()})
+                                    if(!state.linked)DropdownMenuItem(text={Text("Создать задачу")},enabled=!state.busy,
+                                        onClick={readerActions=false;createTask()})
+                                    if(!state.linked) {
+                                        val moveEnabled=!state.busy&&!state.cached&&!state.moveNeedsRefresh
+                                        if(state.cached||state.moveNeedsRefresh)Text("Для переноса обновите письмо с сервера.",Modifier.widthIn(max=250.dp).padding(12.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                        DropdownMenuItem(text={Text("В архив")},enabled=moveEnabled,onClick={readerActions=false;model.requestMove("archive")})
+                                        DropdownMenuItem(text={Text("В спам")},enabled=moveEnabled,onClick={readerActions=false;model.requestMove("spam")})
+                                        DropdownMenuItem(text={Text("В корзину")},enabled=moveEnabled,onClick={readerActions=false;model.requestMove("trash")})
+                                        DropdownMenuItem(text={Text("Переместить в папку…")},enabled=moveEnabled,onClick={readerActions=false;model.showMoveFolders()})
+                                    }
+                                    DropdownMenuItem(text={Text("Переслать текст")},enabled=state.body!=null&&!state.busy,
+                                        onClick={readerActions=false;forwardText()})
+                                    DropdownMenuItem(text={Text("Переслать оригинал EML")},enabled=state.selected!=null&&!state.busy,onClick={readerActions=false;forwardOriginal()})
+                                }
+                            }
                         }
                     }
                 }
             } else {
-                Row(
-                    Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.width(52.dp).height(28.dp)
-                        ) {
-                            Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
-                                Icon(NativeIcons.Mail, contentDescription = null, modifier = Modifier.size(17.dp), tint = MaterialTheme.colorScheme.primary)
-                            }
-                        }
-                        Text("Почта", Modifier.padding(top = 2.dp), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, maxLines = 1)
-                    }
-                    Surface(
-                        onClick = openWorkspace,
-                        enabled = state.owner.isNotBlank() && !state.busy,
-                        color = Color.Transparent,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Column(
-                            Modifier.padding(vertical = 2.dp),
-                            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
-                        ) {
-                            Box(Modifier.height(28.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                                Icon(NativeIcons.Tasks, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Text("Задачи", Modifier.padding(top = 2.dp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                        }
-                    }
-                    Surface(
-                        onClick = openCalendar,
-                        enabled = state.owner.isNotBlank(),
-                        color = Color.Transparent,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Column(
-                            Modifier.padding(vertical = 2.dp),
-                            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
-                        ) {
-                            Box(Modifier.height(28.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                                Icon(NativeIcons.Calendar, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Text("Календарь", Modifier.padding(top = 2.dp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                        }
-                    }
-                    Surface(
-                        onClick = openContacts,
-                        enabled = state.owner.isNotBlank(),
-                        color = Color.Transparent,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Column(
-                            Modifier.padding(vertical = 2.dp),
-                            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
-                        ) {
-                            Box(Modifier.height(28.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                                Icon(NativeIcons.Contacts, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Text("Контакты", Modifier.padding(top = 2.dp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                        }
-                    }
-                    Box(Modifier.weight(1f)) {
-                        Surface(
-                            onClick = { moreScreens = true },
-                            enabled = !state.busy,
-                            color = Color.Transparent,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                Modifier.padding(vertical = 2.dp),
-                                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
-                            ) {
-                                Box(Modifier.height(28.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                                    Icon(NativeIcons.MoreHorizontal, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                Text("Ещё", Modifier.padding(top = 2.dp), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                            }
-                        }
-                        MoreDropdown()
-                    }
-                }
+                NativeMainBottomBar(
+                    activeTab = "mail",
+                    enabled = state.owner.isNotBlank() && !state.busy,
+                    unreadCount = unreadTotal,
+                    todayEventsCount = todayAgendaEntries.size,
+                    onMail = {},
+                    onCalendar = openCalendar,
+                    onTasks = openWorkspace,
+                    onContacts = openContacts,
+                    onMore = if (!state.busy) ({ moreScreens = true }) else null,
+                    moreContent = { MoreDropdown() }
+                )
             }
-            }
-        } }
+        }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             notice?.let {
@@ -794,8 +921,119 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                         }
                     }
                 }
+                if (!state.searchOpen && state.searchKey.isEmpty()) {
+                    val ruLocale = Locale.forLanguageTag("ru")
+                    val moscowToday = remember {
+                        runCatching {
+                            val latestMailInstant = state.rows.firstOrNull()?.date?.let { Instant.parse(it) }
+                            if (latestMailInstant != null) latestMailInstant.atZone(ZoneId.of("Europe/Moscow")).toLocalDate()
+                            else java.time.LocalDate.now(ZoneId.of("Europe/Moscow"))
+                        }.getOrElse { java.time.LocalDate.now(ZoneId.of("Europe/Moscow")) }
+                    }
+                    val shortMonth = remember(moscowToday) {
+                        moscowToday.format(DateTimeFormatter.ofPattern("MMM", ruLocale)).replace(".", "").uppercase(ruLocale)
+                    }
+                    val weekdayLabel = remember(moscowToday) {
+                        moscowToday.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", ruLocale))
+                            .replaceFirstChar { if (it.isLowerCase()) it.titlecase(ruLocale) else it.toString() }
+                    }
+                    Surface(
+                        onClick = openCalendar,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Column(
+                                    Modifier.fillMaxSize(),
+                                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        moscowToday.dayOfMonth.toString(),
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        shortMonth,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "Календарь · $weekdayLabel",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                val subtitle = if (todayAgendaEntries.isNotEmpty()) {
+                                    val first = todayAgendaEntries.first().data
+                                    val timeRange = NativeAgenda.timeRange(first)
+                                    val title = first.optString("title", "Событие")
+                                    val prefix = if (timeRange.isNotBlank()) "$timeRange · $title" else title
+                                    if (todayAgendaEntries.size > 1) "$prefix (+${todayAgendaEntries.size - 1})" else prefix
+                                } else if (calendarSourcesCount == 0) {
+                                    "Расписание и CalDAV · Нажмите для синхронизации"
+                                } else {
+                                    "На сегодня событий нет · Открыть расписание"
+                                }
+                                Text(
+                                    subtitle,
+                                    fontSize = 11.sp,
+                                    color = if (todayAgendaEntries.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            if (calendarSourcesCount == 0) {
+                                Surface(
+                                    onClick = onConnectCalendar,
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer
+                                ) {
+                                    Text(
+                                        "Подключить",
+                                        Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            } else {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                                ) {
+                                    Text(
+                                        "Открыть ›",
+                                        Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
                 Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=16.dp,vertical=6.dp),
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=16.dp,vertical=4.dp),
                     horizontalArrangement=Arrangement.spacedBy(6.dp),
                     verticalAlignment=androidx.compose.ui.Alignment.CenterVertically
                 ) {
@@ -1320,7 +1558,17 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
     val rowColor=if(selected)MaterialTheme.colorScheme.primary.copy(alpha=.16f).compositeOver(MaterialTheme.colorScheme.background) else if(displayMail.unread)MaterialTheme.colorScheme.primary.copy(alpha=.065f).compositeOver(MaterialTheme.colorScheme.background) else MaterialTheme.colorScheme.background
     Surface(onClick = onClick, enabled = enabled, color = rowColor, modifier = Modifier.heightIn(min=44.dp)) {
         Column {
-            MailRowBody(displayMail,rowColor,chain,owner,labels,responses,snoozed,followups,categoryName,categoryTint,selected,onToggleSelect,onToggleSeen,enabled)
+            Row(Modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+                Surface(
+                    color = if (selected) MaterialTheme.colorScheme.primary
+                    else if (displayMail.unread) MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+                    else Color.Transparent,
+                    modifier = Modifier.width(3.5.dp).fillMaxHeight()
+                ) {}
+                Box(Modifier.weight(1f)) {
+                    MailRowBody(displayMail,rowColor,chain,owner,labels,responses,snoozed,followups,categoryName,categoryTint,selected,onToggleSelect,onToggleSeen,enabled)
+                }
+            }
             HorizontalDivider(Modifier.padding(start=70.dp,end=16.dp),thickness=.5.dp,color=MaterialTheme.colorScheme.outlineVariant)
         }
     }
@@ -1481,8 +1729,227 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
 internal fun mailTime(raw: String): String = runCatching {
     DateTimeFormatter.ofPattern("d MMM · HH:mm", Locale.forLanguageTag("ru")).withZone(ZoneId.of("Europe/Moscow")).format(Instant.parse(raw))
 }.getOrDefault("")
-private fun avatarLetters(sender: String): String {
+internal fun avatarLetters(sender: String): String {
     val words=sender.substringBefore('@').replace(Regex("[._-]+")," ").trim().split(Regex("\\s+")).filter {it.isNotEmpty()}
     return words.take(2).joinToString("") {String(Character.toChars(it.codePointAt(0)))}.uppercase(Locale.forLanguageTag("ru")).ifBlank {"?"}
 }
 
+@Composable internal fun NativeMainBottomBar(
+    activeTab: String,
+    enabled: Boolean,
+    unreadCount: Int = 0,
+    todayEventsCount: Int = 0,
+    onMail: () -> Unit,
+    onCalendar: () -> Unit,
+    onTasks: () -> Unit,
+    onContacts: () -> Unit,
+    onMore: (() -> Unit)?,
+    moreContent: @Composable () -> Unit = {}
+) {
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Column {
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                data class NavItem(val id: String, val label: String, val badge: Int, val onClick: (() -> Unit)?)
+                val items = listOf(
+                    NavItem("mail", "Почта", unreadCount, onMail),
+                    NavItem("calendar", "Календарь", todayEventsCount, onCalendar),
+                    NavItem("tasks", "Задачи", 0, onTasks),
+                    NavItem("contacts", "Контакты", 0, onContacts),
+                    NavItem("more", "Ещё", 0, onMore)
+                )
+                items.forEach { item ->
+                    val isSelected = item.id == activeTab
+                    val itemEnabled = (enabled || isSelected) && item.onClick != null
+                    Box(Modifier.weight(1f)) {
+                        Surface(
+                            onClick = { item.onClick?.invoke() },
+                            enabled = itemEnabled,
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp)
+                        ) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp),
+                                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                                        modifier = Modifier.size(6.dp)
+                                    ) {}
+                                    if (item.badge > 0) {
+                                        Text(
+                                            text = if (item.badge > 99) "99+" else item.badge.toString(),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = item.label,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+                        }
+                        if (item.id == "more") {
+                            moreContent()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable internal fun NativeAccountSwitcherDialog(
+    accounts: NativeAccountsModel,
+    activeAccountEmail: String,
+    onDismiss: () -> Unit
+) {
+    val state = accounts.state
+    AlertDialog(
+        onDismissRequest = { if (!state.busy) onDismiss() },
+        title = {
+            Column {
+                Text("Аккаунты", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (activeAccountEmail.isNotBlank()) "Активный: $activeAccountEmail" else "Быстрое переключение в 1 касание",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                state.error?.let {
+                    Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
+                        Text(it, Modifier.padding(10.dp), color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 12.sp)
+                    }
+                }
+                if (state.rows.isEmpty()) {
+                    Text(
+                        "На телефоне пока нет сохранённых аккаунтов. Добавьте почтовый ящик СПбГУ или другого провайдера.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    state.rows.forEach { row ->
+                        Surface(
+                            onClick = {
+                                if (!row.active && !state.busy) {
+                                    accounts.quickSwitch(row.id)
+                                    onDismiss()
+                                } else if (row.active) {
+                                    onDismiss()
+                                }
+                            },
+                            enabled = !state.busy,
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (row.active) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f) else MaterialTheme.colorScheme.surface,
+                            border = androidx.compose.foundation.BorderStroke(
+                                if (row.active) 1.5.dp else 1.dp,
+                                if (row.active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(12.dp),
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (row.active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
+                                        Text(
+                                            avatarLetters(row.user),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (row.active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        row.user,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        row.host,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (row.active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer
+                                ) {
+                                    Text(
+                                        if (row.active) "Активный" else "Выбрать",
+                                        Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (row.active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                HorizontalDivider(Modifier.padding(vertical = 4.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                Button(
+                    onClick = {
+                        onDismiss()
+                        accounts.openAddAccount()
+                    },
+                    enabled = !state.busy,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp)
+                ) {
+                    Text("Добавить аккаунт")
+                }
+                OutlinedButton(
+                    onClick = {
+                        onDismiss()
+                        accounts.open()
+                    },
+                    enabled = !state.busy,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp)
+                ) {
+                    Text("Управление аккаунтами и SMTP")
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss, enabled = !state.busy) {
+                Text("Закрыть")
+            }
+        }
+    )
+}

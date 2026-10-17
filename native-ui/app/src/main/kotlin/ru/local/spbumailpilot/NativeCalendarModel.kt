@@ -76,7 +76,18 @@ internal class NativeCalendarModel(app: Application) : AndroidViewModel(app) {
     fun resume() {
         foreground = true
         if (state.open && !mutating) load(false)
+        else if (state.owner.isNotBlank() && !mutating) loadInternal(online = false, allowBackground = true)
         if (state.pickerOpen && !mutating) loadPickerEvents(false)
+    }
+
+    fun ensureLoaded(owner: String) {
+        if (!foreground || closed || AppLock.locked(context) || owner.isBlank() || mutating) return
+        if (owner != state.owner) {
+            state = CalendarState(owner = owner, open = state.open)
+            loadInternal(online = false, allowBackground = true)
+        } else if (state.entries.isEmpty() && !state.busy && state.notice == null) {
+            loadInternal(online = false, allowBackground = true)
+        }
     }
 
     fun pause() {
@@ -223,20 +234,116 @@ internal class NativeCalendarModel(app: Application) : AndroidViewModel(app) {
         state = state.copy(sourcesOpen = false, deleteSourceId = null)
     }
 
+    private fun defaultConnectConfig(login: SavedAccounts.Login?): Triple<String, String, String> {
+        val host = login?.host?.lowercase().orEmpty()
+        val user = login?.user?.lowercase().orEmpty()
+        return when {
+            host.contains("spbu.ru") || user.endsWith("@spbu.ru") || user.endsWith("@st.spbu.ru") ->
+                Triple("spbu", "https://mail.spbu.ru/", "СПбГУ")
+            host.contains("mail.ru") || user.contains("@mail.ru") || user.contains("@bk.ru") || user.contains("@list.ru") || user.contains("@inbox.ru") ->
+                Triple("mailru", "https://calendar.mail.ru/", "Mail.ru")
+            host.contains("yandex") || user.contains("@yandex") || user.contains("@ya.ru") ->
+                Triple("other", "https://caldav.yandex.ru/", "Яндекс")
+            else -> Triple("mailru", "https://calendar.mail.ru/", "Mail.ru")
+        }
+    }
+
     fun openConnect() {
         if (!foreground || closed || AppLock.locked(context) || state.busy || mutating) return
+        val login = runCatching { CredentialVault(context).load() }.getOrNull()
+        val (mode, url, title) = defaultConnectConfig(login)
         state = state.copy(
             connectOpen = true,
-            connectMode = "mailru",
-            connectUrl = "https://calendar.mail.ru/",
-            connectTitle = "Mail.ru",
-            connectUser = "",
+            connectMode = mode,
+            connectUrl = url,
+            connectTitle = title,
+            connectUser = login?.user.orEmpty(),
             connectPassword = "",
             discoveredCalendars = emptyList(),
             discoveryPickerOpen = false,
             error = null,
             actionNotice = null
         )
+    }
+
+    fun connectAccountCalendar() {
+        if (!foreground || closed || AppLock.locked(context) || state.busy || mutating || state.owner.isBlank()) return
+        val snapshot = state
+        val month = NativeAgenda.months(snapshot.day, "month").firstOrNull() ?: snapshot.day.substring(0, 7)
+        val ticket = ++generation
+        mutating = true
+        state = state.copy(busy = true, error = null, actionNotice = null)
+        worker.execute {
+            val login = runCatching { CredentialVault(context).load() }.getOrNull()
+            if (login == null || NoticeCenter.scope(login) != snapshot.owner) {
+                main.post { mutating = false; state = state.copy(busy = false) }
+                return@execute
+            }
+            val (mode, defaultUrl, defaultTitle) = defaultConnectConfig(login)
+            try {
+                val found = CalendarDiscovery.discover(defaultUrl, login.user, login.password)
+                check(ownerActive(ticket, snapshot.owner))
+                if (found.size > 1) {
+                    val choices = found.map { it.title.ifBlank { "Календарь" } to it.url }
+                    main.post {
+                        mutating = false
+                        if (ownerActive(ticket, snapshot.owner)) {
+                            state = state.copy(
+                                open = true,
+                                busy = false,
+                                connectOpen = true,
+                                connectMode = mode,
+                                connectUrl = defaultUrl,
+                                connectTitle = defaultTitle,
+                                connectUser = login.user,
+                                connectPassword = login.password,
+                                discoveredCalendars = choices,
+                                discoveryPickerOpen = true,
+                                error = null
+                            )
+                        }
+                    }
+                } else {
+                    val chosen = found.firstOrNull() ?: error("Календари не найдены.")
+                    val finalTitle = defaultTitle.ifEmpty { chosen.title.ifBlank { "Календарь" } }
+                    check(ownerActive(ticket, snapshot.owner))
+                    CalendarBook(context, login).add(finalTitle, chosen.url, login.user, login.password, month)
+                    main.post {
+                        mutating = false
+                        if (ownerActive(ticket, snapshot.owner)) {
+                            state = state.copy(
+                                busy = false,
+                                connectOpen = false,
+                                connectPassword = "",
+                                discoveredCalendars = emptyList(),
+                                discoveryPickerOpen = false,
+                                actionNotice = "Календарь аккаунта подключён."
+                            )
+                            loadInternal(online = false, allowBackground = true)
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                main.post {
+                    mutating = false
+                    if (ownerActive(ticket, snapshot.owner)) {
+                        state = state.copy(
+                            open = true,
+                            busy = false,
+                            connectOpen = true,
+                            connectMode = mode,
+                            connectUrl = defaultUrl,
+                            connectTitle = defaultTitle,
+                            connectUser = login.user,
+                            connectPassword = "",
+                            discoveredCalendars = emptyList(),
+                            discoveryPickerOpen = false,
+                            error = "Для подключения CalDAV укажите пароль приложения или адрес сервера."
+                        )
+                    }
+                }
+            }
+        }
     }
 
     fun closeConnect() {
@@ -254,9 +361,17 @@ internal class NativeCalendarModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setConnectMode(mode: String) {
-        if (state.busy || mutating || mode !in listOf("mailru", "other", "manual")) return
-        val url = if (mode == "mailru") "https://calendar.mail.ru/" else if (state.connectMode == "mailru") "" else state.connectUrl
-        val title = if (mode == "mailru" && state.connectTitle.isBlank()) "Mail.ru" else state.connectTitle
+        if (state.busy || mutating || mode !in listOf("spbu", "mailru", "other", "manual")) return
+        val url = when (mode) {
+            "spbu" -> "https://mail.spbu.ru/"
+            "mailru" -> "https://calendar.mail.ru/"
+            else -> if (state.connectMode in listOf("spbu", "mailru")) "" else state.connectUrl
+        }
+        val title = when (mode) {
+            "spbu" -> if (state.connectTitle.isBlank() || state.connectTitle == "Mail.ru") "СПбГУ" else state.connectTitle
+            "mailru" -> if (state.connectTitle.isBlank() || state.connectTitle == "СПбГУ") "Mail.ru" else state.connectTitle
+            else -> state.connectTitle
+        }
         state = state.copy(
             connectMode = mode,
             connectUrl = url,
@@ -281,7 +396,11 @@ internal class NativeCalendarModel(app: Application) : AndroidViewModel(app) {
     fun submitConnect() {
         if (!foreground || closed || AppLock.locked(context) || !state.open || state.busy || mutating) return
         val mode = state.connectMode
-        val rawUrl = if (mode == "mailru" && state.connectUrl.isBlank()) "https://calendar.mail.ru/" else state.connectUrl.trim()
+        val rawUrl = when {
+            mode == "spbu" && state.connectUrl.isBlank() -> "https://mail.spbu.ru/"
+            mode == "mailru" && state.connectUrl.isBlank() -> "https://calendar.mail.ru/"
+            else -> state.connectUrl.trim()
+        }
         val rawTitle = state.connectTitle.trim()
         val user = state.connectUser.trim()
         val password = state.connectPassword
@@ -663,11 +782,16 @@ internal class NativeCalendarModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun load(online: Boolean) {
-        if (!foreground || closed || !state.open || mutating || AppLock.locked(context)) return
+        loadInternal(online = online, allowBackground = false)
+    }
+
+    private fun loadInternal(online: Boolean, allowBackground: Boolean) {
+        if (!foreground || closed || (!state.open && !allowBackground) || state.owner.isBlank() || mutating || AppLock.locked(context)) return
         val snapshot = state
         val ticket = ++generation
         // Don't show another month's old rows under a new period while loading.
-        state = state.copy(busy = true, error = null, notice = null, entries = emptyList())
+        state = state.copy(busy = !allowBackground || state.open, error = null, notice = null, entries = if (allowBackground && !state.open) state.entries else emptyList())
+        val checkActive: () -> Boolean = { if (allowBackground) ownerActive(ticket, snapshot.owner) else active(ticket, snapshot.owner) }
         worker.execute {
             try {
                 val login = CredentialVault(context).load() ?: error("No account")
@@ -677,13 +801,27 @@ internal class NativeCalendarModel(app: Application) : AndroidViewModel(app) {
                 check(savedLinks.length() <= 5000)
                 val links = (0 until savedLinks.length()).mapNotNull { savedLinks.optJSONObject(it)?.let { link -> JSONObject(link.toString()) } }
                 val book = CalendarBook(context, login)
+                if (online) {
+                    val probeMonth = NativeAgenda.months(snapshot.day, "month").firstOrNull() ?: snapshot.day.substring(0, 7)
+                    val probePage = runCatching { book.list(probeMonth, false) { checkActive() } }.getOrNull()
+                    if (probePage != null && probePage.optJSONArray("calendars")?.length() == 0) {
+                        val (_, defaultUrl, defaultTitle) = defaultConnectConfig(login)
+                        val found = runCatching { CalendarDiscovery.discover(defaultUrl, login.user, login.password) }.getOrNull()
+                        if (found != null && found.size == 1 && checkActive()) {
+                            val chosen = found.first()
+                            runCatching {
+                                book.add(defaultTitle.ifEmpty { chosen.title.ifBlank { "Календарь" } }, chosen.url, login.user, login.password, probeMonth)
+                            }
+                        }
+                    }
+                }
                 val remote = JSONArray()
                 val warnings = linkedSetOf<String>()
                 val sourceMap = linkedMapOf<String, CalendarSource>()
                 var calendars = 0
                 for (month in NativeAgenda.months(snapshot.day, snapshot.mode)) {
-                    check(active(ticket, snapshot.owner))
-                    val page = book.list(month, online) { active(ticket, snapshot.owner) }
+                    check(checkActive())
+                    val page = book.list(month, online) { checkActive() }
                     val connections = page.getJSONArray("calendars")
                     calendars = maxOf(calendars, connections.length())
                     for (i in 0 until connections.length()) {
@@ -717,7 +855,7 @@ internal class NativeCalendarModel(app: Application) : AndroidViewModel(app) {
                 }
                 check(CredentialVault(context).load()?.let { NoticeCenter.scope(it) } == snapshot.owner)
                 main.post {
-                    if (active(ticket, snapshot.owner)) {
+                    if (checkActive()) {
                         state = state.copy(
                             entries = rows,
                             links = links,
@@ -734,8 +872,8 @@ internal class NativeCalendarModel(app: Application) : AndroidViewModel(app) {
             } catch (_: Exception) {
                 val owner = runCatching { CredentialVault(context).load()?.let { NoticeCenter.scope(it) } }.getOrNull()
                 main.post {
-                    if (active(ticket, snapshot.owner)) {
-                        state = if (owner != snapshot.owner) CalendarState() else state.copy(busy = false, error = "Не удалось загрузить календарь. Проверьте подключение и настройки календарей.")
+                    if (checkActive()) {
+                        state = if (owner != snapshot.owner) CalendarState() else state.copy(busy = false, error = if (state.open) "Не удалось загрузить календарь. Проверьте подключение и настройки календарей." else null)
                     }
                 }
             }
@@ -758,6 +896,9 @@ internal class NativeCalendarModel(app: Application) : AndroidViewModel(app) {
 
     private fun active(ticket: Long, owner: String) =
         !closed && foreground && generation == ticket && state.open && state.owner == owner && !AppLock.locked(context)
+
+    private fun ownerActive(ticket: Long, owner: String) =
+        !closed && foreground && generation == ticket && state.owner == owner && !AppLock.locked(context)
 
     private fun pickerActive(ticket: Long, owner: String) =
         !closed && foreground && generation == ticket && state.pickerOpen && state.pickerOwner == owner && !AppLock.locked(context)

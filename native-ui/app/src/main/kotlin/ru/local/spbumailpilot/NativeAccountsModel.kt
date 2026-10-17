@@ -48,6 +48,12 @@ internal class NativeAccountsModel(app:Application):AndroidViewModel(app) {
         }catch(_:Exception){main.post {if(!closed&&gate.current(ticket)&&foreground){state=state.copy(busy=false,error="Не удалось прочитать сохранённые входы. Данные не удалены; повторите загрузку.",open=true)}}}}
     }
     fun add(){if(!interactive()||state.editor!=null)return;expectedSmtp=null;expectedAccount=null;state=state.copy(editor="login",host="mail.spbu.ru",port="993",user="",password="",dirty=false,error=null,notice=null)}
+    fun openAddAccount(){
+        if(!foreground||closed||state.busy||state.restart||AppLock.locked(context))return
+        expectedSmtp=null;expectedAccount=null
+        state=state.copy(open=true,editor="login",host="mail.spbu.ru",port="993",user="",password="",dirty=false,discard=false,error=null,notice=null,confirmation=null)
+        if(!state.ready)load()
+    }
     fun smtp(){
         if(!interactive()||state.editor!=null||state.owner.isEmpty())return
         try {val login=current(state.owner).load()!!;expectedSmtp=login;expectedAccount=null;state=state.copy(editor="smtp",host=login.smtpHost,port=login.smtpPort.toString(),from=login.from,ssl=login.smtpSsl,dirty=false,error=null,notice=null)}
@@ -73,6 +79,10 @@ internal class NativeAccountsModel(app:Application):AndroidViewModel(app) {
     fun discard(yes:Boolean){if(interactive()){state=if(yes)state.copy(editor=null,password="",dirty=false,discard=false,error=null) else state.copy(discard=false);if(yes){expectedSmtp=null;expectedAccount=null}}}
     fun confirm(action:String?){if(interactive()&&state.editor==null&&(action==null||action=="logout"||state.rows.any {it.id==action}))state=state.copy(confirmation=action,error=null)}
     fun switch(id:String){if(interactive()&&state.editor==null&&state.rows.any {it.id==id&&!it.active})change("switch",id)}
+    fun quickSwitch(id:String){
+        if(!foreground||closed||AppLock.locked(context)||!state.ready||state.busy||state.restart||state.editor!=null)return
+        if(state.rows.any {it.id==id&&!it.active})change("switch",id)
+    }
     fun confirmed(){if(interactive())state.confirmation?.let {change(if(it=="logout")"logout" else "remove",it)}}
     private fun change(kind:String,id:String){
         val snapshot=state;mutating=true;state=state.copy(busy=true,error=null)
@@ -106,11 +116,15 @@ internal class NativeAccountsModel(app:Application):AndroidViewModel(app) {
         worker.execute {
             var committed=false
             var updatedRows:List<NativeAccountSummary>?=null
+            var initialInboxPage:org.json.JSONObject?=null
             try {
                 if(snapshot.editor=="login"){
                     synchronized(CredentialVault::class.java){require(current(snapshot.owner).list().none {it.identity()==target.identity()}) {"Этот ящик уже сохранён. Выберите его в списке."}}
                     val reader=MailReader();gate.attach(ticket,reader)
-                    try {check(gate.current(ticket));reader.connect(target.host,target.port,target.user,target.password);check(gate.current(ticket))}
+                    try {
+                        check(gate.current(ticket));reader.connect(target.host,target.port,target.user,target.password);check(gate.current(ticket))
+                        initialInboxPage=runCatching {if(gate.current(ticket))reader.page("INBOX",0,"","") else null}.getOrNull()
+                    }
                     finally {gate.detach(ticket,reader);reader.close()}
                 } else if(snapshot.editor=="password"){
                     val old=oldPasswordAccount!!
@@ -139,6 +153,9 @@ internal class NativeAccountsModel(app:Application):AndroidViewModel(app) {
                         else->{check(NativeAccountPolicy.same(v.load(),expectedSmtp));v.save(target)}
                     }
                     committed=true
+                }
+                if(snapshot.editor=="login"&&initialInboxPage!=null){
+                    runCatching {if(NoticeCenter.settings(context,target)?.optBoolean("offlineMail",true)!=false)OfflineMailStore(context,target).savePage("INBOX",0,initialInboxPage)}
                 }
                 runCatching {NoticeCenter.schedule(context)}
                 main.post {mutating=false;if(!closed){

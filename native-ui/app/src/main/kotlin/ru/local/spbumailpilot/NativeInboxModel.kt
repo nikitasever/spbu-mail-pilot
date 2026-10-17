@@ -401,16 +401,29 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
                 val owner=NoticeCenter.scope(login)
                 if(requestedFolder!=null||requestedQuery!=null||requestedCriteria!=null)check(owner==ownerHint)
                 val target=if(requestedFolder!=null)NativeFolders.canonical(requestedFolder) else NativeFolders.restore(owner,ownerHint,folderHint,readerHint)
+                publish(ticket) {
+                    if(state.owner!=owner||state.account!=login.user) {
+                        state=state.copy(account=login.user,owner=owner,folder=target)
+                    }
+                }
                 val offlineAllowed=offlineEnabled(login)
-                val parsedPage=if(online)firstOnline(ticket,owner,target,criteria) else if(offlineAllowed)firstOffline(ticket,login,target,criteria) else null
+                var effectiveOnline=online
+                var parsedPage=if(online)firstOnline(ticket,owner,target,criteria) else if(offlineAllowed)firstOffline(ticket,login,target,criteria) else null
+                if(!online&&parsedPage==null&&criteria.isEmpty()) {
+                    val autoOnline=runCatching { firstOnline(ticket,owner,target,criteria) }.getOrNull()
+                    if(autoOnline!=null) {
+                        parsedPage=autoOnline
+                        effectiveOnline=true
+                    }
+                }
                 val rows=parsedPage?.messages
                 check(currentOwner()==owner)
                 publish(ticket) {
-                    val restoring=if(!online&&requestedFolder==null&&!changingQuery)restoredMail(owner)?.takeIf {it.folder==target} else null
+                    val restoring=if(!effectiveOnline&&requestedFolder==null&&!changingQuery)restoredMail(owner)?.takeIf {it.folder==target} else null
                     val knownFolders=if(state.owner==owner)state.folders else emptyList()
                     val foldersOnline=state.owner==owner&&state.foldersOnline
                     if(saved.get<String>("owner")!=owner)resetNavigation()
-                    if(online) {
+                    if(effectiveOnline) {
                         if(criteria.isEmpty())seenFlags.clearFolder(owner,target)
                         for(index in 0 until (rows?.length() ?: 0)) {
                             val header=rows!!.getJSONObject(index)
@@ -421,7 +434,7 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
                     saved["owner"]=owner
                     saved["folder"]=target
                     saved["listFiltered"]=!criteria.isEmpty()||state.filter!="all"
-                    if(online){rememberMail(null);saved["readerOffset"]=0}
+                    if(effectiveOnline){rememberMail(null);saved["readerOffset"]=0}
                     val nextScope=ThreadScope(owner,target,criteria.key(),state.filter)
                     val keptThread=if(state.thread.anchor!=null&&state.thread.scope==nextScope)state.thread else ThreadNav()
                     val effectiveThread=if(keptThread.anchor!=null)keptThread
@@ -430,24 +443,37 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
                     pageState=parsedPage
                     val scanned=if(criteria.isAdvanced)parsedPage?.next ?: 0 else 0
                     val candidates=if(criteria.isAdvanced)parsedPage?.total ?: 0 else 0
-                    val scopeName=if(!criteria.isEmpty())(if(online)"server" else "offline") else ""
+                    val scopeName=if(!criteria.isEmpty())(if(effectiveOnline)"server" else "offline") else ""
                     state=state.copy(
                         account=login.user,owner=owner,folder=target,rows=messages,
-                        selected=null,body=null,busy=false,cached=!online,pageOffline=!online,pageExpired=false,
+                        selected=null,body=null,busy=false,cached=!effectiveOnline,pageOffline=!effectiveOnline,pageExpired=false,
                         hasMore=parsedPage?.more ?: false,total=parsedPage?.total ?: 0,
                         query=query,activeCriteria=if(criteria.isEmpty())null else criteria,
                         searchError=null,searchCandidates=candidates,searchScanned=scanned,searchScope=scopeName,
                         folders=knownFolders,foldersOnline=foldersOnline,thread=effectiveThread,selectedRefs=emptySet(),
-                        error=if(!online&&parsedPage==null)if(!offlineAllowed)"Офлайн-доступ отключён в настройках. Нажмите «Обновить» для загрузки с сервера." else "Эта папка не сохранена на телефоне. Нажмите «Обновить» при подключении." else null
+                        error=if(!effectiveOnline&&parsedPage==null)if(!offlineAllowed)"Офлайн-доступ отключён в настройках. Нажмите «Обновить» для загрузки с сервера." else "Эта папка не сохранена на телефоне. Нажмите «Обновить» при подключении." else null
                     )
-                    if(online)prefetchBodies(owner,target,messages)
+                    if(effectiveOnline)prefetchBodies(owner,target,messages)
                     if(restoring!=null) {
                         if(effectiveThread.anchor!=null)state=state.copy(thread=ThreadNavigation.openMember(effectiveThread))
                         val selected=messages.find { it.ref==restoring } ?: NativeMail(restoring,"","Письмо","","",false)
                         openMail(selected,cachedOnly=true,keepPosition=true)
                     }
                 }
-            } catch (_: Exception) { publish(ticket){closePager();state=state.copy(busy=false,searchError=if(!criteria.isEmpty())"Не удалось выполнить поиск. Проверьте подключение и повторите попытку." else null,error="Не удалось загрузить список. Проверьте подключение и повторите обновление.")} }
+            } catch (_: Exception) {
+                val fallbackLogin=runCatching { CredentialVault(context).load() }.getOrNull()
+                val fallbackOwner=fallbackLogin?.let { runCatching { NoticeCenter.scope(it) }.getOrNull() }.orEmpty()
+                publish(ticket){
+                    closePager()
+                    state=state.copy(
+                        account=if(fallbackOwner.isNotBlank()) fallbackLogin!!.user else state.account,
+                        owner=if(fallbackOwner.isNotBlank()) fallbackOwner else state.owner,
+                        busy=false,
+                        searchError=if(!criteria.isEmpty())"Не удалось выполнить поиск. Проверьте подключение и повторите попытку." else null,
+                        error="Не удалось загрузить список. Проверьте подключение и повторите обновление."
+                    )
+                }
+            }
         }
     }
     private fun prefetchBodies(owner: String,folder: String,messages: List<NativeMail>){
