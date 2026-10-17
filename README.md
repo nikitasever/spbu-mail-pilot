@@ -4,6 +4,9 @@
 
 **Актуальная версия — 0.73 (versionCode 88).**
 
+[Передача работ по Compose: восстановление исходников, план и разбор патчей](docs/migration/README.md).
+Документация не означает, что исходники Compose уже загружены в эту ветку.
+
 [Скачать APK 0.73](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.73/spbu-mail-pilot-0.73.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.73)
 
 В 0.50: новый экран чтения с компактными кнопками, офлайн-почта, уведомления всех сохранённых ящиков с отправителем и подписью ящика, пакетное скачивание вложений, расписание дня и связь писем с событиями.
