@@ -52,4 +52,23 @@ class NativeReaderDetailsTest {
         assertEquals("<ref-1@example.invalid> <ref-2@example.invalid>",result.references)
         assertEquals("From: \"Sender Name\" <sender@example.invalid>\nSubject: Test\nX-Custom: Value",result.rawHeaders)
     }
+    @Test fun aiBadgeExtractsRealTimeFromSubjectOrPreviewWithoutHardcoding1500(){
+        val ref = MailRef("INBOX", "101", "1")
+        val urgent1830 = NativeMail(ref = ref, subject = "Срочно: согласование до 18:30", sender = "Деканат", email = "dean@spbu.ru", date = "2026-10-16T08:00:00Z", unread = true, hasAttachments = false, preview = "Просим согласовать документ")
+        assertEquals("AI: Срочно • 18:30", extractAiBadgeLabel(urgent1830))
+
+        val defense1500 = NativeMail(ref = ref, subject = "Материалы к защите завтра в 15:00", sender = "Научный отдел", email = "sci@spbu.ru", date = "2026-10-16T07:00:00Z", unread = true, hasAttachments = true, preview = "Проверьте презентацию")
+        assertEquals("AI: Срочно • 15:00", extractAiBadgeLabel(defense1500))
+
+        val urgentNoTime = NativeMail(ref = ref, subject = "Срочно: подписание ведомости", sender = "Учебный отдел", email = "edu@spbu.ru", date = "2026-10-16T07:00:00Z", unread = true, hasAttachments = false, preview = "Без указания часа")
+        assertEquals("AI: Срочно", extractAiBadgeLabel(urgentNoTime))
+
+        val readMail = urgent1830.copy(unread = false)
+        assertNull(extractAiBadgeLabel(readMail))
+    }
+    @Test fun humanDateFormattingConvertsTechnicalIsoDateToReadableRussian(){
+        assertTrue(formatHumanDate("2026-10-18", includeYear = true).contains("18"))
+        assertFalse(formatHumanDate("2026-10-18", includeYear = true).contains("2026-10-18"))
+        assertTrue(formatHumanDateTime("2026-10-18", "15:00", includeYear = false).endsWith("· 15:00"))
+    }
 }

@@ -103,25 +103,6 @@ internal fun NativeWorkspaceScreen(
                                 tint = Color(0xFF8E929F)
                             )
                         }
-                    } else {
-                        if (state.expected != null) {
-                            IconButton(onClick = model::requestDelete, enabled = !state.busy) {
-                                Icon(
-                                    NativeIcons.Trash,
-                                    contentDescription = "Удалить",
-                                    modifier = Modifier.size(20.dp),
-                                    tint = MaterialTheme.colorScheme.error
-                                )
-                            }
-                        }
-                        IconButton(onClick = model::save, enabled = !state.busy) {
-                            Icon(
-                                NativeIcons.Check,
-                                contentDescription = "Сохранить",
-                                modifier = Modifier.size(20.dp),
-                                tint = Color(0xFF8B5CF6)
-                            )
-                        }
                     }
                 }
             )
@@ -576,7 +557,7 @@ internal fun NativeWorkspaceScreen(
                                                         tint = Color(0xFF8E929F)
                                                     )
                                                     Text(
-                                                        (row.optString("date") + " " + row.optString("time")).trim()
+                                                        formatHumanDateTime(row.optString("date"), row.optString("time"))
                                                             .ifBlank { "Без срока" },
                                                         fontSize = 11.sp,
                                                         fontWeight = FontWeight.Medium,

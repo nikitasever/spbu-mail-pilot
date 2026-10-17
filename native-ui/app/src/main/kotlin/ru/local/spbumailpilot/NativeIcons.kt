@@ -1203,35 +1203,20 @@ internal fun CosmicHeaderGlow(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier.fillMaxWidth().height(90.dp)) {
         val w = size.width
         val h = size.height
-        // Soft top-right indigo-violet nebula behind glass buttons
+        // Soft top-right indigo-violet nebula behind glass buttons (no bokeh dots overlapping text)
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFF7C5CFF).copy(alpha = 0.22f),
-                    Color(0xFF8B5CF6).copy(alpha = 0.08f),
+                    Color(0xFF7C5CFF).copy(alpha = 0.16f),
+                    Color(0xFF8B5CF6).copy(alpha = 0.05f),
                     Color.Transparent
                 ),
-                center = Offset(w * 0.78f, h * 0.42f),
-                radius = w * 0.35f
+                center = Offset(w * 0.82f, h * 0.42f),
+                radius = w * 0.32f
             ),
-            radius = w * 0.35f,
-            center = Offset(w * 0.78f, h * 0.42f)
+            radius = w * 0.32f,
+            center = Offset(w * 0.82f, h * 0.42f)
         )
-        // Soft top-left bokeh particles
-        val particles = listOf(
-            Triple(0.06f, 0.25f, 3.5f),
-            Triple(0.14f, 0.18f, 2.2f),
-            Triple(0.32f, 0.30f, 2.6f),
-            Triple(0.66f, 0.65f, 3.0f),
-            Triple(0.84f, 0.72f, 2.4f)
-        )
-        particles.forEach { (fx, fy, rad) ->
-            drawCircle(
-                color = Color(0xFFA78BFA).copy(alpha = 0.42f),
-                radius = rad.dp.toPx(),
-                center = Offset(w * fx, h * fy)
-            )
-        }
     }
 }
 

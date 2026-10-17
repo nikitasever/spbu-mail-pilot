@@ -242,16 +242,10 @@ internal fun NativeContactsScreen(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 46.dp)
-                        .padding(start = 12.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                        .padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        NativeIcons.Search,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = Color(0xFF8E929F)
-                    )
                     Box(
                         modifier = Modifier.weight(1f),
                         contentAlignment = Alignment.CenterStart

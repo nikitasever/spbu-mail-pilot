@@ -936,7 +936,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                         {model.search(false)},
                         {model.search(true)}
                     )
-                    if(state.searchKey.isNotEmpty()) {
+                    if(state.searchKey.isNotEmpty() && !state.searchOpen) {
                         Surface(
                             modifier=Modifier.fillMaxWidth().padding(horizontal=14.dp,vertical=4.dp),
                             shape=RoundedCornerShape(12.dp),
@@ -1045,10 +1045,12 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                 ) {
                     if (visible.isEmpty() && !state.busy && state.error == null) item {
                         ZeroInbox3DScene(
-                            title = if (state.filter != "all" || categoryFilter.isNotEmpty()) "Нет писем по фильтру"
+                            title = if (state.owner.isBlank()) "Нет подключённого ящика"
+                            else if (state.filter != "all" || categoryFilter.isNotEmpty()) "Нет писем по фильтру"
                             else if (state.searchKey.isNotEmpty()) "Ничего не найдено"
                             else "Zero Inbox",
-                            subtitle = if (state.filter != "all" || categoryFilter.isNotEmpty()) "Все письма в этой категории обработаны"
+                            subtitle = if (state.owner.isBlank()) "Нажмите «Войти в аккаунт ▾» сверху, чтобы подключить почту"
+                            else if (state.filter != "all" || categoryFilter.isNotEmpty()) "Все письма в этой категории обработаны"
                             else "Все входящие разобраны"
                         )
                     }
@@ -1146,15 +1148,14 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                 )
                             }
 
-                            // Compact horizontal attachment cards (NO duplicate text links)
+                            // Full-width attachment cards so filenames are never truncated
                             if (body.files.isNotEmpty()) {
                                 HorizontalDivider(thickness = 0.5.dp, color = Color(0x0FFFFFFF), modifier = Modifier.padding(vertical = 6.dp))
-                                Row(
+                                Column(
                                     Modifier
                                         .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState())
                                         .padding(vertical = 6.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     body.files.forEach { file ->
                                         val ext = file.name.substringAfterLast('.', "").uppercase(Locale.ROOT).take(4).ifBlank { "FILE" }
@@ -1164,17 +1165,17 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                             shape = RoundedCornerShape(14.dp),
                                             color = Color(0xFF14161D),
                                             border = BorderStroke(0.7.dp, Color(0x18FFFFFF)),
-                                            modifier = Modifier.widthIn(min = 215.dp, max = 265.dp)
+                                            modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Row(
-                                                Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+                                                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
                                                 Surface(
                                                     shape = RoundedCornerShape(8.dp),
                                                     color = badgePal.container,
-                                                    modifier = Modifier.width(40.dp).height(34.dp)
+                                                    modifier = Modifier.width(42.dp).height(34.dp)
                                                 ) {
                                                     Box(contentAlignment = Alignment.Center) {
                                                         Text(
@@ -1188,7 +1189,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                                 Column(Modifier.weight(1f)) {
                                                     Text(
                                                         file.name,
-                                                        maxLines = 1,
+                                                        maxLines = 2,
                                                         overflow = TextOverflow.Ellipsis,
                                                         fontSize = 13.sp,
                                                         fontWeight = FontWeight.Medium,
@@ -1234,7 +1235,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             Icon(NativeIcons.Calendar, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFF8B5CF6))
-                                            Text("${it.date} · ${it.time}", fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0xFFF3F4F8))
+                                            Text(formatHumanDateTime(it.date, it.time, includeYear = true), fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0xFFF3F4F8))
                                             Text("Добавить в календарь", fontSize = 12.sp, color = Color(0xFF8B5CF6), fontWeight = FontWeight.SemiBold)
                                         }
                                     }
@@ -1271,6 +1272,22 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
     }
 }
 
+private val aiTimeRegex = Regex("\\b([01]?\\d|2[0-3]):[0-5]\\d\\b")
+
+internal fun extractAiBadgeLabel(mail: NativeMail): String? {
+    if (!mail.unread) return null
+    val combined = "${mail.subject} ${mail.preview}"
+    val extractedTime = aiTimeRegex.find(mail.subject)?.value
+        ?: aiTimeRegex.find(mail.preview)?.value
+    val isUrgentCue = mail.subject.contains("срочн", ignoreCase = true) ||
+        mail.subject.contains("защит", ignoreCase = true) ||
+        mail.subject.contains("дедлайн", ignoreCase = true) ||
+        mail.subject.contains("согласован", ignoreCase = true) ||
+        combined.contains("срочн", ignoreCase = true)
+    if (!isUrgentCue && extractedTime == null) return null
+    return if (extractedTime != null) "AI: Срочно • $extractedTime" else "AI: Срочно"
+}
+
 private data class ThreadSummary(val count: Int, val unread: Int, val attachments: Boolean)
 private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,members.count {it.unread},members.any {it.hasAttachments==true})
 
@@ -1297,7 +1314,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = if (LocalCompactInbox.current) 10.dp else 13.dp),
+            .padding(horizontal = 14.dp, vertical = if (LocalCompactInbox.current) 10.dp else 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.Top
     ) {
@@ -1403,13 +1420,9 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
 
             MailLocalBadges(mail, owner, labels, responses, snoozed, followups)
 
-            val isUrgentAi = mail.unread && (
-                mail.subject.contains("15:00") ||
-                mail.subject.contains("защит", ignoreCase = true) ||
-                mail.subject.contains("срочн", ignoreCase = true)
-            )
-            // Bottom Row: Compact glass icon badges + Living 3D AI Particle Orb
-            if (validCategory != null || hasThreadBadge || hasAttachments || isUrgentAi) {
+            val aiBadgeLabel = remember(mail.unread, mail.subject, mail.preview) { extractAiBadgeLabel(mail) }
+            // Bottom Row: Rendered ONLY when category, thread badge, or AI badge is present (no duplicate paperclip)
+            if (validCategory != null || hasThreadBadge || aiBadgeLabel != null) {
                 Row(
                     Modifier.fillMaxWidth().padding(top = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1417,7 +1430,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                 ) {
                     validCategory?.let {
                         val c = categoryTint ?: Color(0xFF8B5CF6)
-                        Surface(shape = RoundedCornerShape(6.dp), color = c.copy(alpha = 0.16f)) {
+                        Surface(shape = RoundedCornerShape(6.dp), color = c.copy(alpha = 0.18f)) {
                             Text(
                                 it,
                                 Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
@@ -1443,29 +1456,11 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                             )
                         }
                     }
-                    if (hasAttachments) {
-                        // Compact frosted-glass icon square (replacing large "Есть вложения" text button)
-                        Surface(
-                            shape = RoundedCornerShape(7.dp),
-                            color = Color(0xFF1C1F2A),
-                            border = BorderStroke(0.5.dp, Color(0x18FFFFFF)),
-                            modifier = Modifier.size(22.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    NativeIcons.Paperclip,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(12.dp),
-                                    tint = Color(0xFFA78BFA)
-                                )
-                            }
-                        }
-                    }
                     Spacer(Modifier.weight(1f))
-                    if (isUrgentAi) {
+                    if (aiBadgeLabel != null) {
                         AiParticleOrb(
-                            size = 44.dp,
-                            label = "AI: Срочно • 15:00"
+                            size = 42.dp,
+                            label = aiBadgeLabel
                         )
                     }
                 }

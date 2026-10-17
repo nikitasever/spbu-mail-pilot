@@ -43,7 +43,7 @@ internal class NativeAccountsModel(app:Application):AndroidViewModel(app) {
             main.post {if(!closed&&gate.current(ticket)&&foreground&&!AppLock.locked(context)){
                 val changed=state.ready&&result.first!=state.owner
                 if(changed){expectedSmtp=null;expectedAccount=null}
-                state=state.copy(owner=result.first,rows=result.second,ready=true,busy=false,open=state.open||result.first.isEmpty(),editor=if(changed||state.editor=="password")null else state.editor,password=if(changed||state.editor=="password")"" else state.password,dirty=if(changed||state.editor=="password")false else state.dirty)
+                state=state.copy(owner=result.first,rows=result.second,ready=true,busy=false,open=state.open||(!state.ready&&result.first.isEmpty()),editor=if(changed||state.editor=="password")null else state.editor,password=if(changed||state.editor=="password")"" else state.password,dirty=if(changed||state.editor=="password")false else state.dirty)
             }}
         }catch(_:Exception){main.post {if(!closed&&gate.current(ticket)&&foreground){state=state.copy(busy=false,error="Не удалось прочитать сохранённые входы. Данные не удалены; повторите загрузку.",open=true)}}}}
     }
@@ -74,7 +74,7 @@ internal class NativeAccountsModel(app:Application):AndroidViewModel(app) {
     fun back(){if(!interactive())return
         if(state.confirmation!=null){state=state.copy(confirmation=null);return}
         if(state.editor!=null){if(state.dirty)state=state.copy(discard=true) else discard(true);return}
-        if(state.owner.isNotEmpty())state=state.copy(open=false)
+        state=state.copy(open=false)
     }
     fun discard(yes:Boolean){if(interactive()){state=if(yes)state.copy(editor=null,password="",dirty=false,discard=false,error=null) else state.copy(discard=false);if(yes){expectedSmtp=null;expectedAccount=null}}}
     fun confirm(action:String?){if(interactive()&&state.editor==null&&(action==null||action=="logout"||state.rows.any {it.id==action}))state=state.copy(confirmation=action,error=null)}

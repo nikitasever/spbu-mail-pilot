@@ -103,52 +103,13 @@ internal fun NativeCalendarScreen(
                     }
                 },
                 actions = {
-                    // View mode selector pill (Day / Week / Month / Agenda)
-                    Box {
-                        Surface(
-                            onClick = { viewMenuOpen = true },
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFF1C1F2A),
-                            modifier = Modifier.height(36.dp)
-                        ) {
-                            Row(
-                                Modifier.padding(horizontal = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                            ) {
-                                Icon(NativeIcons.Calendar, contentDescription = "Вид календаря", modifier = Modifier.size(15.dp), tint = Color(0xFFA78BFA))
-                                Text(
-                                    when (state.mode) {
-                                        "day" -> "День"
-                                        "week" -> "Нед."
-                                        "agenda" -> "Список"
-                                        else -> "Месяц"
-                                    },
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFFF3F4F8),
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                        DropdownMenu(expanded = viewMenuOpen, onDismissRequest = { viewMenuOpen = false }) {
-                            listOf("day" to "День", "week" to "Неделя", "month" to "Месяц", "agenda" to "Повестка").forEach { (m, title) ->
-                                DropdownMenuItem(
-                                    text = { Text(title) },
-                                    onClick = { viewMenuOpen = false; model.mode(m) }
-                                )
-                            }
-                            HorizontalDivider(thickness = 0.5.dp, color = Color(0x0FFFFFFF))
-                            DropdownMenuItem(
-                                text = { Text("Сегодня") },
-                                onClick = { viewMenuOpen = false; model.today() }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Обновить") },
-                                onClick = { viewMenuOpen = false; model.load(true) }
-                            )
-                        }
-                    }
+                    GlassIconButton(
+                        icon = NativeIcons.Refresh,
+                        contentDescription = "Обновить",
+                        onClick = { model.load(true) },
+                        enabled = !state.busy,
+                        size = 36.dp
+                    )
                     Spacer(Modifier.width(6.dp))
                     GlassIconButton(
                         icon = NativeIcons.Search,
