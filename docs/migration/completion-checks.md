@@ -65,3 +65,19 @@ DESIGN.md lint: 0 errors, 6 существующих warnings. Проверяю�
 переданного app-debug.apk новым исходникам. APK/версия/релиз не создавались.
 Проверки socket/JSON policies и компиляция не доказывают отсутствие всех жизненных цикловых гонок.
 Полная приёмка перечислена в [remaining-work.md](remaining-work.md).
+
+
+## Подписанный кандидат 0.74-rc.1 (89)
+
+По последующему запросу пользователя 17 октября опубликован предварительный выпуск из `28f7654`:
+[релиз](https://github.com/nikitasever/spbu-mail-pilot/releases/tag/v0.74-rc.1),
+[успешная CI-сборка](https://github.com/nikitasever/spbu-mail-pilot/actions/runs/39055897055).
+CI повторил legacy compatibility, native host suites, выбранные JUnit и assembleRelease.
+Локальный assembleRelease также прошёл; скачанный опубликованный APK проверен apksigner/aapt/sha256sum.
+
+- versionName `0.74-rc.1`, versionCode `89`, minSdk 26, targetSdk 34; release без debuggable.
+- SHA-256 APK: `1db6516edc51789dfddb4933df77e62f88a6a2942a9c354874f6e36bbc6dd811`.
+- SHA-256 сертификата: `197ecdabd94c7217afa45df6f02300f1f0ff12474b3146fc4018a3adbb8ce7b6`;
+  совпадает со скачанным опубликованным APK 0.73 из репозитория обновлений.
+- Рабочий update channel/main не менялись. Старый и Compose launcher доступны одновременно.
+- Установка и приёмка на телефоне не выполнялись; ограничения выше остаются в силе.

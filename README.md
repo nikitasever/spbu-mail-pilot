@@ -2,11 +2,13 @@
 
 Личный экспериментальный Android-клиент. Неофициальный проект; не продукт СПбГУ.
 
-**Актуальная версия — 0.73 (versionCode 88).**
+**Кандидат Compose — 0.74-rc.1 (versionCode 89). Рабочий канал — 0.73 (88).**
 
 [Переход на Kotlin + Jetpack Compose: статус, план и разбор пакетов](docs/migration/README.md).
 
-В этой ветке завершены известные пробелы переноса: общий поиск, пакет файлов, наблюдение за почтой, набор номера и история. [Результаты компиляции и тестов](docs/migration/completion-checks.md); проверка на телефоне ещё не завершена. Опубликованный APK ниже остаётся прежней версией.
+В этой ветке завершены известные пробелы переноса: общий поиск, пакет файлов, наблюдение за почтой, набор номера и история. [Результаты компиляции и тестов](docs/migration/completion-checks.md); проверка на телефоне ещё не завершена. Для проверки нового интерфейса опубликован отдельный подписанный кандидат.
+
+[Скачать Compose APK 0.74-rc.1](https://github.com/nikitasever/spbu-mail-pilot/releases/download/v0.74-rc.1/spbu-mail-pilot-0.74-rc.1.apk) · [Описание кандидата](https://github.com/nikitasever/spbu-mail-pilot/releases/tag/v0.74-rc.1). Открывать ярлык «Почта · Compose».
 
 [Скачать APK 0.73](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/download/v0.73/spbu-mail-pilot-0.73.apk) · [Изменения и проверки](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/v0.73)
 
