@@ -310,10 +310,17 @@ final class MailReader implements AutoCloseable {
         FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add(FetchProfile.Item.FLAGS);profile.add(FetchProfile.Item.CONTENT_INFO);MailThreadHeaders.fetch(profile);profile.add("From");
         inbox.fetch(new Message[]{m},profile);
         JSONArray files;
+        JSONArray htmlLinks=new JSONArray();
         if(m instanceof com.sun.mail.imap.IMAPMessage)((com.sun.mail.imap.IMAPMessage)m).setPeek(true);
-        files=MailAttachments.list(m);String text = extract(m, new JSONArray(), 0, "root",prefetch?24000:100000,prefetch);
-        JSONObject info=header(m).put("hasAttachments",files.length()>0);String[] rawFrom=m.getHeader("From");if(rawFrom!=null&&rawFrom.length>0)info.put("rawFrom",rawFrom[0]);
-        return new JSONObject().put("uid", uid).put("text", text).put("attachments", files).put("message", info).put("phones",new JSONArray(PhoneNumbers.find(text)));
+        files=MailAttachments.list(m);String text = extract(m, new JSONArray(), htmlLinks, 0, "root",prefetch?24000:100000,prefetch);
+        JSONObject info=header(m).put("hasAttachments",files.length()>0).put("links",htmlLinks);String[] rawFrom=m.getHeader("From");if(rawFrom!=null&&rawFrom.length>0)info.put("rawFrom",rawFrom[0]);
+        if(!prefetch){
+            String[] rawRefs=m.getHeader("References");
+            if(rawRefs!=null&&rawRefs.length>0&&info.optString("references").isEmpty())info.put("references",sanitizeHeaderPart(String.join(" ",rawRefs)));
+            String rawHeaders=extractRawHeaders(m);
+            if(!rawHeaders.isEmpty())info.put("rawHeaders",rawHeaders);
+        }
+        return new JSONObject().put("uid", uid).put("text", text).put("attachments", files).put("message", info).put("phones",new JSONArray(PhoneNumbers.find(text))).put("links",htmlLinks);
     }
     /** Explicit editor read, refreshes flags and never marks Seen or rewrites a server draft. */
     JSONObject serverDraft(String name,String uid,String expectedValidity)throws Exception{
@@ -359,7 +366,55 @@ final class MailReader implements AutoCloseable {
         if(chosen==null)throw new MessagingException("Sent folder not found");
         message.setFlag(Flags.Flag.SEEN,true);chosen.appendMessages(new Message[]{message});
     }
-    private String extract(Part part, JSONArray files, int depth, String path,int budget,boolean prefetch) throws Exception {
+    static void extractHtmlLinks(String html,JSONArray outLinks){
+        if(html==null||outLinks==null||outLinks.length()>=NativeReaderTargets.MAX_TARGETS)return;
+        java.util.LinkedHashSet<String> seen=new java.util.LinkedHashSet<>();
+        for(int i=0;i<outLinks.length();i++){String existing=outLinks.optString(i,null);if(existing!=null)seen.add(existing);}
+        for(String link:NativeReaderTargets.extractHrefLinks(html)){
+            if(seen.size()>=NativeReaderTargets.MAX_TARGETS)break;
+            if(seen.add(link))outLinks.put(link);
+        }
+    }
+    private static String sanitizeHeaderPart(String value){
+        if(value==null)return "";
+        StringBuilder sb=new StringBuilder(value.length());
+        for(int i=0;i<value.length();i++){
+            char c=value.charAt(i);
+            if(c=='\t'||(!Character.isISOControl(c)&&Character.getType(c)!=Character.FORMAT))sb.append(c);
+            else if(c=='\r'||c=='\n'){if(sb.length()==0||sb.charAt(sb.length()-1)!=' ')sb.append(' ');}
+        }
+        return sb.toString().trim();
+    }
+    static String extractRawHeaders(Message m){
+        try{
+            java.util.Enumeration<?> headers=m.getAllHeaders();
+            if(headers==null)return "";
+            StringBuilder out=new StringBuilder();
+            int count=0;
+            boolean truncated=false;
+            while(headers.hasMoreElements()){
+                if(count>=80){truncated=true;break;}
+                Object next=headers.nextElement();
+                if(!(next instanceof Header))continue;
+                Header h=(Header)next;
+                String name=sanitizeHeaderPart(h.getName());
+                String value=sanitizeHeaderPart(h.getValue());
+                if(name.isEmpty())continue;
+                String line=value.isEmpty()?name+":":name+": "+value;
+                if(line.length()>2000)line=line.substring(0,2000)+"…";
+                if(out.length()+line.length()+(out.length()>0?1:0)>16000){truncated=true;break;}
+                if(out.length()>0)out.append('\n');
+                out.append(line);
+                count++;
+            }
+            if(truncated){
+                if(out.length()>0)out.append('\n');
+                out.append("[Заголовки сокращены]");
+            }
+            return out.toString();
+        }catch(Exception unavailable){return "";}
+    }
+    private String extract(Part part, JSONArray files, JSONArray htmlLinks, int depth, String path,int budget,boolean prefetch) throws Exception {
         if (depth > 12) return "";
         if(MailAttachments.file(part))return "";
         if(prefetch&&part.isMimeType("message/rfc822")){String forwardName=part.getFileName();files.put(new JSONObject().put("name",forwardName==null?"Пересланное письмо.eml":AttachmentNames.decode(forwardName)).put("size",part.getSize()).put("path",path));return "";}
@@ -372,22 +427,31 @@ final class MailReader implements AutoCloseable {
         if (part.isMimeType("text/html")) {
             String html = MailText.read(part,budget);
             html = html.replaceAll("(?is)<(script|style)\\b[^>]*>.*?</\\1>", "");
+            if(!prefetch&&htmlLinks!=null)extractHtmlLinks(html,htmlLinks);
             return Html.fromHtml(html, Html.FROM_HTML_MODE_COMPACT).toString();
         }
         if (part.isMimeType("multipart/*")) {
             Multipart multi = (Multipart) part.getContent();
             if (part.isMimeType("multipart/alternative")) {
-                for (int i = 0; i < multi.getCount(); i++) if (multi.getBodyPart(i).isMimeType("text/plain")) return extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)),budget,prefetch);
-                for (int i = multi.getCount() - 1; i >= 0; i--) if (multi.getBodyPart(i).isMimeType("text/html")) return extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)),budget,prefetch);
+                for (int i = 0; i < multi.getCount(); i++) if (multi.getBodyPart(i).isMimeType("text/plain")) {
+                    String plain = extract(multi.getBodyPart(i), files, htmlLinks, depth + 1, AttachmentParts.child(path,Integer.toString(i)),budget,prefetch);
+                    if(!prefetch&&htmlLinks!=null&&htmlLinks.length()<NativeReaderTargets.MAX_TARGETS){
+                        for(int j=multi.getCount()-1;j>=0&&htmlLinks.length()<NativeReaderTargets.MAX_TARGETS;j--){
+                            try{BodyPart sibling=multi.getBodyPart(j);if(sibling.isMimeType("text/html"))extractHtmlLinks(MailText.read(sibling,budget),htmlLinks);}catch(Exception ignored){}
+                        }
+                    }
+                    return plain;
+                }
+                for (int i = multi.getCount() - 1; i >= 0; i--) if (multi.getBodyPart(i).isMimeType("text/html")) return extract(multi.getBodyPart(i), files, htmlLinks, depth + 1, AttachmentParts.child(path,Integer.toString(i)),budget,prefetch);
             }
             StringBuilder text = new StringBuilder();
             for (int i = 0; i < multi.getCount() && i < 80; i++) {
-                String value = extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)),Math.max(0,budget-text.length()),prefetch);
+                String value = extract(multi.getBodyPart(i), files, htmlLinks, depth + 1, AttachmentParts.child(path,Integer.toString(i)),Math.max(0,budget-text.length()),prefetch);
                 if (!value.isEmpty()) { if (text.length() > 0) text.append("\n\n"); text.append(value); }
             }
             return limit(text.toString());
         }
-        if (part.isMimeType("message/rfc822")) return extract((Part) part.getContent(), files, depth + 1, AttachmentParts.child(path,"m"),budget,prefetch);
+        if (part.isMimeType("message/rfc822")) return extract((Part) part.getContent(), files, htmlLinks, depth + 1, AttachmentParts.child(path,"m"),budget,prefetch);
         return "";
     }
     JSONObject attachment(String folder,String uid,String expectedValidity,String path,java.io.File directory)throws Exception{

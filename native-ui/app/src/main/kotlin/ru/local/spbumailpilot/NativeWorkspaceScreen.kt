@@ -37,6 +37,9 @@ import java.util.Locale
                 (state.eventMail ?: editor.optJSONObject("mail"))?.let {source->
                     Text("Исходное письмо: "+source.optString("subject").ifBlank {"Без темы"},maxLines=2,overflow=TextOverflow.Ellipsis,color=MaterialTheme.colorScheme.primary)
                 }
+                editor.optJSONObject("calendarSource")?.let {source->
+                    Text("Из события календаря: "+source.optString("calendarTitle","Календарь"),maxLines=2,overflow=TextOverflow.Ellipsis,color=MaterialTheme.colorScheme.primary)
+                }
                 OutlinedTextField(value("title"),{model.field("title",it)},label={Text("Название")},modifier=Modifier.fillMaxWidth(),enabled=!state.busy)
                 if(state.kind!="notes") {
                     Text(if(state.kind=="events")"Локальное событие на этом телефоне. Дата: 1970–2100, время Москвы." else "Дата и время Москвы. Можно оставить срок пустым.",fontSize=12.sp)
@@ -70,7 +73,12 @@ import java.util.Locale
                     items(visible,key={it.optString("id")}) {row->
                         Column(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=12.dp)) {
                             Text(row.optString("title"),style=MaterialTheme.typography.titleSmall)
-                            if(state.kind=="tasks")Text((row.optString("date")+" "+row.optString("time")).trim().ifBlank {"Без срока"},fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            if(state.kind=="tasks") {
+                                Text((row.optString("date")+" "+row.optString("time")).trim().ifBlank {"Без срока"},fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                row.optJSONObject("calendarSource")?.let {source->
+                                    Text("Календарь: "+source.optString("calendarTitle","Календарь"),fontSize=12.sp,color=MaterialTheme.colorScheme.primary)
+                                }
+                            }
                             val text=row.optString(if(state.kind=="tasks")"notes" else "body")
                             if(text.isNotBlank())Text(text,maxLines=3,overflow=TextOverflow.Ellipsis,fontSize=14.sp)
                             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {

@@ -53,6 +53,11 @@ public final class NativeSeenFlagsTest {
         confirmed=NativeSeenFlags.confirmed(reader.seen("INBOX","42","7",false),false);
         flags.remember(a,"INBOX","7","42",confirmed);check(!flags.seen(a,"INBOX","7","42",true));
         reader.body("INBOX","42","7");check(!store.folder.message.isSet(Flags.Flag.SEEN));reader.close();
+        check(NativeSeenFlags.batchSummary(3,3,0,true).equals("Помечено прочитанными на сервере: 3."));
+        check(NativeSeenFlags.batchSummary(3,3,0,false).equals("Помечено непрочитанными на сервере: 3."));
+        check(NativeSeenFlags.batchSummary(3,0,3,true).contains("Подтверждено: 0 из 3. Ошибок: 3, не начато: 0."));
+        check(NativeSeenFlags.batchSummary(3,2,1,true).contains("Подтверждено: 2 из 3. Ошибок: 1, не начато: 0."));
+        check(NativeSeenFlags.batchSummary(4,2,1,true).contains("Подтверждено: 2 из 4. Ошибок: 1, не начато: 1."));
         System.out.println("PASS native read status: strict server acknowledgement, account/folder/UIDVALIDITY/UID isolation, pagination/cache override without mutation, fresh observation and reset, rejected identity/acknowledgement and unchanged state on write failure; real JavaMail folder fixture, no network.");
     }
 }

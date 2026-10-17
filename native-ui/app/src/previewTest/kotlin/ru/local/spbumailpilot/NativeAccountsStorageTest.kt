@@ -38,4 +38,16 @@ class NativeAccountsStorageTest {
     @Test fun unknownSchemaIsRejected(){
         assertThrows(Exception::class.java){CredentialVault.decode("{\"schema\":3,\"accounts\":[],\"active\":\"\"}")}
     }
+    @Test fun passwordUpdateOnInactivePreservesActiveAndCustomSmtp(){
+        val saved=SavedAccounts()
+        val activeA=login("active-a")
+        val inactiveB=NativeAccountPolicy.smtp(login("inactive-b"),"smtp.custom.org","587",false,"b@custom.org")
+        saved.save(inactiveB);saved.save(activeA)
+        val targetB=NativeAccountPolicy.password(inactiveB,"updated-secret-b")
+        saved.updatePassword(inactiveB,targetB.password)
+        val restored=CredentialVault.decode(CredentialVault.encode(saved))
+        assertEquals(activeA.identity(),restored.activeId())
+        assertTrue(NativeAccountPolicy.same(activeA,restored.active()))
+        assertTrue(NativeAccountPolicy.same(targetB,restored.get(inactiveB.identity())))
+    }
 }

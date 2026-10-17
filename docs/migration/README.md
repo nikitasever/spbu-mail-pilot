@@ -2,15 +2,16 @@
 
 Актуально: 17 октября 2026.
 
-**В этой ветке восстановлена полная кодовая база Compose-миграции (Step 0) поверх `main` (`219c92ee6491899d10b053e7311ce81f084df673`, версия 0.73 / versionCode 88), включая проверенные патчи `contacts-saf-import-reviewed`, `advanced-search-reviewed` и `package2-contacts-reviewed`.**
+**В этой ветке восстановлена полная кодовая база Compose-миграции (Step 0) поверх `main` (`219c92ee6491899d10b053e7311ce81f084df673`, версия 0.73 / versionCode 88) и выполнены функциональные пакеты A–D взамен отклонённых `package3`/`package4`.**
 
 - [Восстановление исходников и порядок применения архивов](source-recovery.md).
 - [Что исправить и что ещё перенести](remaining-work.md).
 - [Разбор непринятых package3/package4 и задание автору](packages3-4-review.md).
+- [Актуальная сводка и таблица паритета функций](native-feature-status.md).
 
-Восстановленная база проверена компиляцией Java/Kotlin (`:app:compileDebugKotlin`, `:app:compileDebugJavaWithJavac`),
-98 host-наборами Java-тестов и 12 JUnit-наборами `native-ui` (51 тест). Отклонённые `package3`/`package4` в базу не включены
-и перерабатываются отдельными пакетами A–D.
+Кодовая база проверена компиляцией Java/Kotlin (`:app:compileDebugKotlin`, `:app:compileDebugJavaWithJavac`, `:app:compileDebugUnitTestKotlin -PrenderUi=true`),
+полным набором `npm test`, 98 host-наборами Java-тестов и 13 JUnit-наборами `native-ui` (58 тестов).
+Для полевой проверки на реальном устройстве собирается один локальный debug APK без повышения `versionCode`/`versionName` и без слияния в `main`.
 
 ## Правила продолжения
 

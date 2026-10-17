@@ -66,4 +66,44 @@ class NativeThreadNavigationTest {
         assertNull(cleared.anchor)
         assertFalse(cleared.readerFromThread)
     }
+
+    @Test fun advancedSearchKeyIsolatesThreadScopeAndRedactsToString() {
+        val critA = NativeMailSearch.Criteria("отчёт", "dean@spbu.ru", "2026-10-01", "2026-10-16", true, false)
+        val critB = NativeMailSearch.Criteria("отчёт", "office@spbu.ru", "2026-10-01", "2026-10-16", true, false)
+        val stateA = InboxState(owner = "account-1", folder = "INBOX", query = "отчёт", activeCriteria = critA, searchText = "секрет", searchFrom = "dean@spbu.ru")
+        val stateB = stateA.copy(activeCriteria = critB)
+        assertFalse(stateA.searchKey == stateB.searchKey)
+        val scopeA = ThreadScope(stateA.owner, stateA.folder, stateA.searchKey, stateA.filter)
+        val scopeB = ThreadScope(stateB.owner, stateB.folder, stateB.searchKey, stateB.filter)
+        val opened = ThreadNavigation.open(ThreadNav(), scopeA, anchor)
+        assertNull(ThreadNavigation.reScope(opened, scopeB).anchor)
+        assertFalse(stateA.toString().contains("секрет"))
+        assertFalse(stateA.toString().contains("dean@spbu.ru"))
+    }
+
+    @Test fun activeSelectionEnforcesScopeAndDisplayedRows() {
+        val ref1 = MailRef("INBOX", "10", "7")
+        val ref2 = MailRef("INBOX", "11", "7")
+        val mail1 = NativeMail(ref1, "Alice", "Subj 1", "", "", true)
+        val mail2 = NativeMail(ref2, "Bob", "Subj 2", "", "", false)
+        val selScope = SelectionScope("account-1", "INBOX", "", "all")
+        val state = InboxState(
+            owner = "account-1",
+            folder = "INBOX",
+            rows = listOf(mail1, mail2),
+            selectedRefs = setOf(ref1, ref2),
+            selectionScope = selScope
+        )
+        assertEquals(setOf(ref1, ref2), state.activeSelection())
+        // Changing filter to unread invalidates selection scope and hides read rows
+        assertEquals(emptySet<MailRef>(), state.copy(filter = "unread").activeSelection())
+        // Even if selectionScope matched unread, only displayedRows (unread mail1) remain selectable
+        val unreadScope = selScope.copy(filter = "unread")
+        assertEquals(setOf(ref1), state.copy(filter = "unread", selectionScope = unreadScope).activeSelection())
+        // Changing owner, folder, or query invalidates activeSelection
+        assertEquals(emptySet<MailRef>(), state.copy(owner = "account-2").activeSelection())
+        assertEquals(emptySet<MailRef>(), state.copy(folder = "Sent").activeSelection())
+        assertEquals(emptySet<MailRef>(), state.copy(query = "search").activeSelection())
+    }
 }
+

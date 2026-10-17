@@ -65,6 +65,7 @@ final class CredentialVault {
     }
     private static SavedAccounts.Login login(JSONObject json)throws Exception{SavedAccounts.Login defaults=new SavedAccounts.Login(json.getString("host"),json.getInt("port"),json.getString("user"),json.getString("password"));return new SavedAccounts.Login(defaults.host,defaults.port,defaults.user,defaults.password,json.optString("smtpHost",defaults.smtpHost),json.optInt("smtpPort",defaults.smtpPort),json.optBoolean("smtpSsl",defaults.smtpSsl),json.optString("from",defaults.from));}
     void save(SavedAccounts.Login login)throws Exception{synchronized(CredentialVault.class){SavedAccounts accounts=read();accounts.save(login);write(accounts);}}
+    void updatePassword(SavedAccounts.Login expected,String newPassword)throws Exception{synchronized(CredentialVault.class){SavedAccounts accounts=read();accounts.updatePassword(expected,newPassword);write(accounts);}}
     SavedAccounts.Login load()throws Exception{synchronized(CredentialVault.class){return read().active();}}
     ArrayList<SavedAccounts.Login> list()throws Exception{synchronized(CredentialVault.class){return read().list();}}
     void deactivate()throws Exception{synchronized(CredentialVault.class){SavedAccounts accounts=read();accounts.deactivate();write(accounts);}}

@@ -15,23 +15,41 @@ internal data class NativeMail(val ref: MailRef, val sender: String, val subject
 internal data class NativeFile(val name: String, val path: String)
 internal data class MailBody(val text: String, val files: List<NativeFile>, val message: JSONObject)
 internal data class OpenedFile(val ref: MailRef, val owner: String, val value: JSONObject)
+internal data class SelectionScope(val owner: String = "", val folder: String = "", val searchKey: String = "", val filter: String = "all")
 internal data class InboxState(val account: String = "", val owner: String = "", val rows: List<NativeMail> = emptyList(), val selected: NativeMail? = null,
+    val selectedRefs: Set<MailRef> = emptySet(), val selectionScope: SelectionScope = SelectionScope(),
     val body: MailBody? = null, val busy: Boolean = false, val cached: Boolean = true, val error: String? = null,
     val openedFile: OpenedFile? = null, val hasMore: Boolean = false, val total: Int = 0, val pageOffline: Boolean = true, val pageExpired: Boolean = false,
     val moveOpen: Boolean=false,val movePicker: Boolean=false,val moveKind: String="",val moveDestination: String="",val moveNeedsRefresh: Boolean=false,val linked: Boolean=false,val flagNotice: String? = null, val folder: String = "INBOX",
     val foldersOpen: Boolean = false, val foldersBusy: Boolean = false, val foldersOnline: Boolean = false,
     val folders: List<NativeFolders.Entry> = emptyList(), val foldersError: String? = null,
-    val query: String = "", val searchText: String = "", val searchOpen: Boolean = false, val searchError: String? = null, val filter: String = "all",
-    val threadsEnabled: Boolean = true, val thread: ThreadNav = ThreadNav())
+    val query: String = "", val searchText: String = "", val searchFrom: String = "", val searchStart: String = "", val searchEnd: String = "",
+    val searchAttachments: Boolean = false, val searchUnread: Boolean = false, val advancedSearchOpen: Boolean = false,
+    val activeCriteria: NativeMailSearch.Criteria? = null, val searchCandidates: Int = 0, val searchScanned: Int = 0, val searchScope: String = "",
+    val searchOpen: Boolean = false, val searchError: String? = null, val filter: String = "all",
+    val threadsEnabled: Boolean = true, val thread: ThreadNav = ThreadNav()) {
+    val searchKey: String get() = activeCriteria?.key() ?: query
+    fun currentSelectionScope() = SelectionScope(owner, folder, searchKey, filter)
+    fun activeSelection(visibleRefs: Set<MailRef>? = null): Set<MailRef> = if (selectionScope == currentSelectionScope()) {
+        selectedRefs.filter { ref ->
+            ref.folder == folder &&
+                (visibleRefs == null || ref in visibleRefs) &&
+                rows.any { it.ref == ref && NativeMailSearch.matches(filter, it.unread, it.hasAttachments) }
+        }.toSet()
+    } else emptySet()
+    override fun toString() = "InboxState(owner=$owner,folder=$folder,rows=${rows.size},busy=$busy,hasMore=$hasMore,total=$total,cached=$cached,pageOffline=$pageOffline)"
+}
 
 /** Protocol work and in-memory bodies survive recreation; SavedStateHandle contains navigation keys only. */
 internal class NativeInboxModel(app: Application, private val saved: SavedStateHandle) : AndroidViewModel(app) {
     private val context=app.applicationContext
     private val main=Handler(Looper.getMainLooper())
     private val worker=Executors.newFixedThreadPool(2)
+    private val prefetchWorker=Executors.newSingleThreadExecutor()
     private val closer=Executors.newSingleThreadExecutor()
     private val gate=NativeReadGate(closer)
     private val folderGate=NativeReadGate(closer)
+    private val prefetchGate=NativeReadGate(closer)
     private val seenFlags=NativeSeenFlags()
     @Volatile private var closed=false
     @Volatile private var foreground=false
@@ -39,7 +57,7 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
     private var initialized=false
     private var mutating=false
     private val moved=mutableSetOf<Pair<String,MailRef>>()
-    private data class Pager(val owner: String, val folder: String, val query: String, val reader: MailReader)
+    private data class Pager(val owner: String, val folder: String, val criteria: NativeMailSearch.Criteria, val reader: MailReader)
     private val pagerLock=Any()
     @Volatile private var pager: Pager?=null
     private var linkedOrigin: InboxState?=null
@@ -49,16 +67,45 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
         val old=synchronized(pagerLock){val old=pager;pager=null;old}
         if(old!=null)closer.execute { old.reader.close() }
     }
-    private fun firstOnline(ticket: Long,owner: String,folder: String,query: String): JSONObject {
+    private fun firstOnline(ticket: Long,owner: String,folder: String,criteria: NativeMailSearch.Criteria): NativeMailPage {
         val login=login(owner);check(gate.current(ticket))
-        val connection=Pager(owner,folder,query,MailReader());gate.attach(ticket,connection.reader)
+        val connection=Pager(owner,folder,criteria,MailReader());gate.attach(ticket,connection.reader)
         var retained=false
         try {
             check(gate.current(ticket));connection.reader.connect(login.host,login.port,login.user,login.password)
-            check(gate.current(ticket));val result=connection.reader.page(folder,0,"",query)
+            check(gate.current(ticket))
+            val firstRaw=if(criteria.isAdvanced)connection.reader.smartPage(folder,0,"",criteria.toFilters())
+                else connection.reader.page(folder,0,"",criteria.query)
+            if(criteria.isEmpty()&&offlineEnabled(login)) {
+                runCatching { OfflineMailStore(context,login).savePage(folder,0,firstRaw) }
+            }
+            var parsed=NativeMailPage.first(firstRaw,folder)
+            if(criteria.isAdvanced) {
+                var hops=0
+                while(NativeMailSearch.shouldContinueEmptyPage(parsed,0,hops)&&gate.current(ticket)) {
+                    hops++
+                    val nextRaw=connection.reader.smartPage(folder,parsed.next,parsed.snapshot,criteria.toFilters())
+                    parsed=parsed.append(nextRaw)
+                }
+            }
             synchronized(pagerLock){check(gate.current(ticket));pager=connection;retained=true}
-            return result
+            return parsed
         } finally {gate.detach(ticket,connection.reader);if(!retained)connection.reader.close()}
+    }
+    private fun firstOffline(ticket: Long,login: SavedAccounts.Login,folder: String,criteria: NativeMailSearch.Criteria): NativeMailPage? {
+        val store=OfflineMailStore(context,login)
+        val firstRaw=store.page(folder,0,"",criteria.query) ?: return null
+        val filteredFirst=if(criteria.isAdvanced)NativeMailSearch.filterOffline(firstRaw,criteria) else firstRaw
+        var parsed=NativeMailPage.first(filteredFirst,folder)
+        if(criteria.isAdvanced) {
+            var hops=0
+            while(NativeMailSearch.shouldContinueEmptyPage(parsed,0,hops)&&gate.current(ticket)) {
+                hops++
+                val nextRaw=store.page(folder,parsed.next,parsed.snapshot,criteria.query) ?: break
+                parsed=parsed.append(NativeMailSearch.filterOffline(nextRaw,criteria))
+            }
+        }
+        return parsed
     }
     var state by mutableStateOf(InboxState());private set
     /** Reads a saved value defensively so a changed key type can never crash restoration. */
@@ -73,17 +120,67 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
         state=state.copy(threadsEnabled=savedValue<Boolean>("threadsEnabled") ?: true)
     }
     fun toggleSearch(){if(state.selected==null)state=state.copy(searchOpen=!state.searchOpen,searchError=null)}
+    fun toggleAdvancedSearch(){if(state.selected==null)state=state.copy(advancedSearchOpen=!state.advancedSearchOpen,searchError=null)}
     fun searchText(value: String){if(value.length<=200)state=state.copy(searchText=value,searchError=null)}
+    fun searchFrom(value: String){if(value.length<=200)state=state.copy(searchFrom=value,searchError=null)}
+    fun searchStart(value: String){if(value.length<=10)state=state.copy(searchStart=value,searchError=null)}
+    fun searchEnd(value: String){if(value.length<=10)state=state.copy(searchEnd=value,searchError=null)}
+    fun searchAttachments(value: Boolean){state=state.copy(searchAttachments=value,searchError=null)}
+    fun searchUnread(value: Boolean){state=state.copy(searchUnread=value,searchError=null)}
+    fun resetSearchFilters(){state=state.copy(searchText="",searchFrom="",searchStart="",searchEnd="",searchAttachments=false,searchUnread=false,searchError=null)}
+    fun clearSearch(){
+        if(!foreground||AppLock.locked(context)||state.owner.isBlank()||state.selected!=null||mutating)return
+        state=state.copy(searchText="",searchFrom="",searchStart="",searchEnd="",searchAttachments=false,searchUnread=false,searchError=null,searchCandidates=0,searchScanned=0,searchScope="",selectedRefs=emptySet())
+        loadInbox(!state.pageOffline,requestedCriteria=NativeMailSearch.Criteria.simple(""))
+    }
+    fun cancelSearch(){
+        if(!state.busy||mutating)return
+        gate.next();prefetchGate.next();closePager()
+        state=state.copy(busy=false,pageExpired=state.pageExpired||state.hasMore&&!state.pageOffline)
+    }
     fun search(online: Boolean){
-        if(!foreground||AppLock.locked(context)||state.owner.isBlank()||state.selected!=null)return
-        val query=try{NativeMailSearch.query(state.searchText)}catch(_: Exception){state=state.copy(searchError="До 200 символов, без управляющих знаков.");return}
-        loadInbox(online,requestedQuery=query)
+        if(!foreground||AppLock.locked(context)||state.owner.isBlank()||state.selected!=null||mutating)return
+        val criteria=try {
+            NativeMailSearch.Criteria(
+                state.searchText,
+                state.searchFrom,
+                state.searchStart,
+                state.searchEnd,
+                state.searchAttachments,
+                state.searchUnread
+            )
+        } catch (e: IllegalArgumentException) {
+            val msg=when(e.message) {
+                "Invalid date","Invalid start date","Invalid end date"->"Укажите дату в формате ГГГГ-ММ-ДД."
+                "Invalid range","Invalid date range"->"Начальная дата не может быть позже конечной."
+                "Invalid from"->"Поле «От кого»: до 200 символов, без управляющих знаков."
+                else->"До 200 символов в полях поиска, даты ГГГГ-ММ-ДД."
+            }
+            state=state.copy(searchError=msg)
+            return
+        }
+        loadInbox(online,requestedCriteria=criteria)
     }
     fun filter(value: String){
         if(!foreground||AppLock.locked(context)||state.selected!=null)return
         try{NativeMailSearch.matches(value,false,null)}catch(_: Exception){return}
-        clearThreadKeys();state=state.copy(filter=value,thread=ThreadNav());saved["listIndex"]=0;saved["listOffset"]=0
-        saved["listFiltered"]=state.query.isNotEmpty()||value!="all"
+        clearThreadKeys();state=state.copy(filter=value,selectedRefs=emptySet(),thread=ThreadNav());saved["listIndex"]=0;saved["listOffset"]=0
+        saved["listFiltered"]=state.searchKey.isNotEmpty()||value!="all"
+    }
+    fun toggleSelection(ref: MailRef) {
+        if(!foreground||AppLock.locked(context)||state.busy||mutating||state.selected!=null||state.thread.anchor!=null)return
+        if(ref.folder!=state.folder||state.rows.none {it.ref==ref})return
+        val scope=state.currentSelectionScope()
+        val current=state.activeSelection().toMutableSet()
+        if(current.contains(ref))current.remove(ref)
+        else {
+            if(current.size>=50){state=state.copy(flagNotice="Можно выбрать не более 50 писем за раз.");return}
+            current.add(ref)
+        }
+        state=state.copy(selectedRefs=current,selectionScope=scope,flagNotice=null,error=null)
+    }
+    fun clearSelection() {
+        if(state.selectedRefs.isNotEmpty())state=state.copy(selectedRefs=emptySet())
     }
     val listIndex get()=(saved.get<Int>("listIndex") ?: 0).coerceAtLeast(0)
     val listOffset get()=(saved.get<Int>("listOffset") ?: 0).coerceAtLeast(0)
@@ -121,16 +218,16 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
         val owner=state.owner
         worker.execute {
             val now=runCatching { currentOwner() }.getOrNull()
-            main.post { if(!closed&&foreground&&now!=owner&&state.owner==owner){resetNavigation();state=InboxState();loadInbox(false)} }
+            main.post { if(!closed&&foreground&&now!=owner&&state.owner==owner){val enabled=state.threadsEnabled;resetNavigation();state=InboxState(threadsEnabled=enabled);loadInbox(false)} }
         }
     }
     fun pause(recreating: Boolean) {
         foreground=false
         closeFolders()
-        if(!recreating) { linkedOrigin=linkedOrigin?.let {it.copy(pageExpired=it.pageExpired||it.hasMore&&!it.pageOffline)};gate.next();closePager();discardFile();state=state.copy(busy=mutating,moveOpen=false,pageExpired=state.pageExpired||state.hasMore&&!state.pageOffline) }
+        if(!recreating) { prefetchGate.next();linkedOrigin=linkedOrigin?.let {it.copy(pageExpired=it.pageExpired||it.hasMore&&!it.pageOffline)};gate.next();closePager();discardFile();state=state.copy(busy=mutating,moveOpen=false,selectedRefs=emptySet(),pageExpired=state.pageExpired||state.hasMore&&!state.pageOffline) }
     }
     fun listPosition(owner: String,folder: String,query: String,filter: String,index: Int,offset: Int) {
-        if(!state.linked&&owner.isNotEmpty()&&state.owner==owner&&state.folder==folder&&state.query==query&&state.filter==filter) { saved["listIndex"]=index.coerceAtLeast(0);saved["listOffset"]=offset.coerceAtLeast(0) }
+        if(!state.linked&&owner.isNotEmpty()&&state.owner==owner&&state.folder==folder&&state.searchKey==query&&state.filter==filter) { saved["listIndex"]=index.coerceAtLeast(0);saved["listOffset"]=offset.coerceAtLeast(0) }
     }
     fun readerAction(owner: String,ref: MailRef,action: ()->Unit): Boolean {
         if(closed||!foreground||state.busy||state.owner!=owner||state.selected?.ref!=ref||state.body==null||AppLock.locked(context))return false
@@ -140,7 +237,7 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
     fun readerPosition(owner: String,ref: MailRef,offset: Int) {
         if(owner==state.owner&&ref==state.selected?.ref)readerOffset(offset)
     }
-    private fun currentScope()=ThreadScope(state.owner,state.folder,state.query,state.filter)
+    private fun currentScope()=ThreadScope(state.owner,state.folder,state.searchKey,state.filter)
     private fun clearThreadKeys(){saved["threadRoute"]=null;saved["threadOwner"]=null;saved["threadFolder"]=null}
     private fun saveThread(nav: ThreadNav){
         val anchor=nav.anchor ?: run {clearThreadKeys();return}
@@ -170,7 +267,7 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
         if(state.rows.none {sameRef(it.ref,anchor)})return
         val next=ThreadNavigation.open(state.thread,currentScope(),ThreadAnchor(anchor.folder,anchor.validity,anchor.uid))
         if(next.anchor==null)return
-        saveThread(next);state=state.copy(thread=next)
+        saveThread(next);state=state.copy(selectedRefs=emptySet(),thread=next)
     }
     fun openThreadMember(mail: NativeMail,scope: ThreadScope){
         if(!foreground||AppLock.locked(context)||state.busy||state.linked)return
@@ -279,10 +376,11 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
         closeFolders()
         if(!same)loadInbox(online,name)
     }
-    fun loadInbox(online: Boolean,requestedFolder: String?=null,requestedQuery: String?=null) {
+    fun loadInbox(online: Boolean,requestedFolder: String?=null,requestedQuery: String?=null,requestedCriteria: NativeMailSearch.Criteria?=null) {
         if(!foreground||AppLock.locked(context)||mutating)return
-        val query=NativeMailSearch.query(requestedQuery ?: state.query)
-        val changingQuery=query!=state.query
+        val criteria=requestedCriteria ?: (requestedQuery?.let { NativeMailSearch.Criteria.simple(it) } ?: state.activeCriteria ?: NativeMailSearch.Criteria.simple(state.query))
+        val query=criteria.query
+        val changingQuery=criteria.key()!=state.searchKey
         val ownerHint=state.owner.ifBlank {saved.get<String>("owner") ?: ""}
         val folderHint=if(state.owner.isNotBlank())state.folder else saved.get<String>("folder")
         val readerHint=MailNoticeTarget.parse(saved.get<String>("mailRoute"))?.takeIf {it.account==ownerHint}?.folder
@@ -292,20 +390,19 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
         if(changingQuery||requestedFolder!=null&&requestedFolder!=state.folder){
             pageState=null;saved["listIndex"]=0;saved["listOffset"]=0;saved["readerOffset"]=0;rememberMail(null);clearThreadKeys()
             if(requestedFolder!=null)saved["folder"]=requestedFolder
-            state=state.copy(query=query,folder=requestedFolder ?: state.folder,rows=emptyList(),selected=null,body=null,total=0,hasMore=false,pageOffline=!online,cached=!online,thread=ThreadNav())
+            state=state.copy(query=query,activeCriteria=if(criteria.isEmpty())null else criteria,folder=requestedFolder ?: state.folder,rows=emptyList(),selected=null,body=null,total=0,hasMore=false,searchCandidates=0,searchScanned=0,pageOffline=!online,cached=!online,thread=ThreadNav(),selectedRefs=emptySet())
         }
-        state=state.copy(busy=true,error=null,flagNotice=null,pageExpired=state.pageExpired||state.hasMore&&!state.pageOffline)
+        state=state.copy(busy=true,error=null,searchError=null,flagNotice=null,pageExpired=state.pageExpired||state.hasMore&&!state.pageOffline)
         worker.execute {
             try {
                 check(gate.current(ticket))
                 val login=CredentialVault(context).load()
                 if(login==null){publish(ticket){resetNavigation();state=InboxState(error="Выберите «Ещё → Аккаунты и SMTP», чтобы войти в ящик.")};return@execute}
                 val owner=NoticeCenter.scope(login)
-                if(requestedFolder!=null||requestedQuery!=null)check(owner==ownerHint)
+                if(requestedFolder!=null||requestedQuery!=null||requestedCriteria!=null)check(owner==ownerHint)
                 val target=if(requestedFolder!=null)NativeFolders.canonical(requestedFolder) else NativeFolders.restore(owner,ownerHint,folderHint,readerHint)
                 val offlineAllowed=offlineEnabled(login)
-                val page=if(online)firstOnline(ticket,owner,target,query) else if(offlineAllowed) OfflineMailStore(context,login).page(target,0,"",query) else null
-                val parsedPage=page?.let { NativeMailPage.first(it,target) }
+                val parsedPage=if(online)firstOnline(ticket,owner,target,criteria) else if(offlineAllowed)firstOffline(ticket,login,target,criteria) else null
                 val rows=parsedPage?.messages
                 check(currentOwner()==owner)
                 publish(ticket) {
@@ -314,7 +411,7 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
                     val foldersOnline=state.owner==owner&&state.foldersOnline
                     if(saved.get<String>("owner")!=owner)resetNavigation()
                     if(online) {
-                        if(query.isEmpty())seenFlags.clearFolder(owner,target)
+                        if(criteria.isEmpty())seenFlags.clearFolder(owner,target)
                         for(index in 0 until (rows?.length() ?: 0)) {
                             val header=rows!!.getJSONObject(index)
                             if(header.opt("seen") is Boolean)seenFlags.remember(owner,target,header.getString("validity"),header.getString("uid"),header.getBoolean("seen"))
@@ -323,49 +420,110 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
                     val messages=(0 until (rows?.length() ?: 0)).mapNotNull { parseMail(rows!!.getJSONObject(it),owner=owner,folder=target) }
                     saved["owner"]=owner
                     saved["folder"]=target
-                    saved["listFiltered"]=query.isNotEmpty()||state.filter!="all"
+                    saved["listFiltered"]=!criteria.isEmpty()||state.filter!="all"
                     if(online){rememberMail(null);saved["readerOffset"]=0}
-                    val nextScope=ThreadScope(owner,target,query,state.filter)
+                    val nextScope=ThreadScope(owner,target,criteria.key(),state.filter)
                     val keptThread=if(state.thread.anchor!=null&&state.thread.scope==nextScope)state.thread else ThreadNav()
                     val effectiveThread=if(keptThread.anchor!=null)keptThread
                         else restoredThreadAnchor(owner,target)?.let {ThreadNav(scope=nextScope,anchor=it)} ?: ThreadNav()
                     if(effectiveThread.anchor==null)clearThreadKeys()
                     pageState=parsedPage
-                    state=InboxState(account=login.user,owner=owner,folder=target,rows=messages,cached=!online,pageOffline=!online,hasMore=parsedPage?.more ?: false,total=parsedPage?.total ?: 0,
-                        query=query,searchText=state.searchText,searchOpen=state.searchOpen,filter=state.filter,folders=knownFolders,foldersOnline=foldersOnline,threadsEnabled=state.threadsEnabled,thread=effectiveThread,error=if(!online&&page==null)if(!offlineAllowed)"Офлайн-доступ отключён в настройках. Нажмите «Обновить» для загрузки с сервера." else "Эта папка не сохранена на телефоне. Нажмите «Обновить» при подключении." else null)
+                    val scanned=if(criteria.isAdvanced)parsedPage?.next ?: 0 else 0
+                    val candidates=if(criteria.isAdvanced)parsedPage?.total ?: 0 else 0
+                    val scopeName=if(!criteria.isEmpty())(if(online)"server" else "offline") else ""
+                    state=state.copy(
+                        account=login.user,owner=owner,folder=target,rows=messages,
+                        selected=null,body=null,busy=false,cached=!online,pageOffline=!online,pageExpired=false,
+                        hasMore=parsedPage?.more ?: false,total=parsedPage?.total ?: 0,
+                        query=query,activeCriteria=if(criteria.isEmpty())null else criteria,
+                        searchError=null,searchCandidates=candidates,searchScanned=scanned,searchScope=scopeName,
+                        folders=knownFolders,foldersOnline=foldersOnline,thread=effectiveThread,selectedRefs=emptySet(),
+                        error=if(!online&&parsedPage==null)if(!offlineAllowed)"Офлайн-доступ отключён в настройках. Нажмите «Обновить» для загрузки с сервера." else "Эта папка не сохранена на телефоне. Нажмите «Обновить» при подключении." else null
+                    )
+                    if(online)prefetchBodies(owner,target,messages)
                     if(restoring!=null) {
                         if(effectiveThread.anchor!=null)state=state.copy(thread=ThreadNavigation.openMember(effectiveThread))
                         val selected=messages.find { it.ref==restoring } ?: NativeMail(restoring,"","Письмо","","",false)
                         openMail(selected,cachedOnly=true,keepPosition=true)
                     }
                 }
-            } catch (_: Exception) { publish(ticket){closePager();state=state.copy(busy=false,error="Не удалось загрузить список. Проверьте подключение и повторите обновление.")} }
+            } catch (_: Exception) { publish(ticket){closePager();state=state.copy(busy=false,searchError=if(!criteria.isEmpty())"Не удалось выполнить поиск. Проверьте подключение и повторите попытку." else null,error="Не удалось загрузить список. Проверьте подключение и повторите обновление.")} }
+        }
+    }
+    private fun prefetchBodies(owner: String,folder: String,messages: List<NativeMail>){
+        val targets=messages.take(5)
+        if(targets.isEmpty())return
+        val ticket=prefetchGate.next()
+        prefetchWorker.execute {
+            val reader=MailReader()
+            prefetchGate.attach(ticket,reader)
+            try {
+                check(foreground&&!closed&&!AppLock.locked(context)&&prefetchGate.current(ticket))
+                val login=login(owner)
+                if(!offlineEnabled(login))return@execute
+                val store=OfflineMailStore(context,login)
+                val missing=targets.filter { mail ->
+                    runCatching { store.body(folder,mail.ref.uid,mail.ref.validity)==null }.getOrDefault(false)
+                }
+                if(missing.isEmpty())return@execute
+                check(foreground&&!closed&&!AppLock.locked(context)&&prefetchGate.current(ticket)&&currentOwner()==owner)
+                reader.connect(login.host,login.port,login.user,login.password)
+                for(mail in missing){
+                    check(foreground&&!closed&&!AppLock.locked(context)&&prefetchGate.current(ticket)&&currentOwner()==owner)
+                    val rev=runCatching { store.seenRevision(folder,mail.ref.uid,mail.ref.validity) }.getOrDefault(0L)
+                    val raw=runCatching { reader.cachedBody(folder,mail.ref.uid,mail.ref.validity) }.getOrNull() ?: continue
+                    check(foreground&&!closed&&!AppLock.locked(context)&&prefetchGate.current(ticket)&&currentOwner()==owner)
+                    runCatching { store.savePrefetchedBody(folder,mail.ref.uid,mail.ref.validity,raw,rev){foreground&&!closed&&!AppLock.locked(context)&&prefetchGate.current(ticket)&&currentOwner()==owner} }
+                }
+            }catch(_: Exception){}
+            finally {prefetchGate.detach(ticket,reader);reader.close()}
         }
     }
     fun loadMore() {
         val snapshot=state;val cursor=pageState ?: return
         if(!foreground||AppLock.locked(context)||snapshot.busy||snapshot.selected!=null||!snapshot.hasMore||snapshot.pageExpired)return
+        val criteria=snapshot.activeCriteria ?: NativeMailSearch.Criteria.simple(snapshot.query)
         val ticket=gate.next();state=state.copy(busy=true,error=null)
         worker.execute {
             try {
                 check(cursor.folder==snapshot.folder)
                 val login=login(snapshot.owner);check(gate.current(ticket))
-                val value=if(snapshot.pageOffline) {check(offlineEnabled(login));OfflineMailStore(context,login).page(cursor.folder,cursor.next,cursor.snapshot,snapshot.query) ?: error("Cached snapshot changed")}
-                else {
+                val beforeCount=cursor.messages.length()
+                var merged=cursor
+                var hops=0
+                if(snapshot.pageOffline) {
+                    check(offlineEnabled(login))
+                    val store=OfflineMailStore(context,login)
+                    do {
+                        check(gate.current(ticket))
+                        val raw=store.page(merged.folder,merged.next,merged.snapshot,criteria.query) ?: error("Cached snapshot changed")
+                        val filtered=if(criteria.isAdvanced)NativeMailSearch.filterOffline(raw,criteria) else raw
+                        merged=merged.append(filtered)
+                        hops++
+                    } while(criteria.isAdvanced&&NativeMailSearch.shouldContinueEmptyPage(merged,beforeCount,hops))
+                } else {
                     val connection=pager ?: error("Paging connection expired")
-                    check(NativeMailSearch.sameCursor(connection.owner,connection.folder,connection.query,snapshot.owner,cursor.folder,snapshot.query))
+                    check(NativeMailSearch.sameCursor(connection.owner,connection.folder,connection.criteria,cursor.validity,cursor.snapshot,snapshot.owner,cursor.folder,criteria,cursor.validity,cursor.snapshot))
                     gate.attach(ticket,connection.reader)
-                    try {check(gate.current(ticket));connection.reader.page(cursor.folder,cursor.next,cursor.snapshot,snapshot.query)}
-                    finally {gate.detach(ticket,connection.reader)}
+                    try {
+                        do {
+                            check(gate.current(ticket))
+                            val raw=if(criteria.isAdvanced)connection.reader.smartPage(merged.folder,merged.next,merged.snapshot,criteria.toFilters())
+                                else connection.reader.page(merged.folder,merged.next,merged.snapshot,criteria.query)
+                            merged=merged.append(raw)
+                            hops++
+                        } while(criteria.isAdvanced&&NativeMailSearch.shouldContinueEmptyPage(merged,beforeCount,hops))
+                    } finally {gate.detach(ticket,connection.reader)}
                 }
-                val merged=cursor.append(value)
                 check(currentOwner()==snapshot.owner)
                 val rows=(0 until merged.messages.length()).mapNotNull { parseMail(merged.messages.getJSONObject(it),owner=snapshot.owner,folder=snapshot.folder) }
-                publish(ticket){pageState=merged;state=state.copy(rows=rows,busy=false,hasMore=merged.more,total=merged.total)}
+                val scanned=if(criteria.isAdvanced)merged.next else 0
+                val candidates=if(criteria.isAdvanced)merged.total else 0
+                publish(ticket){pageState=merged;state=state.copy(rows=rows,busy=false,hasMore=merged.more,total=merged.total,searchScanned=scanned,searchCandidates=candidates)}
             } catch (_: Exception) {publish(ticket){closePager();state=state.copy(busy=mutating,moveOpen=false,pageExpired=true,error="Не удалось продолжить список. Загруженные письма сохранены на экране. Обновите список перед следующей страницей.")}}
         }
     }
-    private fun resetNavigation(){noticeNeedsList=false;moved.clear();linkedOrigin=null;linkedOffset=0;saved["listFiltered"]=false;folderGate.next();seenFlags.clear();pageState=null; saved["owner"]=null;saved["folder"]=null;saved["listIndex"]=0;saved["listOffset"]=0;saved["readerOffset"]=0;saved["threadRoute"]=null;saved["threadOwner"]=null;saved["threadFolder"]=null;rememberMail(null) }
+    private fun resetNavigation(){noticeNeedsList=false;moved.clear();linkedOrigin=null;linkedOffset=0;saved["listFiltered"]=false;folderGate.next();prefetchGate.next();seenFlags.clear();pageState=null; saved["owner"]=null;saved["folder"]=null;saved["listIndex"]=0;saved["listOffset"]=0;saved["readerOffset"]=0;saved["threadRoute"]=null;saved["threadOwner"]=null;saved["threadFolder"]=null;rememberMail(null) }
     fun openMail(mail: NativeMail,cachedOnly: Boolean=false,keepPosition: Boolean=false,forceOnline: Boolean=false) {
         val owner=state.owner;if(owner.isEmpty()||state.busy)return
         if(mail.ref.folder!=state.folder)return
@@ -380,6 +538,9 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
                 check(gate.current(ticket));val login=login(owner);val ref=mail.ref
                 val cached=if(forceOnline||!offlineEnabled(login))null else runCatching { OfflineMailStore(context,login).body(ref.folder,ref.uid,ref.validity) }.getOrNull()
                 val value=cached ?: if(cachedOnly) null else fetchOnline(ticket,owner){it.body(ref.folder,ref.uid,ref.validity)}
+                if(cached==null&&value!=null&&offlineEnabled(login)){
+                    runCatching { OfflineMailStore(context,login).saveBody(ref.folder,ref.uid,ref.validity,value) }
+                }
                 check(currentOwner()==owner)
                 publish(ticket){
                     val header=value?.optJSONObject("message")
@@ -450,12 +611,16 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
         val ticket=gate.next();discardFile();state=state.copy(busy=true,error=null,flagNotice=null)
         worker.execute {
             try {
+                val account=login(owner)
                 val response=fetchOnline(ticket,owner) { reader ->
                     check(foreground&&!AppLock.locked(context)&&gate.current(ticket))
                     login(owner) // Recheck the active mailbox immediately before the explicit write.
                     reader.seen(ref.folder,ref.uid,ref.validity,requested)
                 }
                 val confirmed=NativeSeenFlags.confirmed(response,requested)
+                if(offlineEnabled(account)){
+                    runCatching { OfflineMailStore(context,account).seen(ref.folder,ref.uid,ref.validity,confirmed) }
+                }
                 check(currentOwner()==owner)
                 publish(ticket){
                     if(state.owner==owner&&state.selected?.ref==ref){
@@ -467,6 +632,95 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
                     }
                 }
             } catch(_: Exception){publish(ticket){state=state.copy(busy=false,error="Не удалось подтвердить статус на сервере. Изменение могло примениться; нажмите «Обновить письмо» для проверки.")}}
+        }
+    }
+    fun batchMarkSeen(requested: Boolean,visibleRefs: Set<MailRef>?=null){
+        if(!foreground||AppLock.locked(context)||state.busy||mutating||state.selected!=null)return
+        val targets=state.activeSelection(visibleRefs).toList()
+        if(targets.isEmpty()||state.owner.isEmpty())return
+        val owner=state.owner;val ticket=gate.next();discardFile();mutating=true
+        state=state.copy(busy=true,error=null,flagNotice=null)
+        worker.execute {
+            val confirmedRefs=LinkedHashMap<MailRef,Boolean>()
+            var failedCount=0
+            val reader=MailReader()
+            gate.attach(ticket,reader)
+            try {
+                val account=login(owner)
+                val offlineAllowed=offlineEnabled(account)
+                val store=if(offlineAllowed)OfflineMailStore(context,account) else null
+                check(foreground&&!AppLock.locked(context)&&gate.current(ticket)&&currentOwner()==owner)
+                reader.connect(account.host,account.port,account.user,account.password)
+                for(ref in targets){
+                    if(!foreground||AppLock.locked(context)||!gate.current(ticket)||currentOwner()!=owner){
+                        failedCount += (targets.size - confirmedRefs.size - failedCount).coerceAtLeast(0)
+                        break
+                    }
+                    try {
+                        login(owner)
+                        val response=reader.seen(ref.folder,ref.uid,ref.validity,requested)
+                        val confirmed=NativeSeenFlags.confirmed(response,requested)
+                        confirmedRefs[ref]=confirmed
+                        if(store!=null)runCatching { store.seen(ref.folder,ref.uid,ref.validity,confirmed) }
+                    }catch(_: Exception){
+                        failedCount++
+                    }
+                }
+            }catch(_: Exception){
+                failedCount=(targets.size-confirmedRefs.size).coerceAtLeast(1)
+            }finally {
+                gate.detach(ticket,reader);reader.close()
+            }
+            main.post {
+                mutating=false
+                if(!closed&&state.owner==owner){
+                    for((ref,confirmed) in confirmedRefs){
+                        seenFlags.remember(owner,ref.folder,ref.validity,ref.uid,confirmed)
+                    }
+                    val summary=NativeSeenFlags.batchSummary(targets.size,confirmedRefs.size,failedCount,requested)
+                    val remaining=if(failedCount==0)emptySet() else state.selectedRefs.filter { it !in confirmedRefs.keys }.toSet()
+                    state=state.copy(
+                        busy=false,
+                        rows=state.rows.map { row ->
+                            val confirmed=confirmedRefs[row.ref]
+                            if(confirmed!=null)row.copy(unread=!confirmed) else row
+                        },
+                        selectedRefs=remaining,
+                        flagNotice=if(confirmedRefs.isNotEmpty())summary else null,
+                        error=if(confirmedRefs.isEmpty())summary else null
+                    )
+                }
+            }
+        }
+    }
+    fun toggleSeenFromList(mail: NativeMail){
+        if(!foreground||AppLock.locked(context)||state.busy||mutating||state.selected!=null)return
+        val owner=state.owner;val ref=mail.ref;val requested=mail.unread
+        if(owner.isEmpty()||ref.folder!=state.folder)return
+        val ticket=gate.next();discardFile();state=state.copy(busy=true,error=null,flagNotice=null)
+        worker.execute {
+            try {
+                val account=login(owner)
+                val response=fetchOnline(ticket,owner){reader->
+                    check(foreground&&!AppLock.locked(context)&&gate.current(ticket))
+                    login(owner)
+                    reader.seen(ref.folder,ref.uid,ref.validity,requested)
+                }
+                val confirmed=NativeSeenFlags.confirmed(response,requested)
+                if(offlineEnabled(account)){
+                    runCatching { OfflineMailStore(context,account).seen(ref.folder,ref.uid,ref.validity,confirmed) }
+                }
+                check(currentOwner()==owner)
+                publish(ticket){
+                    if(state.owner==owner){
+                        seenFlags.remember(owner,ref.folder,ref.validity,ref.uid,confirmed)
+                        state=state.copy(busy=false,rows=state.rows.map {if(it.ref==ref)it.copy(unread=!confirmed) else it},
+                            flagNotice=if(confirmed)"Помечено прочитанным на сервере." else "Помечено непрочитанным на сервере.")
+                    }
+                }
+            }catch(_: Exception){
+                publish(ticket){state=state.copy(busy=false,error="Не удалось подтвердить статус на сервере. Обновите список для проверки.")}
+            }
         }
     }
     fun fileAction(owner: String,ref: MailRef,file: NativeFile,share: Boolean=false) {
@@ -501,7 +755,7 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
     }
     fun fileError(){state=state.copy(error="Не удалось открыть файл. Возможно, нужен просмотрщик этого формата.")}
     private fun discardFile(){state.openedFile?.let { File(it.value.getString("file")).delete() };state=state.copy(openedFile=null)}
-    override fun onCleared(){closed=true;foreground=false;gate.next();folderGate.next();closePager();discardFile();worker.shutdown();closer.shutdown()}
+    override fun onCleared(){closed=true;foreground=false;gate.next();folderGate.next();prefetchGate.next();closePager();discardFile();worker.shutdown();prefetchWorker.shutdown();closer.shutdown()}
     private fun parseMail(value: JSONObject,ref: MailRef?=null,owner: String=state.owner,folder: String=state.folder): NativeMail? {
         val key=ref ?: MailRef(value.optString("folder",folder),value.optString("uid"),value.optString("validity"))
         if(!key.uid.matches(Regex("[1-9][0-9]{0,19}"))||!key.validity.matches(Regex("[1-9][0-9]{0,19}")))return null
@@ -515,6 +769,9 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
     }
     private fun body(value: JSONObject): MailBody {
         val files=value.optJSONArray("attachments")
-        return MailBody(value.optString("text"),(0 until (files?.length() ?: 0)).map { files!!.getJSONObject(it).let { f -> NativeFile(f.optString("name","Вложение"),f.optString("path")) } },value.optJSONObject("message") ?: JSONObject())
+        val msg=value.optJSONObject("message")?.let { JSONObject(it.toString()) } ?: JSONObject()
+        val links=value.optJSONArray("links")
+        if(links!=null&&!msg.has("links"))msg.put("links",links)
+        return MailBody(value.optString("text"),(0 until (files?.length() ?: 0)).map { files!!.getJSONObject(it).let { f -> NativeFile(f.optString("name","Вложение"),f.optString("path")) } },msg)
     }
 }

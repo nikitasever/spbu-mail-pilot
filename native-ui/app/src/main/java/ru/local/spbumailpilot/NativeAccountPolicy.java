@@ -31,6 +31,11 @@ final class NativeAccountPolicy {
         }catch(Exception invalid){throw new IllegalArgumentException("Введите полный адрес отправителя без имени.");}
         return new SavedAccounts.Login(old.host,old.port,old.user,old.password,host(host),port(port),ssl,address);
     }
+    static SavedAccounts.Login password(SavedAccounts.Login old,String newPassword) {
+        if(old==null||newPassword==null||newPassword.isEmpty()||newPassword.length()>4096||newPassword.indexOf('\0')>=0)
+            throw new IllegalArgumentException("Введите новый пароль.");
+        return new SavedAccounts.Login(old.host,old.port,old.user,newPassword,old.smtpHost,old.smtpPort,old.smtpSsl,old.from);
+    }
     static boolean same(SavedAccounts.Login a,SavedAccounts.Login b) {
         return a==b||a!=null&&b!=null&&a.identity().equals(b.identity())&&a.password.equals(b.password)&&a.smtpHost.equals(b.smtpHost)&&a.smtpPort==b.smtpPort&&a.smtpSsl==b.smtpSsl&&a.from.equals(b.from);
     }

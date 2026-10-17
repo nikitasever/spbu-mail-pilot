@@ -41,6 +41,12 @@ internal class NativeWorkspaceModel(app: Application):AndroidViewModel(app) {
         state=WorkspaceState(open=true,owner=owner,kind="tasks",taskMail=task)
         load()
     }
+    fun openCalendarTask(owner: String,event: JSONObject){
+        if(!foreground||closed||AppLock.locked(context)||owner.isBlank()||state.open)return
+        val task=try{NativeMailLinks.taskFromEvent(event,UUID.randomUUID().toString())}catch(_: Exception){return}
+        state=WorkspaceState(open=true,owner=owner,kind="tasks",taskMail=task)
+        load()
+    }
     fun openMailEvent(owner: String,mail: JSONObject){
         if(!foreground||closed||AppLock.locked(context)||owner.isBlank()||state.open||NativeMailLinks.target(owner,mail)==null)return
         state=WorkspaceState(open=true,owner=owner,kind="events",eventMail=JSONObject(mail.toString()))

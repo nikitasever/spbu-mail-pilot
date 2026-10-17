@@ -15,16 +15,57 @@ import javax.mail.internet.InternetAddress
 import java.util.Locale
 
 internal data class ReaderAddresses(val values: List<String>, val available: Boolean, val incomplete: Boolean)
-internal data class ReaderDetails(val to: ReaderAddresses, val cc: ReaderAddresses, val reply: ReaderAddresses, val fallback: ReaderAddresses) {
+internal data class ReaderDetails(
+    val to: ReaderAddresses,
+    val cc: ReaderAddresses,
+    val reply: ReaderAddresses,
+    val fallback: ReaderAddresses,
+    val uid: String = "",
+    val rawFrom: String = "",
+    val references: String = "",
+    val rawHeaders: String = "",
+    val incomplete: Boolean = listOf(to, cc, reply, fallback).any { it.incomplete }
+) {
     companion object {
-        fun from(message: JSONObject): ReaderDetails {
+        fun from(message: JSONObject, defaultUid: String = ""): ReaderDetails {
             val to=addresses(message.opt("toRecipients"))
             val cc=addresses(message.opt("ccRecipients"))
             var reply=addresses(message.opt("replyToRecipients"))
             if(!reply.available) reply=addresses((message.opt("replyTo") as? String)?.let {JSONArray().put(it)})
             // Old caches combine To/Cc/Bcc. Their roles cannot be reconstructed honestly.
             val fallback=if(!to.available&&!cc.available) addresses(message.opt("recipients"),true) else addresses(null)
-            return ReaderDetails(to,cc,reply,fallback)
+            val uid=cleanHeader(message.optString("uid",defaultUid),128)
+            val rawFrom=cleanHeader(message.optString("rawFrom"),2000)
+            val references=cleanHeader(message.optString("references"),4000)
+            val rawHeaders=cleanRawHeaders(message.optString("rawHeaders"))
+            val incomplete=listOf(to,cc,reply,fallback).any {it.incomplete}
+            return ReaderDetails(to,cc,reply,fallback,uid,rawFrom,references,rawHeaders,incomplete)
+        }
+        private fun cleanHeader(raw: String?, maxLen: Int): String {
+            if(raw.isNullOrEmpty())return ""
+            val sb=StringBuilder(minOf(raw.length,maxLen))
+            for(c in raw){
+                if(sb.length>=maxLen)break
+                if(!Character.isISOControl(c)&&Character.getType(c)!=Character.FORMAT.toInt())sb.append(c)
+                else if((c=='\r'||c=='\n'||c=='\t')&&(sb.isEmpty()||sb.last()!=' '))sb.append(' ')
+            }
+            return sb.toString().trim()
+        }
+        private fun cleanRawHeaders(raw: String?): String {
+            if(raw.isNullOrEmpty())return ""
+            val sb=StringBuilder(minOf(raw.length,16500))
+            var i=0
+            while(i<raw.length&&sb.length<16500){
+                val c=raw[i]
+                if(c=='\r'){
+                    if(i+1<raw.length&&raw[i+1]=='\n')i++
+                    sb.append('\n')
+                }else if(c=='\n'||c=='\t'||(!Character.isISOControl(c)&&Character.getType(c)!=Character.FORMAT.toInt())){
+                    sb.append(c)
+                }
+                i++
+            }
+            return sb.toString().trim()
         }
         private fun addresses(raw: Any?, objects: Boolean=false): ReaderAddresses {
             if(raw !is JSONArray)return ReaderAddresses(emptyList(),false,raw!=null&&raw!==JSONObject.NULL)
@@ -41,10 +82,12 @@ internal data class ReaderDetails(val to: ReaderAddresses, val cc: ReaderAddress
         }
     }
 }
+internal typealias NativeReaderDetailsData = ReaderDetails
 
 @Composable internal fun NativeReaderHeader(owner: String,mail: NativeMail,message: JSONObject?) {
     var expanded by rememberSaveable(owner,mail.ref.folder,mail.ref.validity,mail.ref.uid){mutableStateOf(false)}
-    val details=remember(message){message?.let(ReaderDetails::from)}
+    var rawHeadersExpanded by rememberSaveable(owner,mail.ref.folder,mail.ref.validity,mail.ref.uid){mutableStateOf(false)}
+    val details=remember(message,mail.ref.uid){message?.let {ReaderDetails.from(it,mail.ref.uid)}}
     SelectionContainer {
         Column(Modifier.fillMaxWidth()) {
             Text(mail.sender,Modifier.padding(top=12.dp),fontWeight=FontWeight.SemiBold)
@@ -62,16 +105,28 @@ internal data class ReaderDetails(val to: ReaderAddresses, val cc: ReaderAddress
             @Composable fun addresses(label: String,value: ReaderAddresses){
                 if(value.available)Text("$label: ${value.values.joinToString(", ").ifBlank {"не указаны"}}",fontSize=13.sp)
             }
+            val shownFrom=listOf(mail.sender.trim(),mail.email.trim()).filter {it.isNotEmpty()}.joinToString(" ")
+            if(details.rawFrom.isNotBlank()&&!details.rawFrom.equals(mail.email.trim(),true)&&!details.rawFrom.equals(mail.sender.trim(),true)&&!details.rawFrom.equals(shownFrom,true))
+                Text("От (исходный заголовок): ${details.rawFrom}",fontSize=12.sp)
             addresses("Кому",details.to)
             if(details.cc.values.isNotEmpty())addresses("Копия",details.cc)
             if(details.reply.values.any {!it.equals(mail.email,true)})addresses("Ответить на",details.reply)
             addresses("Получатели (без разделения)",details.fallback)
             if(!details.to.available||!details.cc.available)
                 Text("В этой копии письма нет полного разделения адресатов на «Кому» и «Копия».",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            if(listOf(details.to,details.cc,details.reply,details.fallback).any {it.incomplete})
-                Text("Часть данных не показана: адреса не распознаны или список превышает 100 записей.",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            if(details.incomplete)
+                Text("Часть данных не показана: адреса не распознаны или список превышает 100 записей. Список адресов в заголовке неполный или содержит неразобранную запись.",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            val uid=details.uid.ifBlank {mail.ref.uid}
+            if(uid.isNotBlank())Text("UID: $uid",fontSize=12.sp)
             if(mail.messageId.isNotBlank())Text("Message-ID: ${mail.messageId}",fontSize=12.sp)
             if(mail.inReplyTo.isNotBlank())Text("In-Reply-To: ${mail.inReplyTo}",fontSize=12.sp)
+            if(details.references.isNotBlank())Text("References: ${details.references}",fontSize=12.sp)
+            if(details.rawHeaders.isNotBlank()){
+                TextButton(onClick={rawHeadersExpanded=!rawHeadersExpanded},modifier=Modifier.heightIn(min=44.dp)) {
+                    Text(if(rawHeadersExpanded)"Скрыть исходные заголовки письма" else "Исходные заголовки письма")
+                }
+                if(rawHeadersExpanded)Text(details.rawHeaders,fontSize=11.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }

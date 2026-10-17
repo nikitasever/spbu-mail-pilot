@@ -17,6 +17,16 @@ final class NativeSeenFlags {
             throw new IllegalArgumentException("Read status not confirmed");
         return requested;
     }
+    static String batchSummary(int total,int confirmed,int failed,boolean requested){
+        if(total<=0||confirmed<0||failed<0||confirmed+failed>total)throw new IllegalArgumentException("Invalid batch counts");
+        int unstarted=total-confirmed-failed;
+        if(confirmed==total){
+            return requested
+                ? "Помечено прочитанными на сервере: "+confirmed+"."
+                : "Помечено непрочитанными на сервере: "+confirmed+".";
+        }
+        return "Подтверждено: "+confirmed+" из "+total+". Ошибок: "+failed+", не начато: "+unstarted+". Обновите папку для проверки.";
+    }
     synchronized void remember(String owner,String folder,String validity,String uid,boolean confirmed){values.put(key(owner,folder,validity,uid),confirmed);}
     synchronized boolean seen(String owner,String folder,String validity,String uid,boolean fallback){return values.getOrDefault(key(owner,folder,validity,uid),fallback);}
     synchronized void clearOwner(String owner){values.keySet().removeIf(k->k.get(0).equals(owner));}

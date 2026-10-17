@@ -12,9 +12,9 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-@Composable internal fun NativeReaderActions(model: NativeInboxModel,mail: NativeMail,text: String) {
+@Composable internal fun NativeReaderActions(model: NativeInboxModel,mail: NativeMail,text: String,extraLinks: org.json.JSONArray?=model.state.body?.message?.optJSONArray("links")) {
     val owner=model.state.owner;val context=LocalContext.current;val clipboard=LocalClipboardManager.current
-    val targets=remember(text){NativeReaderTargets.from(text)}
+    val targets=remember(text,extraLinks?.toString()){NativeReaderTargets.from(text,extraLinks)}
     var expanded by remember(owner,mail.ref){mutableStateOf(false)}
     var status by remember(owner,mail.ref){mutableStateOf<String?>(null)}
     fun perform(success: String,action: ()->Unit){

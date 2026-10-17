@@ -20,6 +20,19 @@ public final class NativeAccountPolicyTest {
         for(String from:new String[]{"Name <a@example.org>","a@example.org,b@example.org","a@example.org\r\nBcc: b@example.org","missing-domain","a@example.org (comment)"})reject(()->NativeAccountPolicy.smtp(a,"smtp.example.org","465",true,from));
         SavedAccounts book=new SavedAccounts();book.save(a);book.save(b);check(book.list().size()==1&&book.active()==b);
         book.deactivate();check(book.list().size()==1&&book.active()==null);
+        SavedAccounts.Login activeA=NativeAccountPolicy.login("mail.spbu.ru","993","activeA","pass-a");
+        SavedAccounts.Login inactiveB=NativeAccountPolicy.smtp(NativeAccountPolicy.login("mail.spbu.ru","993","inactiveB","pass-b-old"),"smtp.example.org","587",false,"b@example.org");
+        SavedAccounts multi=new SavedAccounts();multi.save(inactiveB);multi.save(activeA);
+        check(multi.active()==activeA&&multi.activeId().equals(activeA.identity()));
+        SavedAccounts.Login targetB=NativeAccountPolicy.password(inactiveB,"pass-b-new");
+        check(targetB.password.equals("pass-b-new")&&targetB.smtpHost.equals("smtp.example.org")&&targetB.smtpPort==587&&!targetB.smtpSsl&&targetB.from.equals("b@example.org"));
+        multi.updatePassword(inactiveB,targetB.password);
+        check(multi.active()==activeA&&multi.activeId().equals(activeA.identity()));
+        check(NativeAccountPolicy.same(multi.get(inactiveB.identity()),targetB));
+        reject(()->multi.updatePassword(inactiveB,"another-pass"));
+        reject(()->NativeAccountPolicy.password(inactiveB,""));
+        reject(()->NativeAccountPolicy.password(inactiveB,"bad\0pass"));
+        reject(()->NativeAccountPolicy.password(null,"valid-pass"));
         System.out.println("NativeAccountPolicyTest PASS");
     }
 }

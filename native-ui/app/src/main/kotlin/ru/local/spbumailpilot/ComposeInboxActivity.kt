@@ -127,6 +127,13 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             LaunchedEffect(workspace.state.open,workspace.state.eventRoute) {
                 workspace.takeEventReturn()?.let {(day,notice)->if(workspace.state.owner==calendar.state.owner)calendar.returnFromEditor(day,notice)}
             }
+            LaunchedEffect(calendar.state.open,calendar.state.returnRoute) {
+                if(!calendar.state.open){
+                    when(calendar.takeReturnRoute()){
+                        "workspace"->if(inbox.state.owner.isNotBlank())workspace.open(inbox.state.owner)
+                    }
+                }
+            }
             LaunchedEffect(workspace.state.open,workspace.state.taskMail,workspace.state.eventMail) {
                 if(!workspace.state.open&&(workspace.state.taskMail!=null||workspace.state.eventMail!=null)){workspace.clearMailTaskReturn();holder.removeState("mail-task")}
             }
@@ -192,11 +199,15 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             }
             else if(categories.state.open) holder.SaveableStateProvider("categories") {NativeCategoriesScreen(categories)}
             else if(workspace.state.open) holder.SaveableStateProvider(if(workspace.state.taskMail!=null||workspace.state.eventMail!=null)"mail-task" else "workspace") {
-                NativeWorkspaceScreen(workspace,openCalendarDay={day->val owner=workspace.state.owner;workspace.leave(true);calendar.openDay(owner,day)}){id->workspace.sourceMail(id)?.let {if(!inbox.openLinked(workspace.state.owner,it))workspace.linkError()} ?: workspace.linkError()}
+                NativeWorkspaceScreen(workspace,openCalendarDay={day->val owner=workspace.state.owner;workspace.leave(true);calendar.openDay(owner,day,"workspace")}){id->workspace.sourceMail(id)?.let {if(!inbox.openLinked(workspace.state.owner,it))workspace.linkError()} ?: workspace.linkError()}
             }
             else if(calendar.state.open) holder.SaveableStateProvider("calendar") {
                 NativeCalendarScreen(calendar,fullClient,{day,id->workspace.openEvent(calendar.state.owner,day,id)},{id->
                     calendar.sourceMail(id)?.let {if(!inbox.openLinked(calendar.state.owner,it))calendar.linkError()} ?: calendar.linkError()
+                },{event->
+                    val owner=calendar.state.owner
+                    calendar.close()
+                    workspace.openCalendarTask(owner,event)
                 })
             }
             else if(contacts.state.open) NativeContactsScreen(contacts,{email->
@@ -205,12 +216,13 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             else holder.SaveableStateProvider("inbox") {
                 key(inbox.state.owner) { NativeInbox(inbox, { reply() }, { reply(true) }, ::forwardText,
                     { if (resumed && !AppLock.locked(this@ComposeInboxActivity)) composer.open(inbox.state.owner) }, fullClient,
-                    composer.state.notice ?: extras.state.notice.takeIf {extras.state.owner==inbox.state.owner},{composer.clearClosedNotice();extras.clearNotice()},{contacts.open(inbox.state.owner)},{calendar.open(inbox.state.owner)},{workspace.open(inbox.state.owner)},{
+                    composer.state.notice ?: extras.state.notice.takeIf {extras.state.owner==inbox.state.owner} ?: calendar.state.actionNotice.takeIf {calendar.state.owner==inbox.state.owner||calendar.state.pickerOwner==inbox.state.owner},{composer.clearClosedNotice();extras.clearNotice();calendar.clearActionNotice()},{contacts.open(inbox.state.owner)},{calendar.open(inbox.state.owner)},{workspace.open(inbox.state.owner)},{
                         val state=inbox.state
                         state.selected?.let {mail->workspace.openMailTask(state.owner,JSONObject().put("account",state.owner)
                             .put("folder",mail.ref.folder).put("uid",mail.ref.uid).put("validity",mail.ref.validity)
                             .put("subject",mail.subject).put("sender",mail.sender).put("date",mail.date))}
                     },{inbox.state.selected?.let {workspace.openMailEvent(inbox.state.owner,mailSource(inbox.state,it))}},
+                        linkMailToEvent={inbox.state.selected?.let {calendar.openMailEventPicker(inbox.state.owner,mailSource(inbox.state,it).put("email",it.email))}},
                         categoryRules=categories.state.rules.takeIf {categories.state.owner==inbox.state.owner} ?: emptyList(),
                         categoryFilter=categories.state.filter.takeIf {categories.state.owner==inbox.state.owner} ?: "",
                         selectCategory=categories::filter,openCategories={categories.open(inbox.state.owner)},
@@ -231,6 +243,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             }
                 }
             }
+            NativeMailEventPickerDialog(calendar)
             NativeMailExtrasDialogs(extras)
             NativeExportDialog(exports)
         } }
@@ -335,10 +348,10 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
         MaterialTheme(colorScheme = scheme, content = content)
     }
 }
-@Composable internal fun NativeInbox(model: NativeInboxModel, reply: () -> Unit, replyAll: () -> Unit, forwardText: () -> Unit, compose: () -> Unit, fullClient: () -> Unit, notice: String?, dismissNotice: () -> Unit, openContacts: ()->Unit = {}, openCalendar: ()->Unit = {}, openWorkspace: ()->Unit = {}, createTask: ()->Unit = {}, createEvent: ()->Unit = {}, categoryRules: List<JSONObject> = emptyList(),categoryFilter: String="",selectCategory: (String)->Unit = {},openCategories: ()->Unit = {},labels: JSONObject=JSONObject(),responses: List<JSONObject> = emptyList(),setLabel: ()->Unit = {},setResponse: ()->Unit = {},openResponses: ()->Unit = {},extrasReady: Boolean=true,snoozed: List<JSONObject> = emptyList(),setSnooze: ()->Unit = {},setFollowup: ()->Unit = {},followups: List<JSONObject> = emptyList(),openWritingSettings: ()->Unit = {},openAccounts: ()->Unit = {},openSettings: ()->Unit = {},digestEnabled:Boolean=false,openDigest: ()->Unit = {},openScheduled: ()->Unit = {},openDrafts: ()->Unit = {},saveFiles: (String,MailRef,List<NativeFile>,Boolean)->Unit = {_,_,_,_->},forwardOriginal:()->Unit = {},openFiles:()->Unit = {}) {
+@Composable internal fun NativeInbox(model: NativeInboxModel, reply: () -> Unit, replyAll: () -> Unit, forwardText: () -> Unit, compose: () -> Unit, fullClient: () -> Unit, notice: String?, dismissNotice: () -> Unit, openContacts: ()->Unit = {}, openCalendar: ()->Unit = {}, openWorkspace: ()->Unit = {}, createTask: ()->Unit = {}, createEvent: ()->Unit = {}, linkMailToEvent: ()->Unit = {}, categoryRules: List<JSONObject> = emptyList(),categoryFilter: String="",selectCategory: (String)->Unit = {},openCategories: ()->Unit = {},labels: JSONObject=JSONObject(),responses: List<JSONObject> = emptyList(),setLabel: ()->Unit = {},setResponse: ()->Unit = {},openResponses: ()->Unit = {},extrasReady: Boolean=true,snoozed: List<JSONObject> = emptyList(),setSnooze: ()->Unit = {},setFollowup: ()->Unit = {},followups: List<JSONObject> = emptyList(),openWritingSettings: ()->Unit = {},openAccounts: ()->Unit = {},openSettings: ()->Unit = {},digestEnabled:Boolean=false,openDigest: ()->Unit = {},openScheduled: ()->Unit = {},openDrafts: ()->Unit = {},saveFiles: (String,MailRef,List<NativeFile>,Boolean)->Unit = {_,_,_,_->},forwardOriginal:()->Unit = {},openFiles:()->Unit = {}) {
     var moreScreens by remember {mutableStateOf(false)}
     val state=model.state
-    val scope=ThreadScope(state.owner,state.folder,state.query,state.filter)
+    val scope=ThreadScope(state.owner,state.folder,state.searchKey,state.filter)
     val categoryMatcher=remember(categoryRules){val array=org.json.JSONArray();categoryRules.forEach {array.put(it)};MailCategories(array)}
     val hiddenRows=remember(snoozed){val array=org.json.JSONArray();snoozed.forEach {array.put(it)};array}
     val snoozeClock by produceState(System.currentTimeMillis(),snoozed) {
@@ -347,13 +360,20 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
     val hiddenKeys=remember(state.owner,hiddenRows,snoozeClock){runCatching {NativeMailExtras.activeKeys(state.owner,hiddenRows,snoozeClock)}.getOrDefault(emptySet())}
     fun category(mail: NativeMail)=categoryMatcher.match(mail.email,mail.subject)
     var readerActions by remember(state.owner,state.selected?.ref) {mutableStateOf(false)}
-    val position = key(state.owner,state.folder,state.query,state.filter) {rememberLazyListState(initialFirstVisibleItemIndex=model.listIndex,initialFirstVisibleItemScrollOffset=model.listOffset)}
+    val position = key(state.owner,state.folder,state.searchKey,state.filter) {rememberLazyListState(initialFirstVisibleItemIndex=model.listIndex,initialFirstVisibleItemScrollOffset=model.listOffset)}
     val threadScroll = key(scope,state.thread.anchor) {rememberLazyListState()}
     var previousCategory by remember(state.owner){mutableStateOf(categoryFilter)}
-    LaunchedEffect(categoryFilter){if(previousCategory!=categoryFilter){previousCategory=categoryFilter;position.scrollToItem(0);model.clearThread()}}
-    LaunchedEffect(position,state.owner,state.folder,state.query,state.filter) {
-        snapshotFlow { position.firstVisibleItemIndex to position.firstVisibleItemScrollOffset }.collect { (index,offset) -> model.listPosition(state.owner,state.folder,state.query,state.filter,index,offset) }
+    LaunchedEffect(categoryFilter){if(previousCategory!=categoryFilter){previousCategory=categoryFilter;position.scrollToItem(0);model.clearThread();model.clearSelection()}}
+    LaunchedEffect(position,state.owner,state.folder,state.searchKey,state.filter) {
+        snapshotFlow { position.firstVisibleItemIndex to position.firstVisibleItemScrollOffset }.collect { (index,offset) -> model.listPosition(state.owner,state.folder,state.searchKey,state.filter,index,offset) }
     }
+    val loadedRows=state.rows.filter {!hiddenKeys.contains(NativeMailEvents.key(mailSource(state,it)))}
+    val eligible: (NativeMail)->Boolean={NativeMailSearch.matches(state.filter,it.unread,it.hasAttachments)&&(categoryFilter.isEmpty()||category(it)?.optString("id")==categoryFilter)}
+    val displayRows=buildDisplayRows(loadedRows,state.owner,state.threadsEnabled,eligible)
+    val visible=loadedRows.filter(eligible)
+    val visibleRefs=remember(displayRows){displayRows.map {when(it){is InboxDisplayRow.Single->it.mail.ref;is InboxDisplayRow.Group->it.members.first().ref}}.toSet()}
+    val activeSelection=state.activeSelection(visibleRefs)
+    BackHandler(state.selected == null && state.thread.anchor == null && activeSelection.isNotEmpty()) { model.clearSelection() }
     BackHandler(state.selected != null || state.thread.anchor != null) { model.backToList() }
     Scaffold(topBar = { TopAppBar(title = {
         if(state.selected==null&&state.thread.anchor==null) TextButton(onClick=model::showFolders,enabled=state.owner.isNotBlank()&&!state.busy,shape=RoundedCornerShape(10.dp),contentPadding=PaddingValues(horizontal=12.dp,vertical=0.dp)) {
@@ -393,6 +413,8 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                     }
                     if(!state.linked)DropdownMenuItem(text={Text("Событие из письма")},enabled=!state.busy,
                         onClick={readerActions=false;createEvent()})
+                    if(!state.linked)DropdownMenuItem(text={Text("Связать с событием")},enabled=!state.busy,
+                        onClick={readerActions=false;linkMailToEvent()})
                     if(!state.linked)DropdownMenuItem(text={Text("Создать задачу")},enabled=!state.busy,
                         onClick={readerActions=false;createTask()})
                     if(!state.linked) {
@@ -439,9 +461,58 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                 Text(it,Modifier.weight(1f),fontSize=13.sp)
                 TextButton(onClick=dismissNotice){Text("Закрыть")}
             } }
-            if (state.cached) Text("Сохранённая почта на этом телефоне", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), fontSize = 12.sp)
+            if (state.cached && state.searchKey.isEmpty()) Text("Сохранённая почта на этом телефоне", Modifier.padding(horizontal = 16.dp, vertical = 8.dp), fontSize = 12.sp)
             if(state.selected==null&&state.thread.anchor==null&&state.owner.isNotBlank()) {
-                if(state.searchOpen) NativeInboxSearch(state,model::searchText,{model.search(false)},{model.search(true)})
+                if(state.searchOpen) NativeInboxSearch(
+                    state,
+                    model::searchText,
+                    model::searchFrom,
+                    model::searchStart,
+                    model::searchEnd,
+                    model::searchAttachments,
+                    model::searchUnread,
+                    model::toggleAdvancedSearch,
+                    model::resetSearchFilters,
+                    model::cancelSearch,
+                    {model.search(false)},
+                    {model.search(true)}
+                )
+                if(state.searchKey.isNotEmpty()) {
+                    val crit=state.activeCriteria
+                    Surface(
+                        modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=4.dp),
+                        shape=RoundedCornerShape(8.dp),
+                        color=if(state.pageOffline) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer.copy(alpha=0.35f)
+                    ) {
+                        Column(Modifier.padding(horizontal=12.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                            Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                                Text(
+                                    if(state.pageOffline) "Результаты на телефоне (сохранённые письма)" else "Результаты на сервере: «${NativeFolders.label(state.folder)}»",
+                                    fontWeight=FontWeight.SemiBold,
+                                    fontSize=13.sp,
+                                    color=if(state.pageOffline) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
+                                    modifier=Modifier.weight(1f)
+                                )
+                                TextButton(onClick={model.clearSearch()},enabled=!state.busy,contentPadding=PaddingValues(horizontal=8.dp,vertical=0.dp)) {
+                                    Text("Сбросить поиск",fontSize=12.sp)
+                                }
+                            }
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                                if(state.query.isNotEmpty()) SuggestionChip(onClick={},label={Text("Текст: «${state.query}»",fontSize=11.sp)})
+                                if(crit!=null&&crit.from.isNotEmpty()) SuggestionChip(onClick={},label={Text("От: ${crit.from}",fontSize=11.sp)})
+                                if(crit!=null&&(crit.start.isNotEmpty()||crit.end.isNotEmpty())) SuggestionChip(onClick={},label={Text("Даты МСК: ${crit.start.ifEmpty {"…"}} — ${crit.end.ifEmpty {"…"}}",fontSize=11.sp)})
+                                if(crit!=null&&crit.attachments) SuggestionChip(onClick={},label={Text("С вложениями",fontSize=11.sp)})
+                                if(crit!=null&&crit.unread) SuggestionChip(onClick={},label={Text("Непрочитанные",fontSize=11.sp)})
+                            }
+                            Text(
+                                if(crit?.isAdvanced==true) "Совпадений в загруженном: ${state.rows.size} · проверено кандидатов: ${state.searchScanned} из ${state.searchCandidates}"
+                                else "Загружено совпадений: ${state.rows.size} из ${state.total}",
+                                fontSize=12.sp,
+                                color=MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=16.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                     listOf("all" to "Все","unread" to "Непрочитанные","attachments" to "С вложениями").forEach {(value,label)->
                         FilterChip(selected=state.filter==value,onClick={model.filter(value)},label={Text(label)})
@@ -453,21 +524,36 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                         onClick={selectCategory(rule.optString("id"))},label={Text(rule.optString("name"),color=categoryColor(rule.optString("color")))})}
                 }
                 if(categoryFilter.isNotEmpty())Text("Категория среди загруженных писем. «Показать ещё» расширяет выборку.",Modifier.padding(horizontal=16.dp,vertical=4.dp),fontSize=12.sp)
-                if(state.query.isNotEmpty())Text("Результаты: «${state.query}»",Modifier.padding(horizontal=16.dp,vertical=4.dp),fontSize=12.sp)
                 if(state.filter!="all")Text("Фильтр по загруженным результатам. «Показать ещё» расширяет выборку.",Modifier.padding(horizontal=16.dp,vertical=4.dp),fontSize=12.sp)
                 Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=4.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                     Text("Группировать в цепочки",Modifier.weight(1f),fontSize=13.sp)
                     Switch(checked=state.threadsEnabled,onCheckedChange={model.toggleThreads()},modifier=Modifier.semantics{contentDescription="Показывать письма сгруппированными в цепочки разговоров"})
                 }
                 Text("Цепочки собираются по загруженным письмам этой папки; счётчики относятся только к ним.",Modifier.padding(horizontal=16.dp,vertical=4.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                if(activeSelection.isNotEmpty()) {
+                    Surface(
+                        modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=4.dp),
+                        shape=RoundedCornerShape(8.dp),
+                        color=MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=6.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                            Text("Выбрано: ${activeSelection.size}",fontWeight=FontWeight.SemiBold,fontSize=13.sp,modifier=Modifier.weight(1f))
+                            TextButton(onClick={model.batchMarkSeen(true,visibleRefs)},enabled=!state.busy,contentPadding=PaddingValues(horizontal=8.dp,vertical=0.dp)) {
+                                Text("Прочитано",fontSize=12.sp)
+                            }
+                            TextButton(onClick={model.batchMarkSeen(false,visibleRefs)},enabled=!state.busy,contentPadding=PaddingValues(horizontal=8.dp,vertical=0.dp)) {
+                                Text("Непрочитано",fontSize=12.sp)
+                            }
+                            TextButton(onClick=model::clearSelection,enabled=!state.busy,contentPadding=PaddingValues(horizontal=8.dp,vertical=0.dp)) {
+                                Text("Снять",fontSize=12.sp)
+                            }
+                        }
+                    }
+                }
             }
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             state.error?.let { Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
             state.flagNotice?.let {Text(it,Modifier.padding(horizontal=16.dp,vertical=8.dp),fontSize=13.sp)}
-            val loadedRows=state.rows.filter {!hiddenKeys.contains(NativeMailEvents.key(mailSource(state,it)))}
-            val eligible: (NativeMail)->Boolean={NativeMailSearch.matches(state.filter,it.unread,it.hasAttachments)&&(categoryFilter.isEmpty()||category(it)?.optString("id")==categoryFilter)}
-            val displayRows=buildDisplayRows(loadedRows,state.owner,state.threadsEnabled,eligible)
-            val visible=loadedRows.filter(eligible)
             val mail = state.selected
             if (mail == null && state.thread.anchor != null) {
                 Box(Modifier.weight(1f)) {
@@ -475,15 +561,43 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                 }
             } else if (mail == null) LazyColumn(state = position, modifier = Modifier.weight(1f)) {
                 if (visible.isEmpty() && !state.busy&&state.error==null) item {
-                    Text(if(state.filter!="all"||categoryFilter.isNotEmpty())"В загруженных результатах совпадений нет." else if(state.rows.isNotEmpty()&&state.rows.all {hiddenKeys.contains(NativeMailEvents.key(mailSource(state,it)))})"Письма отложены. Откройте «Письма на потом» в меню «Ещё»." else if(state.query.isNotEmpty())"По запросу ничего не найдено." else "В этой папке нет загруженных писем.", Modifier.padding(20.dp))
+                    Text(
+                        if(state.filter!="all"||categoryFilter.isNotEmpty())"В загруженных результатах совпадений нет."
+                        else if(state.rows.isNotEmpty()&&state.rows.all {hiddenKeys.contains(NativeMailEvents.key(mailSource(state,it)))})"Письма отложены. Откройте «Письма на потом» в меню «Ещё»."
+                        else if(state.searchKey.isNotEmpty()&&state.hasMore)"На проверенном участке совпадений нет. Нажмите «Показать ещё», чтобы проверить следующие письма."
+                        else if(state.searchKey.isNotEmpty())"По запросу ничего не найдено."
+                        else "В этой папке нет загруженных писем.",
+                        Modifier.padding(20.dp)
+                    )
                 }
                 items(displayRows, key = { it.key }) { item ->
                     val row=when(item){is InboxDisplayRow.Single->item.mail;is InboxDisplayRow.Group->item.members.first()}
                     val rule=category(row)
-                    val onOpen={if(item is InboxDisplayRow.Group)model.openThread(item.anchor,scope) else model.openMail(row)}
-                    MailRow(row,!state.busy,onOpen,state.owner,labels,responses,snoozed,followups,rule?.optString("name"),rule?.let{categoryColor(it.optString("color"))},if(item is InboxDisplayRow.Group)summaryOf(item.members) else null)
+                    val isSelected=row.ref in activeSelection
+                    val onOpen={
+                        if(activeSelection.isNotEmpty())model.toggleSelection(row.ref)
+                        else if(item is InboxDisplayRow.Group)model.openThread(item.anchor,scope)
+                        else model.openMail(row)
+                    }
+                    MailRow(
+                        row,!state.busy,onOpen,state.owner,labels,responses,snoozed,followups,
+                        rule?.optString("name"),rule?.let{categoryColor(it.optString("color"))},
+                        if(item is InboxDisplayRow.Group)summaryOf(item.members) else null,
+                        selected=isSelected,
+                        onToggleSelect={model.toggleSelection(row.ref)},
+                        onToggleSeen=if(item is InboxDisplayRow.Single&&activeSelection.isEmpty())({model.toggleSeenFromList(row)}) else null
+                    )
                 }
-                if (state.rows.isNotEmpty()) item { Text(if(state.threadsEnabled)"Загружено ${state.rows.size} писем, цепочек: ${displayRows.count {it is InboxDisplayRow.Group}} (в загруженном списке)" else "Загружено ${state.rows.size} из ${state.total}",Modifier.padding(16.dp),fontSize=12.sp) }
+                if (state.rows.isNotEmpty()) item {
+                    val summaryText=if(state.activeCriteria?.isAdvanced==true) {
+                        if(state.threadsEnabled)"Совпадений: ${state.rows.size}, цепочек: ${displayRows.count {it is InboxDisplayRow.Group}} (проверено ${state.searchScanned} из ${state.searchCandidates})"
+                        else "Совпадений в загруженном: ${state.rows.size} (проверено ${state.searchScanned} из ${state.searchCandidates})"
+                    } else {
+                        if(state.threadsEnabled)"Загружено ${state.rows.size} писем, цепочек: ${displayRows.count {it is InboxDisplayRow.Group}} (в загруженном списке)"
+                        else "Загружено ${state.rows.size} из ${state.total}"
+                    }
+                    Text(summaryText,Modifier.padding(16.dp),fontSize=12.sp)
+                }
                 if (state.hasMore) item {
                     OutlinedButton(onClick = { if(state.pageExpired)model.loadInbox(!state.pageOffline) else model.loadMore() }, enabled = !state.busy,
                         modifier = Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=8.dp)) {
@@ -563,17 +677,27 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
 private data class ThreadSummary(val count: Int, val unread: Int, val attachments: Boolean)
 private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,members.count {it.unread},members.any {it.hasAttachments==true})
 
-@Composable private fun MailRowBody(mail: NativeMail,rowColor: Color,chain: ThreadSummary?,owner: String,labels: JSONObject,responses: List<JSONObject>,snoozed: List<JSONObject>,followups: List<JSONObject>,categoryName: String?,categoryTint: Color?) {
+@Composable private fun MailRowBody(mail: NativeMail,rowColor: Color,chain: ThreadSummary?,owner: String,labels: JSONObject,responses: List<JSONObject>,snoozed: List<JSONObject>,followups: List<JSONObject>,categoryName: String?,categoryTint: Color?,selected: Boolean=false,onToggleSelect: (()->Unit)?=null,onToggleSeen: (()->Unit)?=null,enabled: Boolean=true) {
     Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=if(LocalCompactInbox.current)8.dp else 14.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-        Surface(shape=CircleShape,color=MaterialTheme.colorScheme.primary.copy(alpha=.16f).compositeOver(rowColor),modifier=Modifier.size(40.dp).clearAndSetSemantics {}) {
-            Box(contentAlignment=androidx.compose.ui.Alignment.Center) {Text(avatarLetters(mail.sender),fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.primary)}
+        if(onToggleSelect!=null) {
+            Surface(onClick=onToggleSelect,enabled=enabled,shape=CircleShape,color=if(selected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha=.16f).compositeOver(rowColor),modifier=Modifier.size(40.dp).semantics {contentDescription=if(selected)"Снять выбор письма" else "Выбрать письмо"}) {
+                Box(contentAlignment=androidx.compose.ui.Alignment.Center) {Text(if(selected)"✓" else avatarLetters(mail.sender),fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=if(selected)MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary)}
+            }
+        } else {
+            Surface(shape=CircleShape,color=MaterialTheme.colorScheme.primary.copy(alpha=.16f).compositeOver(rowColor),modifier=Modifier.size(40.dp).clearAndSetSemantics {}) {
+                Box(contentAlignment=androidx.compose.ui.Alignment.Center) {Text(avatarLetters(mail.sender),fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.primary)}
+            }
         }
         Column(Modifier.weight(1f)) {
-            Row { Text(mail.sender, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 15.sp,
+            Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) { Text(mail.sender, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 15.sp,
                 fontWeight = if (mail.unread) FontWeight.SemiBold else FontWeight.Normal)
                 Row(Modifier.padding(start=8.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                     Text(mailTime(mail.date),maxLines=1,fontSize=12.sp,color=if(mail.unread)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                    if(mail.unread)Surface(shape=CircleShape,color=MaterialTheme.colorScheme.primary,modifier=Modifier.size(6.dp)) {}
+                    if(onToggleSeen!=null) {
+                        TextButton(onClick=onToggleSeen,enabled=enabled,contentPadding=PaddingValues(horizontal=4.dp,vertical=0.dp),modifier=Modifier.height(24.dp).semantics {contentDescription=if(mail.unread)"Пометить прочитанным" else "Пометить непрочитанным"}) {
+                            Text(if(mail.unread)"●" else "○",fontSize=11.sp,color=if(mail.unread)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    } else if(mail.unread)Surface(shape=CircleShape,color=MaterialTheme.colorScheme.primary,modifier=Modifier.size(6.dp)) {}
                 }
             }
             Text(mail.subject, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (mail.unread) FontWeight.SemiBold else FontWeight.Normal, fontSize = 15.sp)
@@ -596,12 +720,12 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
     }
 }
 
-@Composable private fun MailRow(mail: NativeMail,enabled: Boolean,onClick: ()->Unit,owner: String,labels: JSONObject,responses: List<JSONObject>,snoozed: List<JSONObject>,followups: List<JSONObject>,categoryName: String?,categoryTint: Color?,chain: ThreadSummary?=null) {
+@Composable private fun MailRow(mail: NativeMail,enabled: Boolean,onClick: ()->Unit,owner: String,labels: JSONObject,responses: List<JSONObject>,snoozed: List<JSONObject>,followups: List<JSONObject>,categoryName: String?,categoryTint: Color?,chain: ThreadSummary?=null,selected: Boolean=false,onToggleSelect: (()->Unit)?=null,onToggleSeen: (()->Unit)?=null) {
     val displayMail=if(chain!=null)mail.copy(unread=chain.unread>0) else mail
-    val rowColor=if(displayMail.unread)MaterialTheme.colorScheme.primary.copy(alpha=.075f).compositeOver(MaterialTheme.colorScheme.background) else MaterialTheme.colorScheme.background
+    val rowColor=if(selected)MaterialTheme.colorScheme.primary.copy(alpha=.16f).compositeOver(MaterialTheme.colorScheme.background) else if(displayMail.unread)MaterialTheme.colorScheme.primary.copy(alpha=.075f).compositeOver(MaterialTheme.colorScheme.background) else MaterialTheme.colorScheme.background
     Surface(onClick = onClick, enabled = enabled, color = rowColor, modifier = Modifier.heightIn(min=44.dp)) {
         Column {
-            MailRowBody(displayMail,rowColor,chain,owner,labels,responses,snoozed,followups,categoryName,categoryTint)
+            MailRowBody(displayMail,rowColor,chain,owner,labels,responses,snoozed,followups,categoryName,categoryTint,selected,onToggleSelect,onToggleSeen,enabled)
             HorizontalDivider(Modifier.padding(start=68.dp,end=16.dp),thickness=.5.dp,color=MaterialTheme.colorScheme.onSurface.copy(alpha=.07f))
         }
     }
@@ -636,15 +760,51 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
         }
     }
 }
-@Composable internal fun NativeInboxSearch(state: InboxState,change: (String)->Unit,offline: ()->Unit,online: ()->Unit) {
+@Composable internal fun NativeInboxSearch(
+    state: InboxState,
+    changeText: (String)->Unit,
+    changeFrom: (String)->Unit = {},
+    changeStart: (String)->Unit = {},
+    changeEnd: (String)->Unit = {},
+    changeAttachments: (Boolean)->Unit = {},
+    changeUnread: (Boolean)->Unit = {},
+    toggleAdvanced: ()->Unit = {},
+    resetFilters: ()->Unit = {},
+    cancel: ()->Unit = {},
+    offline: ()->Unit,
+    online: ()->Unit
+) {
     val focus=androidx.compose.ui.platform.LocalFocusManager.current
-    Column(Modifier.fillMaxWidth().padding(horizontal=16.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-        OutlinedTextField(value=state.searchText,onValueChange=change,singleLine=true,label={Text("Поиск в папке")},modifier=Modifier.fillMaxWidth(),isError=state.searchError!=null)
-        Text("На сервере: отправитель, тема и текст. На телефоне: отправитель и тема сохранённых писем.",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    val hasDraftFilters=state.searchText.isNotEmpty()||state.searchFrom.isNotEmpty()||state.searchStart.isNotEmpty()||state.searchEnd.isNotEmpty()||state.searchAttachments||state.searchUnread
+    Column(Modifier.fillMaxWidth().padding(horizontal=16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+        OutlinedTextField(value=state.searchText,onValueChange=changeText,singleLine=true,label={Text("Поиск в папке")},modifier=Modifier.fillMaxWidth(),isError=state.searchError!=null,enabled=!state.busy)
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+            TextButton(onClick=toggleAdvanced,contentPadding=PaddingValues(horizontal=4.dp,vertical=0.dp)) {
+                Text(if(state.advancedSearchOpen)"Скрыть расширенный поиск" else "Расширенный поиск",fontSize=12.sp)
+            }
+            if(hasDraftFilters) {
+                TextButton(onClick=resetFilters,enabled=!state.busy,contentPadding=PaddingValues(horizontal=4.dp,vertical=0.dp)) {
+                    Text("Очистить поля",fontSize=12.sp)
+                }
+            }
+        }
+        if(state.advancedSearchOpen) {
+            OutlinedTextField(value=state.searchFrom,onValueChange=changeFrom,singleLine=true,label={Text("От кого (имя или адрес)")},modifier=Modifier.fillMaxWidth(),enabled=!state.busy)
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value=state.searchStart,onValueChange=changeStart,singleLine=true,label={Text("С даты (ГГГГ-ММ-ДД)")},modifier=Modifier.weight(1f),enabled=!state.busy)
+                OutlinedTextField(value=state.searchEnd,onValueChange=changeEnd,singleLine=true,label={Text("По дату (ГГГГ-ММ-ДД)")},modifier=Modifier.weight(1f),enabled=!state.busy)
+            }
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected=state.searchAttachments,onClick={changeAttachments(!state.searchAttachments)},enabled=!state.busy,label={Text("Только с вложениями")})
+                FilterChip(selected=state.searchUnread,onClick={changeUnread(!state.searchUnread)},enabled=!state.busy,label={Text("Только непрочитанные")})
+            }
+        }
+        Text("На сервере: отправитель, тема, текст и точные фильтры (даты по времени Москвы). На телефоне: среди сохранённых писем папки.",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         state.searchError?.let {Text(it,color=MaterialTheme.colorScheme.error,fontSize=12.sp)}
-        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
             OutlinedButton(onClick={focus.clearFocus();offline()},enabled=!state.busy,modifier=Modifier.weight(1f)){Text("На телефоне")}
             Button(onClick={focus.clearFocus();online()},enabled=!state.busy,modifier=Modifier.weight(1f)){Text("На сервере")}
+            if(state.busy)TextButton(onClick=cancel){Text("Отменить")}
         }
     }
 }

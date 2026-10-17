@@ -35,6 +35,61 @@ public final class NativeMailLinksTest {
         chosen.put("uid","99");check(second.getJSONObject("mail").getString("uid").equals("43"));
         check(NativeMailLinks.savedMail(links,new JSONObject(second.toString()).put("mail",mail("Archive","99","8")))==null);
         check(NativeMailLinks.savedMail(new JSONArray(),second)==null);
-        System.out.println("PASS native mail links: owner/folder/UID/UIDVALIDITY guards, old INBOX default only, Unicode folders, exact event keys, duplicate link ids, stale/deleted/tampered link rejection, immutable source references");
+
+        // taskFromEvent tests
+        JSONObject remoteEvent=new JSONObject().put("id","evt-1").put("kind","remote").put("calendarId","cal-main")
+            .put("calendarTitle","Работа").put("title","Совещание").put("date","2026-10-20").put("time","14:30")
+            .put("allDay",false).put("location","Каб. 301");
+        JSONObject fromRemote=NativeMailLinks.taskFromEvent(remoteEvent,"task-remote-1");
+        check(fromRemote.getString("id").equals("task-remote-1")&&fromRemote.getString("title").equals("Совещание"));
+        check(fromRemote.getString("date").equals("2026-10-20")&&fromRemote.getString("time").equals("14:30"));
+        check(fromRemote.getString("notes").equals("Место: Каб. 301")&&!fromRemote.getBoolean("done"));
+        JSONObject remoteSrc=fromRemote.getJSONObject("calendarSource");
+        check(remoteSrc.getString("calendarId").equals("cal-main")&&remoteSrc.getString("id").equals("evt-1")&&remoteSrc.getString("calendarTitle").equals("Работа"));
+
+        JSONObject localEvent=new JSONObject().put("id","evt-2").put("kind","event").put("date","2026-10-21").put("time","09:00").put("allDay",true);
+        JSONObject fromLocal=NativeMailLinks.taskFromEvent(localEvent,"task-local-2");
+        check(fromLocal.getString("title").equals("Без названия")&&fromLocal.getString("time").isEmpty()&&fromLocal.getString("notes").isEmpty());
+        JSONObject localSrc=fromLocal.getJSONObject("calendarSource");
+        check(localSrc.getString("calendarId").equals("local")&&localSrc.getString("id").equals("evt-2")&&localSrc.getString("calendarTitle").equals("Локальный"));
+
+        // link tests
+        JSONObject state=new JSONObject();
+        JSONObject mailWithExtras=new JSONObject(m.toString()).put("sender","Иван").put("email","ivan@spbu.ru").put("date","2026-10-17").put("body","secret");
+        JSONObject state1=NativeMailLinks.link(state,owner,mailWithExtras,remoteEvent,"link-1");
+        JSONArray savedLinks=state1.getJSONArray("eventMailLinks");
+        check(savedLinks.length()==1);
+        JSONObject savedLink=savedLinks.getJSONObject(0);
+        check(savedLink.getString("id").equals("link-1")&&savedLink.getString("eventKey").equals("[\"cal-main\",\"evt-1\"]"));
+        check(savedLink.getString("eventDate").equals("2026-10-20")&&savedLink.getString("eventTitle").equals("Совещание"));
+        check(!savedLink.getJSONObject("mail").has("body")&&savedLink.getJSONObject("mail").getString("sender").equals("Иван"));
+
+        // Duplicate link rejection
+        boolean dupRejected=false;
+        try{NativeMailLinks.link(state1,owner,mailWithExtras,remoteEvent,"link-2");}catch(IllegalArgumentException e){dupRejected=e.getMessage().contains("уже связано");}
+        check(dupRejected);
+
+        // 500 link limit
+        JSONObject fullState=new JSONObject();
+        JSONArray fullArr=new JSONArray();
+        for(int i=0;i<500;i++)fullArr.put(new JSONObject().put("id","l-"+i).put("eventKey","local:e-"+i));
+        fullState.put("eventMailLinks",fullArr);
+        boolean limitRejected=false;
+        try{NativeMailLinks.link(fullState,owner,mailWithExtras,localEvent,"link-501");}catch(IllegalArgumentException e){limitRejected=e.getMessage().contains("500");}
+        check(limitRejected);
+
+        // unlink CAS conflict & success
+        boolean conflict=false;
+        try{NativeMailLinks.unlink(state1,"link-1",new JSONObject(savedLink.toString()).put("eventTitle","Другое"));}catch(SharedStateMerge.Conflict e){conflict=true;}
+        check(conflict);
+        boolean missingConflict=false;
+        try{NativeMailLinks.unlink(state1,"link-missing",savedLink);}catch(SharedStateMerge.Conflict e){missingConflict=true;}
+        check(missingConflict);
+        JSONObject stateAfterUnlink=NativeMailLinks.unlink(state1,"link-1",savedLink);
+        check(stateAfterUnlink.getJSONArray("eventMailLinks").length()==0);
+        JSONObject stateAfterUnlink2=NativeMailLinks.unlink(state1,savedLink);
+        check(stateAfterUnlink2.getJSONArray("eventMailLinks").length()==0);
+
+        System.out.println("PASS native mail links: owner/folder/UID/UIDVALIDITY guards, old INBOX default only, Unicode folders, exact event keys, duplicate link ids, stale/deleted/tampered link rejection, immutable source references, taskFromEvent, link/500-limit/duplicate, CAS unlink");
     }
 }

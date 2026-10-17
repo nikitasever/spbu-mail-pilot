@@ -34,6 +34,22 @@ class NativeReaderDetailsTest {
     @Test fun longRecipientListsAreExplicitlyLimited(){
         val values=JSONArray();repeat(101){values.put("person$it@example.invalid")}
         val result=ReaderDetails.from(JSONObject().put("toRecipients",values))
-        assertEquals(100,result.to.values.size);assertTrue(result.to.incomplete)
+        assertEquals(100,result.to.values.size);assertTrue(result.to.incomplete);assertTrue(result.incomplete)
+    }
+    @Test fun incompleteWarningPreservedAlongsideUidRawFromReferencesAndRawHeaders(){
+        val source=JSONObject()
+            .put("uid","54321")
+            .put("rawFrom","\"Sender Name\" <sender@example.invalid>")
+            .put("references","<ref-1@example.invalid> <ref-2@example.invalid>")
+            .put("rawHeaders","From: \"Sender Name\" <sender@example.invalid>\r\nSubject: Test\u0007\nX-Custom: Value")
+            .put("toRecipients",JSONArray().put("valid@example.invalid").put("malformed-address-entry"))
+        val result=ReaderDetails.from(source,"fallback-uid")
+        assertTrue(result.to.incomplete)
+        assertTrue(result.incomplete)
+        assertEquals(listOf("valid@example.invalid"),result.to.values)
+        assertEquals("54321",result.uid)
+        assertEquals("\"Sender Name\" <sender@example.invalid>",result.rawFrom)
+        assertEquals("<ref-1@example.invalid> <ref-2@example.invalid>",result.references)
+        assertEquals("From: \"Sender Name\" <sender@example.invalid>\nSubject: Test\nX-Custom: Value",result.rawHeaders)
     }
 }
