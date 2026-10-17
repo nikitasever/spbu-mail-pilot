@@ -43,7 +43,17 @@ class NativePreviewTest {
         val model=NativeContactsModel(PreviewApplication(paparazzi.context))
         val field=model.javaClass.getDeclaredField("state\$delegate").apply {isAccessible=true}
         @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<ContactsState>).value=ContactsState(open=true,owner=owner,account="demo@spbu.ru",book="company",supported=true,letter="П",applied="^:П",people=listOf(ContactPerson("Перминов Виктор Олегович","demo-perminov@spbu.ru"),ContactPerson("Петрова Елена Александровна","demo-petrova@spbu.ru")),more=true)
-        paparazzi.snapshot(name="contacts"){InboxTheme{NativeContactsScreen(model,{},{})}}
+        // A host render has no Activity; register launchers without performing external actions.
+        val registryOwner=object:androidx.activity.result.ActivityResultRegistryOwner {
+            override val activityResultRegistry=object:androidx.activity.result.ActivityResultRegistry() {
+                override fun <I,O> onLaunch(requestCode:Int,contract:androidx.activity.result.contract.ActivityResultContract<I,O>,input:I,options:androidx.core.app.ActivityOptionsCompat?) {}
+            }
+        }
+        paparazzi.snapshot(name="contacts"){
+            androidx.compose.runtime.CompositionLocalProvider(androidx.activity.compose.LocalActivityResultRegistryOwner provides registryOwner) {
+                InboxTheme{NativeContactsScreen(model,{},{})}
+            }
+        }
     }
     @Test fun calendar() {
         val model=NativeCalendarModel(PreviewApplication(paparazzi.context))
