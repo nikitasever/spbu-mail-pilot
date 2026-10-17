@@ -9,12 +9,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -36,14 +39,19 @@ internal fun NativeWorkspaceScreen(
     val editor = state.editor
     BackHandler { model.back() }
     Scaffold(
+        containerColor = Color(0xFF0B0C10),
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF0B0C10),
+                    titleContentColor = Color(0xFFF3F4F6)
+                ),
                 navigationIcon = {
                     IconButton(onClick = model::back, enabled = !state.busy) {
                         Icon(
                             NativeIcons.ArrowBack,
                             contentDescription = "Назад",
-                            tint = MaterialTheme.colorScheme.onSurface
+                            tint = Color(0xFFF3F4F6)
                         )
                     }
                 },
@@ -56,20 +64,32 @@ internal fun NativeWorkspaceScreen(
                                 else -> "Заметка"
                             } else if (state.eventRoute) "Своё событие" else "Задачи и заметки",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 19.sp,
+                            fontSize = 18.sp,
+                            color = Color(0xFFF3F4F6),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         if (editor == null && accountEmail.isNotBlank()) {
-                            Text(
-                                "$accountEmail ▾",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = 2.dp).clickable(onClick = onSwitchAccount)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                modifier = Modifier.padding(top = 1.dp).clickable(onClick = onSwitchAccount)
+                            ) {
+                                Text(
+                                    accountEmail,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color(0xFF8E929F),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Icon(
+                                    NativeIcons.ChevronDown,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp),
+                                    tint = Color(0xFF8B5CF6)
+                                )
+                            }
                         }
                     }
                 },
@@ -79,49 +99,69 @@ internal fun NativeWorkspaceScreen(
                             Icon(
                                 NativeIcons.Refresh,
                                 contentDescription = "Обновить",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                modifier = Modifier.size(20.dp),
+                                tint = Color(0xFF8E929F)
+                            )
+                        }
+                    } else {
+                        if (state.expected != null) {
+                            IconButton(onClick = model::requestDelete, enabled = !state.busy) {
+                                Icon(
+                                    NativeIcons.Trash,
+                                    contentDescription = "Удалить",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                        IconButton(onClick = model::save, enabled = !state.busy) {
+                            Icon(
+                                NativeIcons.Check,
+                                contentDescription = "Сохранить",
+                                modifier = Modifier.size(20.dp),
+                                tint = Color(0xFF8B5CF6)
                             )
                         }
                     }
                 }
             )
         },
+        floatingActionButton = {
+            if (editor == null && !state.eventRoute && state.taskMail == null && state.eventMail == null) {
+                GlowingCircleFab(
+                    icon = NativeIcons.Plus,
+                    contentDescription = if (state.kind == "tasks") "Добавить задачу" else "Добавить заметку",
+                    onClick = { model.edit() },
+                    enabled = !state.busy
+                )
+            }
+        },
         bottomBar = {
-            Column(Modifier.fillMaxWidth()) {
-                Surface(tonalElevation = 2.dp) {
-                    Column(Modifier.fillMaxWidth()) {
-                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+            if (editor != null) {
+                Surface(color = Color(0xFF14161D)) {
+                    Column(Modifier.fillMaxWidth().navigationBarsPadding().imePadding()) {
+                        HorizontalDivider(thickness = 0.5.dp, color = Color(0x0FFFFFFF))
                         Row(
                             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            if (editor == null && !state.eventRoute && state.taskMail == null && state.eventMail == null) {
-                                Button(
-                                    onClick = { model.edit() },
-                                    enabled = !state.busy,
-                                    shape = RoundedCornerShape(14.dp),
-                                    modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
+                            Button(
+                                onClick = model::save,
+                                enabled = !state.busy,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f).heightIn(min = 44.dp)
+                            ) { Text("Сохранить", fontWeight = FontWeight.SemiBold) }
+                            if (state.expected != null) {
+                                Surface(
+                                    onClick = { if (!state.busy) model.requestDelete() },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF1C1F2A),
+                                    modifier = Modifier.heightIn(min = 44.dp)
                                 ) {
-                                    Icon(NativeIcons.Plus, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        if (state.kind == "tasks") "Добавить задачу" else "Добавить заметку",
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                            } else if (editor != null) {
-                                Button(
-                                    onClick = model::save,
-                                    enabled = !state.busy,
-                                    shape = RoundedCornerShape(14.dp),
-                                    modifier = Modifier.weight(1f).heightIn(min = 46.dp)
-                                ) { Text("Сохранить", fontWeight = FontWeight.SemiBold) }
-                                if (state.expected != null) {
-                                    OutlinedButton(
-                                        onClick = model::requestDelete,
-                                        enabled = !state.busy,
-                                        shape = RoundedCornerShape(14.dp),
-                                        modifier = Modifier.heightIn(min = 46.dp)
+                                    Row(
+                                        Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         Icon(
                                             NativeIcons.Trash,
@@ -129,24 +169,32 @@ internal fun NativeWorkspaceScreen(
                                             modifier = Modifier.size(15.dp),
                                             tint = MaterialTheme.colorScheme.error
                                         )
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("Удалить", color = MaterialTheme.colorScheme.error)
+                                        Text("Удалить", color = MaterialTheme.colorScheme.error, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                                     }
                                 }
                             }
                         }
                     }
                 }
-                if (editor == null && !state.eventRoute && state.taskMail == null && state.eventMail == null) {
-                    bottomBar()
-                }
+            } else if (!state.eventRoute && state.taskMail == null && state.eventMail == null) {
+                bottomBar()
             }
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
-            state.error?.let { Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
-            state.notice?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
+            if (state.busy) {
+                LinearProgressIndicator(
+                    Modifier.fillMaxWidth().height(2.dp),
+                    color = Color(0xFF7C5CFF),
+                    trackColor = Color.Transparent
+                )
+            }
+            state.error?.let {
+                Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            }
+            state.notice?.let {
+                Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp, color = Color(0xFFA78BFA))
+            }
             if (editor != null) {
                 Column(
                     Modifier
@@ -161,7 +209,7 @@ internal fun NativeWorkspaceScreen(
                     if (mailSource != null || calSource != null) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                            color = Color(0xFF1C1F2A),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(
@@ -177,7 +225,7 @@ internal fun NativeWorkspaceScreen(
                                             NativeIcons.Mail,
                                             contentDescription = null,
                                             modifier = Modifier.size(14.dp),
-                                            tint = MaterialTheme.colorScheme.primary
+                                            tint = Color(0xFFA78BFA)
                                         )
                                         Text(
                                             "Исходное письмо: " + source.optString("subject").ifBlank { "Без темы" },
@@ -185,7 +233,7 @@ internal fun NativeWorkspaceScreen(
                                             overflow = TextOverflow.Ellipsis,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.primary
+                                            color = Color(0xFFA78BFA)
                                         )
                                     }
                                 }
@@ -198,7 +246,7 @@ internal fun NativeWorkspaceScreen(
                                             NativeIcons.Calendar,
                                             contentDescription = null,
                                             modifier = Modifier.size(14.dp),
-                                            tint = MaterialTheme.colorScheme.primary
+                                            tint = Color(0xFFA78BFA)
                                         )
                                         Text(
                                             "Из события календаря: " + source.optString("calendarTitle", "Календарь"),
@@ -206,18 +254,26 @@ internal fun NativeWorkspaceScreen(
                                             overflow = TextOverflow.Ellipsis,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.primary
+                                            color = Color(0xFFA78BFA)
                                         )
                                     }
                                 }
                             }
                         }
                     }
-                    OutlinedTextField(
-                        value("title"),
-                        { model.field("title", it) },
-                        label = { Text("Название") },
+                    TextField(
+                        value = value("title"),
+                        onValueChange = { model.field("title", it) },
+                        label = { Text("Название", color = Color(0xFF8E929F)) },
                         shape = RoundedCornerShape(12.dp),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color(0xFF1C1F2A),
+                            unfocusedContainerColor = Color(0xFF1C1F2A),
+                            disabledContainerColor = Color(0xFF14161D),
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent
+                        ),
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !state.busy
                     )
@@ -231,14 +287,23 @@ internal fun NativeWorkspaceScreen(
                             model::field
                         )
                         if (state.kind == "events" && state.expected != null) {
-                            OutlinedButton(
-                                onClick = { openCalendarDay(value("date")) },
-                                enabled = !state.busy && SharedStateMerge.same(editor, state.expected),
-                                shape = RoundedCornerShape(10.dp)
+                            Surface(
+                                onClick = {
+                                    if (!state.busy && SharedStateMerge.same(editor, state.expected)) {
+                                        openCalendarDay(value("date"))
+                                    }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFF1C1F2A)
                             ) {
-                                Icon(NativeIcons.Calendar, contentDescription = null, modifier = Modifier.size(15.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Показать в календаре")
+                                Row(
+                                    Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(NativeIcons.Calendar, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFFA78BFA))
+                                    Text("Показать в календаре", fontSize = 12.sp, color = Color(0xFFA78BFA), fontWeight = FontWeight.Medium)
+                                }
                             }
                         }
                         if (state.kind == "tasks") {
@@ -272,12 +337,20 @@ internal fun NativeWorkspaceScreen(
                     }
                     if (state.kind != "events") {
                         val body = if (state.kind == "tasks") "notes" else "body"
-                        OutlinedTextField(
-                            value(body),
-                            { model.field(body, it) },
-                            label = { Text(if (body == "notes") "Комментарий" else "Текст") },
+                        TextField(
+                            value = value(body),
+                            onValueChange = { model.field(body, it) },
+                            label = { Text(if (body == "notes") "Комментарий" else "Текст", color = Color(0xFF8E929F)) },
                             minLines = 6,
                             shape = RoundedCornerShape(12.dp),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color(0xFF1C1F2A),
+                                unfocusedContainerColor = Color(0xFF1C1F2A),
+                                disabledContainerColor = Color(0xFF14161D),
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                                disabledIndicatorColor = Color.Transparent
+                            ),
                             modifier = Modifier.fillMaxWidth(),
                             enabled = !state.busy
                         )
@@ -287,8 +360,7 @@ internal fun NativeWorkspaceScreen(
                 Surface(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    color = Color(0xFF14161D)
                 ) {
                     Row(
                         Modifier.fillMaxWidth().padding(3.dp),
@@ -300,48 +372,71 @@ internal fun NativeWorkspaceScreen(
                                 onClick = { if (!state.busy && (kindKey != "tasks" || state.tasksEnabled)) model.kind(kindKey) },
                                 modifier = Modifier.weight(1f).height(34.dp),
                                 shape = RoundedCornerShape(9.dp),
-                                color = if (active) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
+                                color = if (active) Color(0xFF1C1F2A) else Color.Transparent
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Text(
                                         label,
                                         fontSize = 13.sp,
                                         fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-                                        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = if (active) Color(0xFFA78BFA) else Color(0xFF8E929F)
                                     )
                                 }
                             }
                         }
                     }
                 }
-                OutlinedTextField(
-                    state.query,
-                    model::query,
-                    placeholder = { Text("Поиск в записях", fontSize = 13.sp) },
-                    leadingIcon = {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF1C1F2A),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 42.dp).padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Icon(
                             NativeIcons.Search,
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            modifier = Modifier.size(17.dp),
+                            tint = Color(0xFF8E929F)
                         )
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-                )
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                            if (state.query.isEmpty()) {
+                                Text("Поиск в записях…", fontSize = 13.sp, color = Color(0xFF8E929F).copy(alpha = 0.7f))
+                            }
+                            BasicTextField(
+                                value = state.query,
+                                onValueChange = model::query,
+                                singleLine = true,
+                                textStyle = TextStyle(color = Color(0xFFF3F4F6), fontSize = 13.sp),
+                                cursorBrush = SolidColor(Color(0xFF8B5CF6)),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
                 if (state.kind == "tasks") {
                     Row(
-                        Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                        Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         listOf("active" to "В работе", "done" to "Готово", "all" to "Все").forEach { (value, label) ->
-                            FilterChip(
-                                selected = state.filter == value,
+                            val selected = state.filter == value
+                            Surface(
                                 onClick = { model.filter(value) },
                                 shape = RoundedCornerShape(10.dp),
-                                label = { Text(label, fontSize = 12.sp) }
-                            )
+                                color = if (selected) Color(0xFF7C5CFF).copy(alpha = 0.22f) else Color(0xFF1C1F2A)
+                            ) {
+                                Text(
+                                    label,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                    color = if (selected) Color(0xFFA78BFA) else Color(0xFF8E929F),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -363,20 +458,22 @@ internal fun NativeWorkspaceScreen(
                         { it.optString("date").ifBlank { "9999" } }
                     )
                 )
-                LazyColumn(Modifier.weight(1f)) {
+                LazyColumn(
+                    Modifier.weight(1f),
+                    contentPadding = PaddingValues(top = 4.dp, bottom = 84.dp)
+                ) {
                     if (visible.isEmpty() && !state.busy) {
                         item {
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surface,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFF14161D),
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                             ) {
                                 Text(
                                     "Здесь пока нет записей по выбранным условиям.",
                                     Modifier.padding(16.dp),
                                     fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = Color(0xFF8E929F)
                                 )
                             }
                         }
@@ -386,9 +483,8 @@ internal fun NativeWorkspaceScreen(
                         val isDone = row.optBoolean("done")
                         Surface(
                             onClick = { if (!state.busy) model.edit(row.optString("id")) },
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFF14161D),
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
                         ) {
                             Row(
@@ -400,25 +496,25 @@ internal fun NativeWorkspaceScreen(
                                     Surface(
                                         onClick = { if (!state.busy) model.done(row.optString("id")) },
                                         shape = CircleShape,
-                                        color = if (isDone) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                        color = if (isDone) Color(0xFF7C5CFF) else Color.Transparent,
                                         border = BorderStroke(
-                                            1.8.dp,
-                                            if (isDone) MaterialTheme.colorScheme.primary
+                                            1.5.dp,
+                                            if (isDone) Color(0xFF7C5CFF)
                                             else when (priority) {
-                                                "urgent" -> MaterialTheme.colorScheme.error
-                                                "important" -> MaterialTheme.colorScheme.primary
-                                                else -> MaterialTheme.colorScheme.outline
+                                                "urgent" -> Color(0xFFEF4444)
+                                                "important" -> Color(0xFF8B5CF6)
+                                                else -> Color(0xFF8E929F).copy(alpha = 0.5f)
                                             }
                                         ),
-                                        modifier = Modifier.padding(top = 2.dp).size(22.dp)
+                                        modifier = Modifier.padding(top = 2.dp).size(20.dp)
                                     ) {
                                         if (isDone) {
                                             Box(contentAlignment = Alignment.Center) {
                                                 Text(
                                                     "✓",
-                                                    fontSize = 12.sp,
+                                                    fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.onPrimary
+                                                    color = Color.White
                                                 )
                                             }
                                         }
@@ -437,8 +533,7 @@ internal fun NativeWorkspaceScreen(
                                             row.optString("title"),
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = if (isDone) MaterialTheme.colorScheme.onSurfaceVariant
-                                            else MaterialTheme.colorScheme.onSurface,
+                                            color = if (isDone) Color(0xFF8E929F) else Color(0xFFF3F4F6),
                                             textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None,
                                             modifier = Modifier.weight(1f)
                                         )
@@ -446,16 +541,15 @@ internal fun NativeWorkspaceScreen(
                                             val isUrgent = priority == "urgent"
                                             Surface(
                                                 shape = RoundedCornerShape(6.dp),
-                                                color = if (isUrgent) MaterialTheme.colorScheme.errorContainer
-                                                else MaterialTheme.colorScheme.primaryContainer,
+                                                color = if (isUrgent) Color(0xFFEF4444).copy(alpha = 0.18f)
+                                                else Color(0xFF7C5CFF).copy(alpha = 0.22f),
                                                 modifier = Modifier.padding(start = 8.dp)
                                             ) {
                                                 Text(
                                                     if (isUrgent) "Срочно" else "Важно",
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.SemiBold,
-                                                    color = if (isUrgent) MaterialTheme.colorScheme.error
-                                                    else MaterialTheme.colorScheme.primary,
+                                                    color = if (isUrgent) Color(0xFFF87171) else Color(0xFFA78BFA),
                                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                                 )
                                             }
@@ -468,7 +562,7 @@ internal fun NativeWorkspaceScreen(
                                         ) {
                                             Surface(
                                                 shape = RoundedCornerShape(6.dp),
-                                                color = MaterialTheme.colorScheme.background
+                                                color = Color(0xFF1C1F2A)
                                             ) {
                                                 Row(
                                                     Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
@@ -479,14 +573,14 @@ internal fun NativeWorkspaceScreen(
                                                         NativeIcons.Clock,
                                                         contentDescription = null,
                                                         modifier = Modifier.size(12.dp),
-                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        tint = Color(0xFF8E929F)
                                                     )
                                                     Text(
                                                         (row.optString("date") + " " + row.optString("time")).trim()
                                                             .ifBlank { "Без срока" },
                                                         fontSize = 11.sp,
                                                         fontWeight = FontWeight.Medium,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        color = Color(0xFF8E929F)
                                                     )
                                                 }
                                             }
@@ -494,7 +588,7 @@ internal fun NativeWorkspaceScreen(
                                                 Text(
                                                     source.optString("calendarTitle", "Календарь"),
                                                     fontSize = 12.sp,
-                                                    color = MaterialTheme.colorScheme.primary,
+                                                    color = Color(0xFFA78BFA),
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
@@ -505,17 +599,17 @@ internal fun NativeWorkspaceScreen(
                                     if (text.isNotBlank()) {
                                         Text(
                                             text,
-                                            maxLines = 3,
+                                            maxLines = 2,
                                             overflow = TextOverflow.Ellipsis,
                                             fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = Color(0xFF8E929F)
                                         )
                                     }
                                     if (state.kind == "tasks" && row.optJSONObject("mail") != null) {
                                         Surface(
                                             onClick = { if (!state.busy) openMail(row.optString("id")) },
                                             shape = RoundedCornerShape(8.dp),
-                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                            color = Color(0xFF1C1F2A)
                                         ) {
                                             Row(
                                                 Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -526,13 +620,13 @@ internal fun NativeWorkspaceScreen(
                                                     NativeIcons.Mail,
                                                     contentDescription = null,
                                                     modifier = Modifier.size(12.dp),
-                                                    tint = MaterialTheme.colorScheme.primary
+                                                    tint = Color(0xFFA78BFA)
                                                 )
                                                 Text(
                                                     "Открыть исходное письмо",
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Medium,
-                                                    color = MaterialTheme.colorScheme.primary
+                                                    color = Color(0xFFA78BFA)
                                                 )
                                             }
                                         }
@@ -541,7 +635,6 @@ internal fun NativeWorkspaceScreen(
                             }
                         }
                     }
-                    item { Spacer(Modifier.height(12.dp)) }
                 }
             }
         }
@@ -587,19 +680,24 @@ private fun WorkspaceChoice(
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box(modifier = modifier) {
-        OutlinedButton(
-            onClick = { expanded = true },
-            enabled = enabled,
+        Surface(
+            onClick = { if (enabled) expanded = true },
             shape = RoundedCornerShape(12.dp),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+            color = Color(0xFF1C1F2A),
             modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
         ) {
-            Text(
-                "$title: ${options.find { it.first == value }?.second ?: value}",
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Box(
+                Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Text(
+                    "$title: ${options.find { it.first == value }?.second ?: value}",
+                    fontSize = 12.sp,
+                    color = Color(0xFFF3F4F6),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { (key, label) ->
@@ -614,4 +712,3 @@ private fun WorkspaceChoice(
         }
     }
 }
-

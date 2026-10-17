@@ -8,6 +8,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -23,42 +24,28 @@ import androidx.compose.ui.unit.sp
         status=runCatching {if(model.readerAction(owner,mail.ref,action))success else "Письмо недоступно. Откройте его ещё раз."}
             .getOrElse {"Не удалось открыть приложение. Можно выделить и скопировать текст."}
     }
+    if (targets.links.isEmpty() && targets.phones.isEmpty() && status == null) return
     Column(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth().padding(top=6.dp),
-            horizontalArrangement=Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedButton(
-                onClick={
-                    val shared=runCatching {NativeReaderTargets.share(mail.subject,mail.sender,text)}
-                    if(shared.isFailure)status=shared.exceptionOrNull()?.message
-                    else perform("Открыт выбор приложения."){ShareActions.text(context,shared.getOrThrow())}
-                },
-                enabled=!model.state.busy,
+        if(targets.links.isNotEmpty()||targets.phones.isNotEmpty()) {
+            Surface(
+                onClick={expanded=!expanded},
                 shape=RoundedCornerShape(10.dp),
-                contentPadding=PaddingValues(horizontal=12.dp,vertical=6.dp),
-                modifier=Modifier.heightIn(min=36.dp)
+                color=Color(0xFF1C1F2A),
+                modifier=Modifier.padding(top=6.dp)
             ) {
-                Icon(NativeIcons.Share, contentDescription = null, modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Поделиться текстом",fontSize=12.sp)
-            }
-            if(targets.links.isNotEmpty()||targets.phones.isNotEmpty()) {
-                OutlinedButton(
-                    onClick={expanded=!expanded},
-                    shape=RoundedCornerShape(10.dp),
-                    contentPadding=PaddingValues(horizontal=12.dp,vertical=6.dp),
-                    modifier=Modifier.heightIn(min=36.dp)
-                ) {
-                    Text(if(expanded)"Скрыть ссылки и номера" else "Ссылки и номера · ${targets.links.size+targets.phones.size}",fontSize=12.sp)
-                }
+                Text(
+                    if(expanded)"Скрыть ссылки и номера" else "Ссылки и номера · ${targets.links.size+targets.phones.size}",
+                    Modifier.padding(horizontal=12.dp,vertical=6.dp),
+                    fontSize=12.sp,
+                    color=Color(0xFF8E929F)
+                )
             }
         }
         if(expanded&&(targets.links.isNotEmpty()||targets.phones.isNotEmpty())) {
             Surface(
                 shape=RoundedCornerShape(12.dp),
-                color=MaterialTheme.colorScheme.surface,
-                border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),
+                color=Color(0xFF14161D),
+                border=BorderStroke(1.dp,Color(0x14FFFFFF)),
                 modifier=Modifier.fillMaxWidth().padding(top=8.dp)
             ) {
                 Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {

@@ -14,17 +14,23 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -51,6 +57,7 @@ internal fun NativeContactsScreen(
     val clipboard = LocalClipboardManager.current
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
     var books by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
     var copied by remember(state.owner, state.book, state.applied) { mutableStateOf(false) }
     val alphabet = rememberLazyListState(
         initialFirstVisibleItemIndex = (NativeContacts.ALPHABET.indexOf(state.letter)
@@ -63,9 +70,9 @@ internal fun NativeContactsScreen(
     }
     val names = mapOf(
         "local" to "На телефоне",
-        "history" to "История получателей",
-        "personal" to "Личная книга",
-        "team" to "Подразделение",
+        "history" to "История",
+        "personal" to "Личная",
+        "team" to "Отдел",
         "company" to "Университет"
     )
     BackHandler(onBack = model::close)
@@ -101,53 +108,231 @@ internal fun NativeContactsScreen(
         )
     }
     Scaffold(
+        containerColor = Color(0xFF0B0C10),
         topBar = {
             TopAppBar(
-                navigationIcon = {
-                    IconButton(onClick = model::close) {
-                        Icon(
-                            NativeIcons.ArrowBack,
-                            contentDescription = "Почта",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF0B0C10),
+                    titleContentColor = Color(0xFFF3F4F6)
+                ),
                 title = {
                     Column {
                         Text(
                             "Контакты",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 19.sp,
+                            fontSize = 18.sp,
+                            color = Color(0xFFF3F4F6),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         if (state.account.isNotBlank()) {
-                            Text(
-                                "${state.account} ▾",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(top = 2.dp).clickable(onClick = onSwitchAccount)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                modifier = Modifier.padding(top = 1.dp).clickable(onClick = onSwitchAccount)
+                            ) {
+                                Text(
+                                    state.account,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color(0xFF8E929F),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Icon(
+                                    NativeIcons.ChevronDown,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp),
+                                    tint = Color(0xFF8B5CF6)
+                                )
+                            }
                         }
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = {
+                            focus.clearFocus()
+                            model.load(true)
+                        },
+                        enabled = !state.busy
+                    ) {
+                        Icon(
+                            NativeIcons.Refresh,
+                            contentDescription = "Обновить",
+                            modifier = Modifier.size(20.dp),
+                            tint = Color(0xFF8E929F)
+                        )
+                    }
+                    Box {
+                        IconButton(
+                            onClick = { menuOpen = true },
+                            enabled = !state.busy && !state.importOpen
+                        ) {
+                            Icon(
+                                NativeIcons.MoreVert,
+                                contentDescription = "Ещё",
+                                modifier = Modifier.size(20.dp),
+                                tint = Color(0xFF8E929F)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = menuOpen,
+                            onDismissRequest = { menuOpen = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Импорт контактов") },
+                                leadingIcon = {
+                                    Icon(
+                                        NativeIcons.Download,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    menuOpen = false
+                                    model.startImport()
+                                }
+                            )
+                            if (state.book == "history") {
+                                DropdownMenuItem(
+                                    text = { Text("Очистить историю") },
+                                    leadingIcon = {
+                                        Icon(
+                                            NativeIcons.Trash,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    },
+                                    enabled = state.people.isNotEmpty(),
+                                    onClick = {
+                                        menuOpen = false
+                                        model.askClearHistory()
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            )
+        },
+        floatingActionButton = {
+            GlowingCircleFab(
+                icon = NativeIcons.Plus,
+                contentDescription = "Добавить контакт",
+                onClick = model::create,
+                enabled = !state.busy && !state.importOpen
+            )
+        },
+        bottomBar = {
+            bottomBar()
+        }
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            // Combined modern search bar with inline directory filter chip
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0xFF1C1F2A),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 46.dp)
+                        .padding(start = 12.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        NativeIcons.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = Color(0xFF8E929F)
+                    )
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (state.query.isEmpty()) {
+                            Text(
+                                "Поиск контактов…",
+                                color = Color(0xFF8E929F).copy(alpha = 0.7f),
+                                fontSize = 14.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        BasicTextField(
+                            value = state.query,
+                            onValueChange = model::text,
+                            singleLine = true,
+                            textStyle = TextStyle(
+                                color = Color(0xFFF3F4F6),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Normal
+                            ),
+                            cursorBrush = SolidColor(Color(0xFF8B5CF6)),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(
+                                onSearch = {
+                                    focus.clearFocus()
+                                    model.search()
+                                }
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    if (state.query.isNotEmpty()) {
+                        Surface(
+                            onClick = {
+                                if (!state.busy) {
+                                    model.text("")
+                                    model.search()
+                                }
+                            },
+                            shape = CircleShape,
+                            color = Color(0xFF14161D),
+                            modifier = Modifier.size(26.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    NativeIcons.Close,
+                                    contentDescription = "Сброс",
+                                    modifier = Modifier.size(13.dp),
+                                    tint = Color(0xFF8E929F)
+                                )
+                            }
+                        }
+                    }
+                    // Inline directory filter chip inside search input
                     Box {
                         Surface(
                             onClick = { if (!state.busy) books = true },
                             shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer
+                            color = Color(0xFF14161D)
                         ) {
-                            Text(
-                                "${names[state.book]} ▾",
+                            Row(
                                 Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    names[state.book] ?: "Университет",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFA78BFA),
+                                    maxLines = 1
+                                )
+                                Icon(
+                                    NativeIcons.ChevronDown,
+                                    contentDescription = "Справочник",
+                                    modifier = Modifier.size(13.dp),
+                                    tint = Color(0xFFA78BFA)
+                                )
+                            }
                         }
                         DropdownMenu(expanded = books, onDismissRequest = { books = false }) {
                             names.forEach { (book, label) ->
@@ -162,118 +347,35 @@ internal fun NativeContactsScreen(
                             }
                         }
                     }
-                    IconButton(
+                    // Compact inline search trigger button inside input
+                    Surface(
                         onClick = {
-                            focus.clearFocus()
-                            model.load(true)
+                            if (!state.busy) {
+                                focus.clearFocus()
+                                model.search()
+                            }
                         },
-                        enabled = !state.busy
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF7C5CFF).copy(alpha = 0.2f),
+                        modifier = Modifier.size(32.dp)
                     ) {
-                        Icon(
-                            NativeIcons.Refresh,
-                            contentDescription = "Загрузить",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            )
-        },
-        bottomBar = {
-            Column(Modifier.fillMaxWidth()) {
-                Surface(tonalElevation = 2.dp) {
-                    Column(Modifier.fillMaxWidth()) {
-                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Button(
-                                onClick = model::create,
-                                enabled = !state.busy && !state.importOpen,
-                                shape = RoundedCornerShape(14.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                                modifier = Modifier.weight(1.05f).heightIn(min = 44.dp)
-                            ) {
-                                Icon(NativeIcons.Plus, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Новый контакт", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            OutlinedButton(
-                                onClick = model::startImport,
-                                enabled = !state.busy && !state.importOpen,
-                                shape = RoundedCornerShape(14.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                                modifier = Modifier.weight(1f).heightIn(min = 44.dp)
-                            ) {
-                                Icon(NativeIcons.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Импорт VCF/CSV", fontWeight = FontWeight.Medium, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                NativeIcons.Search,
+                                contentDescription = "Найти",
+                                modifier = Modifier.size(16.dp),
+                                tint = Color(0xFFA78BFA)
+                            )
                         }
                     }
                 }
-                bottomBar()
             }
-        }
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = state.query,
-                    onValueChange = model::text,
-                    placeholder = { Text("Имя, фамилия или email", fontSize = 13.sp) },
-                    leadingIcon = {
-                        Icon(
-                            NativeIcons.Search,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                    trailingIcon = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (state.query.isNotEmpty()) {
-                                TextButton(
-                                    onClick = {
-                                        model.text("")
-                                        model.search()
-                                    },
-                                    enabled = !state.busy,
-                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                                ) { Text("Сброс", fontSize = 11.sp) }
-                            }
-                            TextButton(
-                                onClick = {
-                                    focus.clearFocus()
-                                    model.search()
-                                },
-                                enabled = !state.busy,
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                            ) {
-                                Text("Найти", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                            }
-                        }
-                    }
-                )
-            }
-            if (state.book == "history") {
-                TextButton(
-                    onClick = model::askClearHistory,
-                    enabled = !state.busy && state.people.isNotEmpty(),
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                ) { Text("Очистить историю") }
-            }
+            // Compact borderless alphabet strip
             LazyRow(
                 state = alphabet,
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 items(NativeContacts.ALPHABET.toList(), key = { it.toString() }) { letter ->
                     val selected = state.letter == letter.toString()
@@ -282,69 +384,85 @@ internal fun NativeContactsScreen(
                             focus.clearFocus()
                             model.letter(letter.toString())
                         },
-                        shape = RoundedCornerShape(9.dp),
-                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(
-                            1.dp,
-                            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                        ),
-                        modifier = Modifier.height(32.dp).widthIn(min = 34.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (selected) Color(0xFF7C5CFF).copy(alpha = 0.22f) else Color.Transparent,
+                        modifier = Modifier.height(28.dp).widthIn(min = 28.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp)) {
                             Text(
                                 letter.toString(),
                                 fontSize = 12.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (selected) Color(0xFFA78BFA) else Color(0xFF8E929F)
                             )
                         }
                     }
                 }
             }
-            Spacer(Modifier.height(4.dp))
-            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+            HorizontalDivider(
+                modifier = Modifier.padding(top = 4.dp),
+                thickness = 0.5.dp,
+                color = Color(0x0FFFFFFF)
+            )
+            if (state.busy) {
+                LinearProgressIndicator(
+                    Modifier.fillMaxWidth().height(2.dp),
+                    color = Color(0xFF7C5CFF),
+                    trackColor = Color.Transparent
+                )
+            }
             state.error?.let {
-                Text(it, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                Text(
+                    it,
+                    Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 12.sp
+                )
             }
             state.notice?.let {
-                Text(it, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    it,
+                    Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    fontSize = 12.sp,
+                    color = Color(0xFFA78BFA)
+                )
             }
             if (copied) {
                 Text(
                     "Адрес скопирован",
                     Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.primary
+                    color = Color(0xFFA78BFA)
                 )
             }
             key(state.owner, state.book, state.applied) {
-                LazyColumn(Modifier.weight(1f)) {
+                LazyColumn(
+                    Modifier.weight(1f),
+                    contentPadding = PaddingValues(top = 6.dp, bottom = 84.dp)
+                ) {
                     if (state.people.isEmpty() && !state.busy && state.error == null) {
                         item {
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surface,
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFF14161D),
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                             ) {
                                 Text(
                                     if (state.book !in listOf("local", "history") && state.applied.isEmpty())
-                                        "Выберите букву алфавита или введите имя для поиска в справочнике."
-                                    else "Совпадений не найдено.",
+                                        "Выберите букву или введите имя для поиска"
+                                    else "Совпадений не найдено",
                                     Modifier.padding(16.dp),
                                     fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = Color(0xFF8E929F)
                                 )
                             }
                         }
                     }
                     items(state.people, key = { it.email.lowercase(java.util.Locale.ROOT) }) { person ->
-                        val palette = NativeIcons.avatarPalette(person.email.ifBlank { person.name })
                         Surface(
                             onClick = { if (!state.busy) model.show(person.email) },
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFF14161D),
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
                         ) {
                             Row(
@@ -352,29 +470,20 @@ internal fun NativeContactsScreen(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = palette.container,
-                                    modifier = Modifier.size(44.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            contactInitials(person.name, person.email),
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = palette.content
-                                        )
-                                    }
-                                }
+                                GlassSphereAvatar(
+                                    initials = contactInitials(person.name, person.email),
+                                    seed = person.email.ifBlank { person.name },
+                                    size = 42.dp
+                                )
                                 Column(
                                     Modifier.weight(1f),
                                     verticalArrangement = Arrangement.spacedBy(2.dp)
                                 ) {
                                     Text(
                                         person.name,
-                                        fontSize = 15.sp,
+                                        fontSize = 14.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurface,
+                                        color = Color(0xFFF3F4F6),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -382,36 +491,32 @@ internal fun NativeContactsScreen(
                                         Text(
                                             person.email,
                                             fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            color = Color(0xFF8E929F),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
                                 Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Surface(
+                                    GlassIconButton(
+                                        icon = NativeIcons.Mail,
+                                        contentDescription = "Написать",
                                         onClick = {
                                             if (!state.busy) {
                                                 model.person(person.email)?.let { write(it.email) }
                                             }
                                         },
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
-                                        modifier = Modifier.size(36.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                NativeIcons.Mail,
-                                                contentDescription = "Написать",
-                                                modifier = Modifier.size(16.dp),
-                                                tint = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                    }
-                                    Surface(
+                                        size = 34.dp,
+                                        iconSize = 16.dp,
+                                        accent = true,
+                                        enabled = !state.busy
+                                    )
+                                    GlassIconButton(
+                                        icon = NativeIcons.Copy,
+                                        contentDescription = "Копировать адрес",
                                         onClick = {
                                             if (!state.busy) {
                                                 model.person(person.email)?.let {
@@ -420,53 +525,26 @@ internal fun NativeContactsScreen(
                                                 }
                                             }
                                         },
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = MaterialTheme.colorScheme.background,
-                                        modifier = Modifier.size(36.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                NativeIcons.Copy,
-                                                contentDescription = "Копировать адрес",
-                                                modifier = Modifier.size(15.dp),
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (state.people.isNotEmpty() || state.more) {
-                        item {
-                            Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (state.people.isNotEmpty()) {
-                                    Text(
-                                        "Показано контактов: ${state.people.size}",
-                                        fontSize = 12.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        size = 34.dp,
+                                        iconSize = 15.dp,
+                                        accent = false,
+                                        enabled = !state.busy
                                     )
-                                } else {
-                                    Spacer(Modifier.width(1.dp))
-                                }
-                                if (state.more) {
-                                    OutlinedButton(
-                                        onClick = { model.load(true, more = true) },
-                                        enabled = !state.busy,
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                    ) {
-                                        Text("Показать ещё", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                    }
                                 }
                             }
                         }
                     }
-                    item { Spacer(Modifier.height(12.dp)) }
+                    // Auto-pagination on scroll when more items exist
+                    if (state.more) {
+                        item(key = "load_more_${state.people.size}") {
+                            LaunchedEffect(state.people.size, state.more) {
+                                if (!state.busy) {
+                                    model.load(true, more = true)
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                        }
+                    }
                 }
             }
         }
@@ -488,18 +566,22 @@ private fun contactInitials(name: String, email: String): String {
 private fun NativeContactDetail(model: NativeContactsModel, write: (String) -> Unit) {
     val state = model.state
     val person = state.detail ?: return
-    val palette = NativeIcons.avatarPalette(person.email.ifBlank { person.name })
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     var status by remember(state.owner, person.email) { mutableStateOf<String?>(null) }
     BackHandler(onBack = model::close)
     Scaffold(
+        containerColor = Color(0xFF0B0C10),
         topBar = {
             TopAppBar(
-                title = { Text("Контакт", fontWeight = FontWeight.Bold) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF0B0C10),
+                    titleContentColor = Color(0xFFF3F4F6)
+                ),
+                title = { Text("Контакт", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
                 navigationIcon = {
                     IconButton(onClick = model::close, enabled = !state.busy) {
-                        Icon(NativeIcons.ArrowBack, contentDescription = "Назад", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(NativeIcons.ArrowBack, contentDescription = "Назад", tint = Color(0xFFF3F4F6))
                     }
                 }
             )
@@ -510,13 +592,12 @@ private fun NativeContactDetail(model: NativeContactsModel, write: (String) -> U
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                color = Color(0xFF14161D),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -524,86 +605,103 @@ private fun NativeContactDetail(model: NativeContactsModel, write: (String) -> U
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = palette.container,
-                        modifier = Modifier.size(54.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                contactInitials(person.name, person.email),
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = palette.content
-                            )
-                        }
-                    }
+                    GlassSphereAvatar(
+                        initials = contactInitials(person.name, person.email),
+                        seed = person.email.ifBlank { person.name },
+                        size = 54.dp
+                    )
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(person.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                        Text(person.email, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
-                        if (person.number.isNotBlank()) Text(person.number, style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            if (person.local) "Контакт на этом телефоне"
-                            else if (state.book == "local") "Из сохранённых адресов и истории получателей"
-                            else "Справочник университета",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Text(person.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFF3F4F6))
+                        Text(person.email, fontSize = 14.sp, color = Color(0xFFA78BFA))
+                        if (person.number.isNotBlank()) {
+                            Text(person.number, fontSize = 13.sp, color = Color(0xFF8E929F))
+                        }
                     }
                 }
             }
-            Button(
-                onClick = { model.detail()?.let { write(it.email) } },
-                enabled = !state.busy,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
-            ) { Text("Написать") }
-            if (person.number.isNotBlank()) {
-                OutlinedButton(
-                    onClick = {
-                        model.detail()?.let { contact ->
-                            if (contact.number.length <= 60 && contact.number.matches(Regex("[+0-9() .-]+"))) {
-                                status = runCatching<String?> {
-                                    context.startActivity(
-                                        android.content.Intent(
-                                            android.content.Intent.ACTION_DIAL,
-                                            android.net.Uri.fromParts("tel", contact.number, null)
-                                        )
-                                    )
-                                    null
-                                }.getOrElse { "Не удалось открыть набор номера." }
-                            } else status = "Этот номер нельзя передать в набор номера."
-                        }
-                    },
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { model.detail()?.let { write(it.email) } },
                     enabled = !state.busy,
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
-                ) { Text("Позвонить") }
-            }
-            OutlinedButton(
-                onClick = {
-                    model.detail()?.let {
-                        clipboard.setText(AnnotatedString(it.email))
-                        status = "Адрес скопирован."
+                    modifier = Modifier.weight(1f).heightIn(min = 44.dp)
+                ) {
+                    Icon(NativeIcons.Mail, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Написать")
+                }
+                Surface(
+                    onClick = {
+                        if (!state.busy) {
+                            model.detail()?.let {
+                                clipboard.setText(AnnotatedString(it.email))
+                                status = "Адрес скопирован."
+                            }
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF1C1F2A),
+                    modifier = Modifier.weight(1f).heightIn(min = 44.dp)
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(NativeIcons.Copy, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFF3F4F6))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Копировать", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFFF3F4F6))
                     }
-                },
-                enabled = !state.busy,
+                }
+            }
+            if (person.number.isNotBlank()) {
+                Surface(
+                    onClick = {
+                        if (!state.busy) {
+                            model.detail()?.let { contact ->
+                                if (contact.number.length <= 60 && contact.number.matches(Regex("[+0-9() .-]+"))) {
+                                    status = runCatching<String?> {
+                                        context.startActivity(
+                                            android.content.Intent(
+                                                android.content.Intent.ACTION_DIAL,
+                                                android.net.Uri.fromParts("tel", contact.number, null)
+                                            )
+                                        )
+                                        null
+                                    }.getOrElse { "Не удалось открыть набор номера." }
+                                } else status = "Этот номер нельзя передать в набор номера."
+                            }
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF1C1F2A),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(10.dp)) {
+                        Text("Позвонить", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFFF3F4F6))
+                    }
+                }
+            }
+            Surface(
+                onClick = { if (!state.busy) model.edit() },
                 shape = RoundedCornerShape(12.dp),
+                color = Color(0xFF1C1F2A),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
-            ) { Text("Копировать адрес") }
-            OutlinedButton(
-                onClick = model::edit,
-                enabled = !state.busy,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
-            ) { Text(if (person.local) "Изменить" else "Сохранить на телефоне") }
-            Text(
-                "Изменения сохраняются для текущего ящика на этом телефоне. Серверная адресная книга не изменяется.",
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            status?.let { Text(it) }
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(10.dp)) {
+                    Text(
+                        if (person.local) "Изменить" else "Сохранить на телефоне",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFFF3F4F6)
+                    )
+                }
+            }
+            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+            status?.let { Text(it, color = Color(0xFFA78BFA), fontSize = 12.sp) }
         }
     }
 }
@@ -615,44 +713,39 @@ private fun NativeContactEditor(model: NativeContactsModel) {
     val editor = state.editor ?: return
     BackHandler(onBack = model::close)
     Scaffold(
+        containerColor = Color(0xFF0B0C10),
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xFF0B0C10),
+                    titleContentColor = Color(0xFFF3F4F6)
+                ),
                 title = {
                     Text(
                         if (state.expected == null) "Новый контакт" else "Изменить контакт",
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 18.sp
                     )
                 },
                 navigationIcon = {
-                    TextButton(onClick = model::close, enabled = !state.busy) { Text("Отмена") }
-                }
-            )
-        },
-        bottomBar = {
-            Surface(tonalElevation = 2.dp) {
-                Column(Modifier.fillMaxWidth().navigationBarsPadding().imePadding()) {
-                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = model::save,
-                            enabled = !state.busy && !state.leaveOpen && !state.deleteOpen,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f).heightIn(min = 44.dp)
-                        ) { Text("Сохранить на телефоне") }
-                        if (state.expected != null) {
-                            OutlinedButton(
-                                onClick = model::askDelete,
-                                enabled = !state.busy,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.heightIn(min = 44.dp)
-                            ) { Text("Удалить контакт", color = MaterialTheme.colorScheme.error) }
+                    IconButton(onClick = model::close, enabled = !state.busy) {
+                        Icon(NativeIcons.Close, contentDescription = "Отмена", tint = Color(0xFFF3F4F6))
+                    }
+                },
+                actions = {
+                    if (state.expected != null) {
+                        IconButton(onClick = model::askDelete, enabled = !state.busy) {
+                            Icon(NativeIcons.Trash, contentDescription = "Удалить контакт", tint = MaterialTheme.colorScheme.error)
                         }
                     }
+                    IconButton(
+                        onClick = model::save,
+                        enabled = !state.busy && !state.leaveOpen && !state.deleteOpen
+                    ) {
+                        Icon(NativeIcons.Check, contentDescription = "Сохранить", tint = Color(0xFF8B5CF6))
+                    }
                 }
-            }
+            )
         }
     ) { padding ->
         Column(
@@ -664,12 +757,20 @@ private fun NativeContactEditor(model: NativeContactsModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             for ((key, label) in listOf("sender" to "Имя", "email" to "Электронная почта", "number" to "Телефон")) {
-                OutlinedTextField(
+                TextField(
                     value = editor.optString(key),
                     onValueChange = { model.field(key, it) },
-                    label = { Text(label) },
+                    label = { Text(label, color = Color(0xFF8E929F)) },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color(0xFF1C1F2A),
+                        unfocusedContainerColor = Color(0xFF1C1F2A),
+                        disabledContainerColor = Color(0xFF14161D),
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent
+                    ),
                     enabled = !state.busy && !state.leaveOpen && !state.deleteOpen,
                     modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(
@@ -681,13 +782,8 @@ private fun NativeContactEditor(model: NativeContactsModel) {
                     )
                 )
             }
-            Text(
-                "Сохранение на этом телефоне для текущего ящика. Серверная адресная книга не изменяется.",
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
         }
     }
     if (state.leaveOpen) {
@@ -779,4 +875,3 @@ private fun NativeContactEditor(model: NativeContactsModel) {
         }
     },dismissButton={TextButton(onClick=model::close,enabled=!state.busy&&!state.importPicking){Text("Отмена")}})
 }
-

@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -94,30 +95,20 @@ private fun readerAvatarLetters(sender: String): String {
     return words.take(2).joinToString("") {String(Character.toChars(it.codePointAt(0)))}.uppercase(Locale.forLanguageTag("ru")).ifBlank {"?"}
 }
 
-@Composable internal fun NativeReaderHeader(owner: String,mail: NativeMail,message: JSONObject?) {
-    var expanded by rememberSaveable(owner,mail.ref.folder,mail.ref.validity,mail.ref.uid){mutableStateOf(false)}
+@Composable internal fun NativeReaderHeader(owner: String,mail: NativeMail,message: JSONObject?,externalExpanded: Boolean=false) {
     var rawHeadersExpanded by rememberSaveable(owner,mail.ref.folder,mail.ref.validity,mail.ref.uid){mutableStateOf(false)}
     val details=remember(message,mail.ref.uid){message?.let {ReaderDetails.from(it,mail.ref.uid)}}
-    val palette = NativeIcons.avatarPalette(mail.email.ifBlank { mail.sender })
     Row(
-        Modifier.fillMaxWidth().padding(top=10.dp,bottom=8.dp),
+        Modifier.fillMaxWidth().padding(top=10.dp,bottom=10.dp),
         horizontalArrangement=Arrangement.spacedBy(12.dp),
         verticalAlignment=Alignment.CenterVertically
     ) {
-        Surface(
-            shape=CircleShape,
-            color=palette.container,
-            modifier=Modifier.size(42.dp).clearAndSetSemantics {}
-        ) {
-            Box(contentAlignment=Alignment.Center) {
-                Text(
-                    readerAvatarLetters(mail.sender),
-                    fontSize=14.sp,
-                    fontWeight=FontWeight.Bold,
-                    color=palette.content
-                )
-            }
-        }
+        GlassSphereAvatar(
+            letters=readerAvatarLetters(mail.sender),
+            seed=mail.email.ifBlank { mail.sender },
+            size=44.dp,
+            fontSize=14.sp
+        )
         Box(Modifier.weight(1f)) {
             SelectionContainer {
                 Column(Modifier.fillMaxWidth()) {
@@ -127,33 +118,19 @@ private fun readerAvatarLetters(sender: String): String {
                         if(mail.email.isNotBlank()&&!mail.sender.trim().equals(mail.email.trim(),true)) append(mail.email)
                         if(date.isNotBlank()) {
                             if(isNotEmpty()) append(" · ")
-                            append("$date МСК")
+                            append(date)
                         }
                     }
-                    Text(subline.ifBlank { "Дата не указана" },Modifier.padding(top=2.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)
+                    Text(subline.ifBlank { "Сегодня" },Modifier.padding(top=2.dp),fontSize=12.sp,color=Color(0xFF8E929F),maxLines=1)
                 }
             }
         }
-        Surface(
-            onClick={if(message!=null)expanded=!expanded},
-            shape=RoundedCornerShape(10.dp),
-            color=MaterialTheme.colorScheme.surface,
-            border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant)
-        ) {
-            Text(
-                if(expanded)"Скрыть ▴" else "Сведения ▾",
-                Modifier.padding(horizontal=10.dp,vertical=6.dp),
-                fontSize=12.sp,
-                fontWeight=FontWeight.Medium,
-                color=MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
     }
-    if(expanded&&details!=null) {
+    if(externalExpanded&&details!=null) {
         Surface(
-            shape=RoundedCornerShape(12.dp),
-            color=MaterialTheme.colorScheme.surface,
-            border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),
+            shape=RoundedCornerShape(14.dp),
+            color=Color(0xFF14161D),
+            border=BorderStroke(1.dp,Color(0x14FFFFFF)),
             modifier=Modifier.fillMaxWidth().padding(bottom=10.dp)
         ) {
             SelectionContainer {
