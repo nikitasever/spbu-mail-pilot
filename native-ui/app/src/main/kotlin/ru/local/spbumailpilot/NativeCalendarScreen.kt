@@ -1,19 +1,25 @@
 package ru.local.spbumailpilot
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,7 +42,10 @@ internal fun NativeCalendarScreen(
     val state = model.state
     val date = LocalDate.parse(state.day)
     val month = YearMonth.from(date)
-    val label = DateTimeFormatter.ofPattern("d MMMM, EEEE", Locale.forLanguageTag("ru"))
+    val ruLocale = Locale.forLanguageTag("ru")
+    val label = DateTimeFormatter.ofPattern("d MMMM, EEEE", ruLocale)
+    val monthTitle = month.format(DateTimeFormatter.ofPattern("LLLL yyyy", ruLocale))
+        .replaceFirstChar { if (it.isLowerCase()) it.titlecase(ruLocale) else it.toString() }
     var searchOpen by remember { mutableStateOf(false) }
     val needle = state.searchQuery.trim().lowercase(Locale.ROOT)
     val matchesSearch: (CalendarEntry) -> Boolean = remember(needle) {
@@ -50,27 +59,57 @@ internal fun NativeCalendarScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Календарь") },
-                navigationIcon = { TextButton(onClick = model::close) { Text("Назад") } },
+                title = {
+                    Text(
+                        "Календарь",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
+                navigationIcon = {
+                    TextButton(onClick = model::close, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                        Text("Назад")
+                    }
+                },
                 actions = {
-                    TextButton(onClick = model::openSources, enabled = !state.busy) { Text("Источники") }
-                    TextButton(onClick = {
-                        if (searchOpen && state.searchQuery.isNotEmpty()) model.clearSearch()
-                        searchOpen = !searchOpen
-                    }) { Text("Поиск") }
-                    TextButton(onClick = { model.load(true) }, enabled = !state.busy) { Text("Обновить") }
+                    TextButton(
+                        onClick = {
+                            if (searchOpen && state.searchQuery.isNotEmpty()) model.clearSearch()
+                            searchOpen = !searchOpen
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) { Text("Поиск") }
+                    TextButton(
+                        onClick = { model.load(true) },
+                        enabled = !state.busy,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) { Text("Обновить") }
                 }
             )
         },
         bottomBar = {
             Surface(tonalElevation = 2.dp) {
                 Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
-                    Button(
-                        onClick = { editEvent(state.day, null) },
-                        enabled = !state.busy,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
-                    ) { Text("Новое событие") }
-                    TextButton(onClick = fullClient, modifier = Modifier.fillMaxWidth()) { Text("Все возможности почты") }
+                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = { editEvent(state.day, null) },
+                            enabled = !state.busy,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f).heightIn(min = 44.dp)
+                        ) { Text("Новое событие") }
+                        OutlinedButton(
+                            onClick = fullClient,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.heightIn(min = 44.dp)
+                        ) { Text("Все возможности почты", fontSize = 12.sp) }
+                    }
                 }
             }
         }
@@ -81,13 +120,14 @@ internal fun NativeCalendarScreen(
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         OutlinedTextField(
                             value = state.searchQuery,
                             onValueChange = model::search,
                             label = { Text("Поиск событий") },
                             singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f)
                         )
                         if (state.searchQuery.isNotEmpty()) {
@@ -96,30 +136,84 @@ internal fun NativeCalendarScreen(
                     }
                 }
                 Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     listOf("day" to "День", "week" to "Неделя", "month" to "Месяц", "agenda" to "Повестка").forEach { (mode, text) ->
-                        FilterChip(selected = state.mode == mode, onClick = { model.mode(mode) }, label = { Text(text) })
+                        val selected = state.mode == mode
+                        Surface(
+                            onClick = { model.mode(mode) },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier.weight(1f).height(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp)) {
+                                Text(
+                                    text,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
                     }
                 }
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { model.shift(-1) }, modifier = Modifier.semantics { contentDescription = "Предыдущий период" }) {
-                        Text("‹", fontSize = 24.sp)
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        IconButton(
+                            onClick = { model.shift(-1) },
+                            modifier = Modifier.fillMaxSize().semantics { contentDescription = "Предыдущий период" }
+                        ) {
+                            Text("‹", fontSize = 20.sp, fontWeight = FontWeight.Medium)
+                        }
                     }
                     Text(
-                        if (state.mode == "day") date.format(label)
-                        else month.format(DateTimeFormatter.ofPattern("LLLL yyyy", Locale.forLanguageTag("ru"))),
-                        Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleSmall
+                        if (state.mode == "day") date.format(label) else monthTitle,
+                        Modifier.weight(1f).padding(horizontal = 4.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    IconButton(onClick = { model.shift(1) }, modifier = Modifier.semantics { contentDescription = "Следующий период" }) {
-                        Text("›", fontSize = 24.sp)
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        IconButton(
+                            onClick = { model.shift(1) },
+                            modifier = Modifier.fillMaxSize().semantics { contentDescription = "Следующий период" }
+                        ) {
+                            Text("›", fontSize = 20.sp, fontWeight = FontWeight.Medium)
+                        }
                     }
-                    TextButton(onClick = model::today) { Text("Сегодня") }
+                    OutlinedButton(
+                        onClick = model::today,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.heightIn(min = 34.dp)
+                    ) { Text("Сегодня", fontSize = 12.sp) }
+                    OutlinedButton(
+                        onClick = model::openSources,
+                        enabled = !state.busy,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.heightIn(min = 34.dp)
+                    ) { Text("Источники", fontSize = 12.sp) }
                 }
                 if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                 state.error?.let { Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
@@ -129,40 +223,75 @@ internal fun NativeCalendarScreen(
                     else month.atDay(1).minusDays(month.atDay(1).dayOfWeek.value - 1L)
                     val cells = if (state.mode == "week") 7
                     else ((month.atDay(1).dayOfWeek.value - 1 + month.lengthOfMonth() + 6) / 7) * 7
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс").forEach {
-                            Text(it, Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontSize = 11.sp)
+                            Text(
+                                it,
+                                Modifier.weight(1f),
+                                textAlign = TextAlign.Center,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
-                    for (week in 0 until cells / 7) Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+                    for (week in 0 until cells / 7) Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         for (index in 0..6) {
                             val day = start.plusDays((week * 7 + index).toLong())
                             val present = state.mode == "week" || YearMonth.from(day) == month
-                            if (!present) Spacer(Modifier.weight(1f).height(64.dp)) else {
+                            if (!present) Spacer(Modifier.weight(1f).height(56.dp)) else {
                                 val entries = state.entries.filter { NativeAgenda.onDay(it.data, day.toString()) && matchesSearch(it) }
                                 val selected = day == date
-                                val background = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.background
+                                val background = when {
+                                    selected -> MaterialTheme.colorScheme.primaryContainer
+                                    index >= 5 -> MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+                                    else -> MaterialTheme.colorScheme.background
+                                }
                                 Surface(
                                     onClick = { model.select(day.toString()) },
-                                    modifier = Modifier.weight(1f).height(64.dp).semantics {
+                                    modifier = Modifier.weight(1f).height(56.dp).semantics {
                                         contentDescription = day.format(label) + ", событий и задач: " + entries.size
                                     },
                                     color = background,
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                                    border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+                                    shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Column(
                                         Modifier.fillMaxSize(),
-                                        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                                        horizontalAlignment = Alignment.CenterHorizontally,
                                         verticalArrangement = Arrangement.Center
                                     ) {
-                                        Text(day.dayOfMonth.toString(), style = MaterialTheme.typography.titleSmall)
+                                        Text(
+                                            day.dayOfMonth.toString(),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        )
                                         if (entries.isNotEmpty()) {
-                                            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            ) {
                                                 entries.map { it.data.optString("kind") }.distinct().forEach { kind ->
-                                                    Text("•", color = calendarColor(kind), fontSize = 12.sp)
+                                                    Surface(
+                                                        shape = CircleShape,
+                                                        color = calendarColor(kind),
+                                                        modifier = Modifier.size(5.dp)
+                                                    ) {}
                                                 }
                                             }
-                                            Text(entries.size.toString(), fontSize = 10.sp)
+                                            Text(
+                                                entries.size.toString(),
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
                                         }
                                     }
                                 }
@@ -171,20 +300,43 @@ internal fun NativeCalendarScreen(
                     }
                 }
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     listOf("remote" to "Сервер", "event" to "События", "task" to "Задачи").forEach { (kind, text) ->
-                        Text("• $text", color = calendarColor(kind), fontSize = 11.sp)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = calendarColor(kind),
+                                modifier = Modifier.size(6.dp)
+                            ) {}
+                            Text(text, color = calendarColor(kind), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        }
                     }
                 }
-                state.notice?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                Text(
-                    "Время Москвы · Свои события редактируются на телефоне. Серверные события доступны для чтения.",
-                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        state.notice?.let {
+                            Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(
+                            "Время Москвы · Свои события редактируются на телефоне. Серверные события доступны для чтения.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
             val days = if (state.mode == "agenda" || needle.isNotEmpty()) {
                 generateSequence(month.atDay(1)) { it.plusDays(1) }.takeWhile { YearMonth.from(it) == month }.toList()
@@ -197,8 +349,9 @@ internal fun NativeCalendarScreen(
                     item(key = "day:$day") {
                         Text(
                             day.format(label),
-                            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                             style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -206,7 +359,8 @@ internal fun NativeCalendarScreen(
                         Text(
                             if (state.busy) "Загружаем…" else "Нет событий и задач в доступных данных.",
                             Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            fontSize = 13.sp
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     entries.forEach { entry ->
@@ -487,49 +641,113 @@ private fun NativeCalendarCard(
     val data = entry.data
     val kind = data.optString("kind")
     var expanded by remember(entry.key) { mutableStateOf(false) }
-    Card(
+    Surface(
         onClick = { expanded = !expanded },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
     ) {
-        Column(Modifier.padding(12.dp)) {
-            Text(NativeAgenda.timeRange(data), fontSize = 12.sp, color = calendarColor(kind))
-            Text(data.optString("title", "Без названия"), style = MaterialTheme.typography.titleSmall)
-            if (data.optString("calendarTitle").isNotBlank()) {
-                Text(data.optString("calendarTitle"), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (expanded) {
-                listOf("location", "description", "notes").forEach { field ->
-                    if (data.optString(field).isNotBlank()) Text(data.optString(field), Modifier.padding(top = 8.dp), fontSize = 14.sp)
+        Row(Modifier.fillMaxWidth().padding(12.dp)) {
+            Surface(
+                shape = RoundedCornerShape(2.dp),
+                color = calendarColor(kind),
+                modifier = Modifier.width(4.dp).height(36.dp)
+            ) {}
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    NativeAgenda.timeRange(data),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = calendarColor(kind)
+                )
+                Text(
+                    data.optString("title", "Без названия"),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (data.optString("calendarTitle").isNotBlank()) {
+                    Text(
+                        data.optString("calendarTitle"),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-            }
-            if (kind == "event" || kind == "remote") {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (kind == "event") {
-                        TextButton(onClick = edit, enabled = enabled) { Text("Изменить своё событие") }
-                    }
-                    TextButton(onClick = createTask, enabled = enabled) { Text("Создать задачу") }
-                }
-            }
-            if (links.length() > 0) {
-                Text("Связанные письма · ${links.length()}", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                for (index in 0 until links.length()) {
-                    val link = links.getJSONObject(index)
-                    val mail = link.optJSONObject("mail")
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                    ) {
-                        TextButton(onClick = { openMail(link.toString()) }, enabled = enabled, modifier = Modifier.weight(1f)) {
-                            Text(
-                                mail?.optString("subject")?.ifBlank { "Открыть письмо" } ?: "Повреждённая ссылка",
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                if (expanded) {
+                    listOf("location", "description", "notes").forEach { field ->
+                        if (data.optString(field).isNotBlank()) {
+                            Text(data.optString(field), Modifier.padding(top = 8.dp), fontSize = 14.sp)
                         }
-                        TextButton(onClick = { unlinkMail(link.optString("id")) }, enabled = enabled) {
-                            Text("Отвязать", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                if (kind == "event" || kind == "remote") {
+                    Row(
+                        Modifier.padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (kind == "event") {
+                            OutlinedButton(
+                                onClick = edit,
+                                enabled = enabled,
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.heightIn(min = 34.dp)
+                            ) { Text("Изменить своё событие", fontSize = 12.sp) }
+                        }
+                        OutlinedButton(
+                            onClick = createTask,
+                            enabled = enabled,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.heightIn(min = 34.dp)
+                        ) { Text("Создать задачу", fontSize = 12.sp) }
+                    }
+                }
+                if (links.length() > 0) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.background.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
+                            Text(
+                                "Связанные письма · ${links.length()}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            for (index in 0 until links.length()) {
+                                val link = links.getJSONObject(index)
+                                val mail = link.optJSONObject("mail")
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    TextButton(
+                                        onClick = { openMail(link.toString()) },
+                                        enabled = enabled,
+                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            mail?.optString("subject")?.ifBlank { "Открыть письмо" } ?: "Повреждённая ссылка",
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    TextButton(
+                                        onClick = { unlinkMail(link.optString("id")) },
+                                        enabled = enabled,
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("Отвязать", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                                    }
+                                }
+                            }
                         }
                     }
                 }

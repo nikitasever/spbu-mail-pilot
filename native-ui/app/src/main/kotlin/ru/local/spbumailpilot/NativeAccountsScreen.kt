@@ -2,56 +2,108 @@
 package ru.local.spbumailpilot
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 @Composable internal fun NativeAccountsScreen(model:NativeAccountsModel) {
     val s=model.state
     BackHandler {model.back()}
-    Scaffold(topBar={TopAppBar(title={Text(if(s.editor=="login")"Добавить аккаунт" else if(s.editor=="smtp")"Отправка · SMTP" else if(s.editor=="password")"Обновить сохранённый пароль" else "Аккаунты")},navigationIcon={TextButton(onClick=model::back,enabled=!s.busy){Text("Назад")}})}) {padding->
+    Scaffold(
+        topBar={
+            Column {
+                TopAppBar(
+                    colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background),
+                    title={Text(if(s.editor=="login")"Добавить аккаунт" else if(s.editor=="smtp")"Отправка · SMTP" else if(s.editor=="password")"Обновить сохранённый пароль" else "Аккаунты",fontWeight=FontWeight.SemiBold)},
+                    navigationIcon={TextButton(onClick=model::back,enabled=!s.busy){Text("Назад")}}
+                )
+                HorizontalDivider(thickness=0.5.dp,color=MaterialTheme.colorScheme.outlineVariant)
+            }
+        }
+    ) {padding->
         Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             if(s.busy)LinearProgressIndicator(Modifier.fillMaxWidth())
-            s.error?.let {Text(it,color=MaterialTheme.colorScheme.error)}
-            s.notice?.let {Text(it)}
+            s.error?.let {
+                Surface(shape=RoundedCornerShape(10.dp),color=MaterialTheme.colorScheme.errorContainer,modifier=Modifier.fillMaxWidth()) {
+                    Text(it,Modifier.padding(12.dp),color=MaterialTheme.colorScheme.error,fontSize=13.sp)
+                }
+            }
+            s.notice?.let {
+                Surface(shape=RoundedCornerShape(10.dp),color=MaterialTheme.colorScheme.primaryContainer,modifier=Modifier.fillMaxWidth()) {
+                    Text(it,Modifier.padding(12.dp),color=MaterialTheme.colorScheme.onPrimaryContainer,fontSize=13.sp)
+                }
+            }
             if(s.editor!=null){
                 if(s.editor=="login"){
-                    Text("Пароль хранится в зашифрованном хранилище Android. Вход проверяется по IMAP с TLS. После ухода в фон пароль нужно ввести снова.",style=MaterialTheme.typography.bodySmall)
-                    Text("Для Mail.ru: imap.mail.ru, порт 993 и пароль для внешнего приложения.",style=MaterialTheme.typography.bodySmall)
-                    OutlinedTextField(s.user,{model.field("user",it)},label={Text("Логин или полный email")},singleLine=true,enabled=!s.busy,modifier=Modifier.fillMaxWidth())
-                    OutlinedTextField(s.password,{model.field("password",it)},label={Text("Пароль")},singleLine=true,visualTransformation=PasswordVisualTransformation(),keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Password),enabled=!s.busy,modifier=Modifier.fillMaxWidth())
+                    Surface(shape=RoundedCornerShape(12.dp),color=MaterialTheme.colorScheme.surface,border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),modifier=Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                            Text("Пароль хранится в зашифрованном хранилище Android. Вход проверяется по IMAP с TLS. После ухода в фон пароль нужно ввести снова.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Для Mail.ru: imap.mail.ru, порт 993 и пароль для внешнего приложения.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    OutlinedTextField(s.user,{model.field("user",it)},label={Text("Логин или полный email")},singleLine=true,shape=RoundedCornerShape(12.dp),enabled=!s.busy,modifier=Modifier.fillMaxWidth())
+                    OutlinedTextField(s.password,{model.field("password",it)},label={Text("Пароль")},singleLine=true,shape=RoundedCornerShape(12.dp),visualTransformation=PasswordVisualTransformation(),keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Password),enabled=!s.busy,modifier=Modifier.fillMaxWidth())
                 }
                 if(s.editor=="password"){
-                    Text("Обновление сохранённого пароля для ${s.user} (${s.host}). Пароль на самом почтовом сервере не меняется; новый пароль проверяется по IMAP с TLS перед сохранением на телефоне.",style=MaterialTheme.typography.bodySmall)
-                    OutlinedTextField(s.password,{model.field("password",it)},label={Text("Новый пароль")},singleLine=true,visualTransformation=PasswordVisualTransformation(),keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Password),enabled=!s.busy,modifier=Modifier.fillMaxWidth())
+                    Surface(shape=RoundedCornerShape(12.dp),color=MaterialTheme.colorScheme.surface,border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),modifier=Modifier.fillMaxWidth()) {
+                        Text("Обновление сохранённого пароля для ${s.user} (${s.host}). Пароль на самом почтовом сервере не меняется; новый пароль проверяется по IMAP с TLS перед сохранением на телефоне.",Modifier.padding(12.dp),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    OutlinedTextField(s.password,{model.field("password",it)},label={Text("Новый пароль")},singleLine=true,shape=RoundedCornerShape(12.dp),visualTransformation=PasswordVisualTransformation(),keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Password),enabled=!s.busy,modifier=Modifier.fillMaxWidth())
                 } else {
-                    OutlinedTextField(s.host,{model.field("host",it)},label={Text(if(s.editor=="smtp")"Сервер SMTP" else "Сервер IMAP")},singleLine=true,enabled=!s.busy,modifier=Modifier.fillMaxWidth())
-                    OutlinedTextField(s.port,{model.field("port",it)},label={Text("Порт")},singleLine=true,enabled=!s.busy,modifier=Modifier.fillMaxWidth())
+                    OutlinedTextField(s.host,{model.field("host",it)},label={Text(if(s.editor=="smtp")"Сервер SMTP" else "Сервер IMAP")},singleLine=true,shape=RoundedCornerShape(12.dp),enabled=!s.busy,modifier=Modifier.fillMaxWidth())
+                    OutlinedTextField(s.port,{model.field("port",it)},label={Text("Порт")},singleLine=true,shape=RoundedCornerShape(12.dp),enabled=!s.busy,modifier=Modifier.fillMaxWidth())
                 }
                 if(s.editor=="smtp"){
-                    OutlinedTextField(s.from,{model.field("from",it)},label={Text("Адрес отправителя")},singleLine=true,enabled=!s.busy,modifier=Modifier.fillMaxWidth())
-                    Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){Switch(s.ssl,model::ssl,enabled=!s.busy);Text(if(s.ssl)"TLS сразу · обычно 465" else "Обязательный STARTTLS · обычно 587",Modifier.padding(start=12.dp))}
-                    Text("Используются логин и пароль выбранного ящика. Сертификат сервера проверяется. Сохранение не отправляет тестовое письмо.",style=MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(s.from,{model.field("from",it)},label={Text("Адрес отправителя")},singleLine=true,shape=RoundedCornerShape(12.dp),enabled=!s.busy,modifier=Modifier.fillMaxWidth())
+                    Row(verticalAlignment=Alignment.CenterVertically){Switch(s.ssl,model::ssl,enabled=!s.busy);Text(if(s.ssl)"TLS сразу · обычно 465" else "Обязательный STARTTLS · обычно 587",Modifier.padding(start=12.dp))}
+                    Text("Используются логин и пароль выбранного ящика. Сертификат сервера проверяется. Сохранение не отправляет тестовое письмо.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Button(onClick=model::save,enabled=!s.busy,modifier=Modifier.fillMaxWidth()){Text(if(s.editor=="login")"Подключить ящик" else if(s.editor=="password")"Проверить и сохранить пароль" else "Сохранить SMTP")}
+                Button(onClick=model::save,enabled=!s.busy,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().heightIn(min=44.dp)){Text(if(s.editor=="login")"Подключить ящик" else if(s.editor=="password")"Проверить и сохранить пароль" else "Сохранить SMTP")}
             }else{
-                Text("Выход сохраняет пароль и локальные данные. Другой ящик открывается с отдельным состоянием экранов.",style=MaterialTheme.typography.bodySmall)
-                for(row in s.rows)Card(Modifier.fillMaxWidth()) {Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
-                    Text(row.user,style=MaterialTheme.typography.titleMedium)
-                    Text(row.host+(if(row.active)" · Текущий" else ""),style=MaterialTheme.typography.bodySmall)
-                    if(!row.active)OutlinedButton(onClick={model.switch(row.id)},enabled=!s.busy){Text("Открыть ящик")}
-                    else OutlinedButton(onClick=model::smtp,enabled=!s.busy){Text("Настроить SMTP")}
-                    TextButton(onClick={model.changePassword(row.id)},enabled=!s.busy){Text("Обновить сохранённый пароль")}
-                    TextButton(onClick={model.confirm(row.id)},enabled=!s.busy){Text("Удалить сохранённый вход",color=MaterialTheme.colorScheme.error)}
-                }}
-                Button(onClick=model::add,enabled=s.ready&&!s.busy,modifier=Modifier.fillMaxWidth()){Text("Добавить аккаунт")}
-                if(s.owner.isNotEmpty())OutlinedButton(onClick={model.confirm("logout")},enabled=!s.busy,modifier=Modifier.fillMaxWidth()){Text("Выйти из текущего ящика")}
-                TextButton(onClick=model::load,enabled=!s.busy){Text("Обновить список")}
+                Text("Выход сохраняет пароль и локальные данные. Другой ящик открывается с отдельным состоянием экранов.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                for(row in s.rows) {
+                    Surface(
+                        shape=RoundedCornerShape(14.dp),
+                        color=MaterialTheme.colorScheme.surface,
+                        border=BorderStroke(if(row.active) 1.5.dp else 1.dp, if(row.active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+                        modifier=Modifier.fillMaxWidth()
+                    ) {
+                        Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(row.user,style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
+                                    Text(row.host+(if(row.active)" · Текущий" else ""),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if(row.active) {
+                                    Surface(shape=RoundedCornerShape(6.dp),color=MaterialTheme.colorScheme.primaryContainer) {
+                                        Text("Активен",Modifier.padding(horizontal=8.dp,vertical=3.dp),fontSize=11.sp,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            }
+                            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                if(!row.active) OutlinedButton(onClick={model.switch(row.id)},enabled=!s.busy,shape=RoundedCornerShape(10.dp)){Text("Открыть ящик")}
+                                else OutlinedButton(onClick=model::smtp,enabled=!s.busy,shape=RoundedCornerShape(10.dp)){Text("Настроить SMTP")}
+                                OutlinedButton(onClick={model.changePassword(row.id)},enabled=!s.busy,shape=RoundedCornerShape(10.dp)){Text("Обновить сохранённый пароль")}
+                            }
+                            TextButton(onClick={model.confirm(row.id)},enabled=!s.busy,contentPadding=PaddingValues(horizontal=4.dp,vertical=0.dp)){Text("Удалить сохранённый вход",color=MaterialTheme.colorScheme.error,fontSize=12.sp)}
+                        }
+                    }
+                }
+                Button(onClick=model::add,enabled=s.ready&&!s.busy,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().heightIn(min=44.dp)){Text("Добавить аккаунт")}
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    if(s.owner.isNotEmpty())OutlinedButton(onClick={model.confirm("logout")},enabled=!s.busy,shape=RoundedCornerShape(12.dp),modifier=Modifier.weight(1f).heightIn(min=42.dp)){Text("Выйти из текущего ящика")}
+                    OutlinedButton(onClick=model::load,enabled=!s.busy,shape=RoundedCornerShape(12.dp),modifier=Modifier.heightIn(min=42.dp)){Text("Обновить список")}
+                }
             }
         }
     }
@@ -62,3 +114,4 @@ import androidx.compose.ui.unit.dp
             confirmButton={TextButton(onClick=model::confirmed,enabled=!s.busy){Text(if(logout)"Выйти" else "Удалить")}},dismissButton={TextButton(onClick={model.confirm(null)},enabled=!s.busy){Text("Отмена")}})
     }
 }
+

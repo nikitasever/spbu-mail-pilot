@@ -1,7 +1,9 @@
 package ru.local.spbumailpilot
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,31 +24,64 @@ import androidx.compose.ui.unit.sp
             .getOrElse {"Не удалось открыть приложение. Можно выделить и скопировать текст."}
     }
     Column(Modifier.fillMaxWidth()) {
-        TextButton(onClick={
-            val shared=runCatching {NativeReaderTargets.share(mail.subject,mail.sender,text)}
-            if(shared.isFailure)status=shared.exceptionOrNull()?.message
-            else perform("Открыт выбор приложения."){ShareActions.text(context,shared.getOrThrow())}
-        },enabled=!model.state.busy,modifier=Modifier.heightIn(min=44.dp)){Text("Поделиться текстом")}
-        if(targets.links.isNotEmpty()||targets.phones.isNotEmpty())TextButton(onClick={expanded=!expanded},modifier=Modifier.heightIn(min=44.dp)) {
-            Text(if(expanded)"Скрыть ссылки и номера" else "Ссылки и номера · ${targets.links.size+targets.phones.size}")
-        }
-        if(expanded) {
-            targets.links.forEach {url->
-                SelectionContainer {Text(url,fontSize=13.sp)}
-                Row {
-                    TextButton(onClick={perform("Открыта ссылка."){context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))}}){Text("Открыть ссылку")}
-                    TextButton(onClick={perform("Ссылка скопирована."){clipboard.setText(AnnotatedString(url))}}){Text("Копировать")}
+        Row(
+            Modifier.fillMaxWidth().padding(top=6.dp),
+            horizontalArrangement=Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick={
+                    val shared=runCatching {NativeReaderTargets.share(mail.subject,mail.sender,text)}
+                    if(shared.isFailure)status=shared.exceptionOrNull()?.message
+                    else perform("Открыт выбор приложения."){ShareActions.text(context,shared.getOrThrow())}
+                },
+                enabled=!model.state.busy,
+                shape=RoundedCornerShape(10.dp),
+                contentPadding=PaddingValues(horizontal=12.dp,vertical=6.dp),
+                modifier=Modifier.heightIn(min=38.dp)
+            ) {
+                Text("Поделиться текстом",fontSize=12.sp)
+            }
+            if(targets.links.isNotEmpty()||targets.phones.isNotEmpty()) {
+                OutlinedButton(
+                    onClick={expanded=!expanded},
+                    shape=RoundedCornerShape(10.dp),
+                    contentPadding=PaddingValues(horizontal=12.dp,vertical=6.dp),
+                    modifier=Modifier.heightIn(min=38.dp)
+                ) {
+                    Text(if(expanded)"Скрыть ссылки и номера" else "Ссылки и номера · ${targets.links.size+targets.phones.size}",fontSize=12.sp)
                 }
             }
-            targets.phones.forEach {number->
-                Text(number,fontSize=13.sp)
-                Row {
-                    TextButton(onClick={perform("Открыт набор номера."){context.startActivity(Intent(Intent.ACTION_DIAL,Uri.fromParts("tel",PhoneNumbers.normalize(number),null)))}}){Text("Набрать номер")}
-                    TextButton(onClick={perform("Номер скопирован."){clipboard.setText(AnnotatedString(number))}}){Text("Копировать")}
+        }
+        if(expanded&&(targets.links.isNotEmpty()||targets.phones.isNotEmpty())) {
+            Surface(
+                shape=RoundedCornerShape(12.dp),
+                color=MaterialTheme.colorScheme.surface,
+                border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),
+                modifier=Modifier.fillMaxWidth().padding(top=8.dp)
+            ) {
+                Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                    targets.links.forEach {url->
+                        Column {
+                            SelectionContainer {Text(url,fontSize=13.sp)}
+                            Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                                TextButton(onClick={perform("Открыта ссылка."){context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url)))}}){Text("Открыть ссылку",fontSize=12.sp)}
+                                TextButton(onClick={perform("Ссылка скопирована."){clipboard.setText(AnnotatedString(url))}}){Text("Копировать",fontSize=12.sp)}
+                            }
+                        }
+                    }
+                    targets.phones.forEach {number->
+                        Column {
+                            Text(number,fontSize=13.sp)
+                            Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+                                TextButton(onClick={perform("Открыт набор номера."){context.startActivity(Intent(Intent.ACTION_DIAL,Uri.fromParts("tel",PhoneNumbers.normalize(number),null)))}}){Text("Набрать номер",fontSize=12.sp)}
+                                TextButton(onClick={perform("Номер скопирован."){clipboard.setText(AnnotatedString(number))}}){Text("Копировать",fontSize=12.sp)}
+                            }
+                        }
+                    }
                 }
             }
         }
-        if(targets.limited)Text("Поиск ссылок и номеров ограничен первыми 200 000 знаков и 20 результатами каждого вида. Остальной текст можно выделить.",fontSize=12.sp)
-        status?.let {Text(it,fontSize=13.sp)}
+        if(targets.limited)Text("Поиск ссылок и номеров ограничен первыми 200 000 знаков и 20 результатами каждого вида. Остальной текст можно выделить.",Modifier.padding(top=4.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+        status?.let {Text(it,Modifier.padding(top=4.dp),fontSize=13.sp)}
     }
 }

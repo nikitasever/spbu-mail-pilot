@@ -1,11 +1,16 @@
 package ru.local.spbumailpilot
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -84,48 +89,90 @@ internal data class ReaderDetails(
 }
 internal typealias NativeReaderDetailsData = ReaderDetails
 
+private fun readerAvatarLetters(sender: String): String {
+    val words=sender.substringBefore('@').replace(Regex("[._-]+")," ").trim().split(Regex("\\s+")).filter {it.isNotEmpty()}
+    return words.take(2).joinToString("") {String(Character.toChars(it.codePointAt(0)))}.uppercase(Locale.forLanguageTag("ru")).ifBlank {"?"}
+}
+
 @Composable internal fun NativeReaderHeader(owner: String,mail: NativeMail,message: JSONObject?) {
     var expanded by rememberSaveable(owner,mail.ref.folder,mail.ref.validity,mail.ref.uid){mutableStateOf(false)}
     var rawHeadersExpanded by rememberSaveable(owner,mail.ref.folder,mail.ref.validity,mail.ref.uid){mutableStateOf(false)}
     val details=remember(message,mail.ref.uid){message?.let {ReaderDetails.from(it,mail.ref.uid)}}
-    SelectionContainer {
-        Column(Modifier.fillMaxWidth()) {
-            Text(mail.sender,Modifier.padding(top=12.dp),fontWeight=FontWeight.SemiBold)
-            if(mail.email.isNotBlank()&&!mail.sender.trim().equals(mail.email.trim(),true))
-                Text(mail.email,Modifier.padding(top=3.dp),fontSize=13.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            val date=mailTime(mail.date).ifBlank {mailTime(message?.opt("date") as? String ?: "")}
-            Text(if(date.isBlank())"Дата не указана" else "$date · МСК",Modifier.padding(top=4.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    Row(
+        Modifier.fillMaxWidth().padding(top=10.dp,bottom=6.dp),
+        horizontalArrangement=Arrangement.spacedBy(12.dp),
+        verticalAlignment=Alignment.CenterVertically
+    ) {
+        Surface(
+            shape=CircleShape,
+            color=MaterialTheme.colorScheme.primaryContainer,
+            modifier=Modifier.size(40.dp).clearAndSetSemantics {}
+        ) {
+            Box(contentAlignment=Alignment.Center) {
+                Text(
+                    readerAvatarLetters(mail.sender),
+                    fontSize=14.sp,
+                    fontWeight=FontWeight.SemiBold,
+                    color=MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+        Box(Modifier.weight(1f)) {
+            SelectionContainer {
+                Column(Modifier.fillMaxWidth()) {
+                    Text(mail.sender,fontWeight=FontWeight.SemiBold,fontSize=15.sp,color=MaterialTheme.colorScheme.onSurface)
+                    if(mail.email.isNotBlank()&&!mail.sender.trim().equals(mail.email.trim(),true))
+                        Text(mail.email,Modifier.padding(top=1.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    val date=mailTime(mail.date).ifBlank {mailTime(message?.opt("date") as? String ?: "")}
+                    Text(if(date.isBlank())"Дата не указана" else "$date · МСК",Modifier.padding(top=2.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        OutlinedButton(
+            onClick={expanded=!expanded},
+            enabled=message!=null,
+            shape=RoundedCornerShape(8.dp),
+            contentPadding=PaddingValues(horizontal=10.dp,vertical=6.dp),
+            modifier=Modifier.heightIn(min=36.dp)
+        ) {
+            Text(if(expanded)"Скрыть сведения" else "Сведения о письме",fontSize=12.sp)
         }
     }
-    TextButton(onClick={expanded=!expanded},enabled=message!=null,modifier=Modifier.heightIn(min=44.dp)) {
-        Text(if(expanded)"Скрыть сведения" else "Сведения о письме")
-    }
-    if(expanded&&details!=null)SelectionContainer {
-        Column(Modifier.fillMaxWidth().padding(bottom=12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-            @Composable fun addresses(label: String,value: ReaderAddresses){
-                if(value.available)Text("$label: ${value.values.joinToString(", ").ifBlank {"не указаны"}}",fontSize=13.sp)
-            }
-            val shownFrom=listOf(mail.sender.trim(),mail.email.trim()).filter {it.isNotEmpty()}.joinToString(" ")
-            if(details.rawFrom.isNotBlank()&&!details.rawFrom.equals(mail.email.trim(),true)&&!details.rawFrom.equals(mail.sender.trim(),true)&&!details.rawFrom.equals(shownFrom,true))
-                Text("От (исходный заголовок): ${details.rawFrom}",fontSize=12.sp)
-            addresses("Кому",details.to)
-            if(details.cc.values.isNotEmpty())addresses("Копия",details.cc)
-            if(details.reply.values.any {!it.equals(mail.email,true)})addresses("Ответить на",details.reply)
-            addresses("Получатели (без разделения)",details.fallback)
-            if(!details.to.available||!details.cc.available)
-                Text("В этой копии письма нет полного разделения адресатов на «Кому» и «Копия».",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            if(details.incomplete)
-                Text("Часть данных не показана: адреса не распознаны или список превышает 100 записей. Список адресов в заголовке неполный или содержит неразобранную запись.",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
-            val uid=details.uid.ifBlank {mail.ref.uid}
-            if(uid.isNotBlank())Text("UID: $uid",fontSize=12.sp)
-            if(mail.messageId.isNotBlank())Text("Message-ID: ${mail.messageId}",fontSize=12.sp)
-            if(mail.inReplyTo.isNotBlank())Text("In-Reply-To: ${mail.inReplyTo}",fontSize=12.sp)
-            if(details.references.isNotBlank())Text("References: ${details.references}",fontSize=12.sp)
-            if(details.rawHeaders.isNotBlank()){
-                TextButton(onClick={rawHeadersExpanded=!rawHeadersExpanded},modifier=Modifier.heightIn(min=44.dp)) {
-                    Text(if(rawHeadersExpanded)"Скрыть исходные заголовки письма" else "Исходные заголовки письма")
+    if(expanded&&details!=null) {
+        Surface(
+            shape=RoundedCornerShape(12.dp),
+            color=MaterialTheme.colorScheme.surface,
+            border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),
+            modifier=Modifier.fillMaxWidth().padding(bottom=10.dp)
+        ) {
+            SelectionContainer {
+                Column(Modifier.fillMaxWidth().padding(12.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                    @Composable fun addresses(label: String,value: ReaderAddresses){
+                        if(value.available)Text("$label: ${value.values.joinToString(", ").ifBlank {"не указаны"}}",fontSize=13.sp)
+                    }
+                    val shownFrom=listOf(mail.sender.trim(),mail.email.trim()).filter {it.isNotEmpty()}.joinToString(" ")
+                    if(details.rawFrom.isNotBlank()&&!details.rawFrom.equals(mail.email.trim(),true)&&!details.rawFrom.equals(mail.sender.trim(),true)&&!details.rawFrom.equals(shownFrom,true))
+                        Text("От (исходный заголовок): ${details.rawFrom}",fontSize=12.sp)
+                    addresses("Кому",details.to)
+                    if(details.cc.values.isNotEmpty())addresses("Копия",details.cc)
+                    if(details.reply.values.any {!it.equals(mail.email,true)})addresses("Ответить на",details.reply)
+                    addresses("Получатели (без разделения)",details.fallback)
+                    if(!details.to.available||!details.cc.available)
+                        Text("В этой копии письма нет полного разделения адресатов на «Кому» и «Копия».",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    if(details.incomplete)
+                        Text("Часть данных не показана: адреса не распознаны или список превышает 100 записей. Список адресов в заголовке неполный или содержит неразобранную запись.",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    val uid=details.uid.ifBlank {mail.ref.uid}
+                    if(uid.isNotBlank())Text("UID: $uid",fontSize=12.sp)
+                    if(mail.messageId.isNotBlank())Text("Message-ID: ${mail.messageId}",fontSize=12.sp)
+                    if(mail.inReplyTo.isNotBlank())Text("In-Reply-To: ${mail.inReplyTo}",fontSize=12.sp)
+                    if(details.references.isNotBlank())Text("References: ${details.references}",fontSize=12.sp)
+                    if(details.rawHeaders.isNotBlank()){
+                        TextButton(onClick={rawHeadersExpanded=!rawHeadersExpanded},modifier=Modifier.heightIn(min=40.dp)) {
+                            Text(if(rawHeadersExpanded)"Скрыть исходные заголовки письма" else "Исходные заголовки письма",fontSize=12.sp)
+                        }
+                        if(rawHeadersExpanded)Text(details.rawHeaders,fontSize=11.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-                if(rawHeadersExpanded)Text(details.rawHeaders,fontSize=11.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
