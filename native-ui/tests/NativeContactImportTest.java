@@ -139,4 +139,3 @@ public final class NativeContactImportTest {
         System.out.println("NativeContactImportTest passed: format, line/byte/count limits, malformed lines, case duplicates, existing and unrelated field preservation, stale preview conflict, nonmutation, stream reading, error collection and successful import");
     }
 }
-

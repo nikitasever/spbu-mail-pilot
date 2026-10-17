@@ -106,4 +106,3 @@ class NativeThreadNavigationTest {
         assertEquals(emptySet<MailRef>(), state.copy(query = "search").activeSelection())
     }
 }
-

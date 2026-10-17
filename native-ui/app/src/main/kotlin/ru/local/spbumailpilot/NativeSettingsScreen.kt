@@ -75,4 +75,3 @@ import androidx.compose.ui.unit.dp
         confirmButton={TextButton(onClick=model::clearOffline,enabled=!s.busy){Text("Удалить копии")}},dismissButton={TextButton(onClick={model.confirmClear(false)},enabled=!s.busy){Text("Отмена")}})
 
 }
-
