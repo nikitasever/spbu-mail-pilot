@@ -33,8 +33,8 @@ JUnit из `src/previewTest` подключаются свойством `-Prend
 `./gradlew -PrenderUi :app:testDebugUnitTest --tests "*.NativeCalendarLinksTest" --tests "*.NativeReaderDetailsTest"`. Наличие теста не означает успешный прогон на устройстве.
 
 Генератор Gradle использует основной AndroidManifest.xml и добавляет отдельный launcher
-«Почта · Compose», versionName получает суффикс `-native-dev`. Production manifest и versionCode
-не повышаются. В dev APK доступны старый и Compose-интерфейс.
+«Почта · Compose», versionName получает суффикс `-native-dev`. Для кандидата 0.74-rc.1 (89) свойство `-PcandidateRelease` отключает суффикс.
+В APK доступны старый и Compose-интерфейс.
 
 В исходниках есть входящие/чтение/поиск, редактор, локальные и серверные копии черновиков,
 планируемая отправка, контакты/импорт, календарь/связи, файлы/SAF, аккаунты/настройки и AppLock.
@@ -43,3 +43,7 @@ JUnit из `src/previewTest` подключаются свойством `-Prend
 APK пока не пересобирать на каждый шаг. Debug-подпись отличается от рабочего клиента с тем же
 applicationId: не удалять рабочий клиент ради установки и не обещать обновление без потери данных.
 Ключи, реальные аккаунты, личные данные и локальные SDK-настройки не включать в репозиторий.
+
+
+Кандидат выпуска собирается отдельным режимом `compose_candidate` workflow Android cloud build.
+Он подписывается прежним ключом в CI и публикуется как GitHub prerelease без продвижения update.json.

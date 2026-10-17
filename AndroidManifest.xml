@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="ru.local.spbumailpilot" android:versionCode="88" android:versionName="0.73">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="ru.local.spbumailpilot" android:versionCode="89" android:versionName="0.74-rc.1">
   <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
