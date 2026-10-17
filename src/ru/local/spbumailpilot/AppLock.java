@@ -23,11 +23,11 @@ final class AppLock {
     static boolean enabled(Context c){return get(c).session.enabled();}
     static boolean locked(Context c){return !get(c).session.allowed();}
     static void window(Activity a){get(a).apply(a);}
-    static void settings(MainActivity a){get(a).configure(a);}
+    static void settings(Activity a){get(a).configure(a);}
     static boolean result(Activity a,int request,int result){if(request<CREDENTIAL_BASE)return false;get(a).credentialResult(a,request,result);return true;}
     void created(Activity a){activities.add(a);apply(a);}
     void started(Activity a){session.start(a);}
-    private void apply(Activity a){if(session.enabled())a.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);else if(!(a instanceof MainActivity)||((MainActivity)a).mailSurface())a.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);}
+    private void apply(Activity a){if(session.enabled()||a instanceof AppLockAware&&((AppLockAware)a).secureSurface())a.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);else if(!(a instanceof MainActivity)||((MainActivity)a).mailSurface())a.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);}
     void resumed(Activity a){
         apply(a);if(auth!=null&&auth.owner==a&&auth.external&&auth.success){complete(auth);}
         if(!session.allowed()){
@@ -56,12 +56,12 @@ final class AppLock {
         ScrollView scroll=new ScrollView(NativeUi.context(a,false));scroll.setFillViewport(true);scroll.setBackgroundColor(NativeUi.paper(a));scroll.addView(box,new android.widget.FrameLayout.LayoutParams(-1,-2));
         dialog.setContentView(scroll,new android.view.ViewGroup.LayoutParams(-1,-1));dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.getWindow().setBackgroundDrawable(new ColorDrawable(NativeUi.paper(a)));dialog.show();dialog.getWindow().setLayout(-1,-1);masks.put(a,dialog);
     }
-    private void configure(MainActivity a){
+    private void configure(Activity a){
         if(!session.allowed()){message(a,"Сначала разблокируйте приложение.");return;}
         boolean enabled=session.enabled();String info="Блокировка действует для всех ящиков и экранов приложения при полном уходе в фон.\n\nБиометрия или PIN устройства. Снимки экранов приложения и превью в недавних будут защищены. Фоновая почта, напоминания и отправка по расписанию продолжат работать. Виджеты и уведомления защищаются отдельно настройками Android.";
         NativeUi.dialog(a).setTitle(enabled?"Блокировка включена":"Блокировка приложения").setMessage(info).setNegativeButton("Отмена",null).setPositiveButton(enabled?"Отключить":"Включить",(d,w)->{
             if(!session.allowed()){message(a,"Сначала разблокируйте приложение.");return;}
-            if(enabled){if(!prefs.edit().putBoolean("enabled",false).commit()){message(a,"Не удалось сохранить настройку. Блокировка осталась включена.");return;}session.enabled(false);for(Activity activity:new ArrayList<>(activities))apply(activity);a.appLockChanged();}
+            if(enabled){if(!prefs.edit().putBoolean("enabled",false).commit()){message(a,"Не удалось сохранить настройку. Блокировка осталась включена.");return;}session.enabled(false);for(Activity activity:new ArrayList<>(activities))apply(activity);if(a instanceof AppLockAware)((AppLockAware)a).appLockChanged();else if(a instanceof MainActivity)((MainActivity)a).appLockChanged();}
             else if(!secure())message(a,"Сначала включите PIN или пароль экрана в настройках Android.");else authenticate(a,true,false);
         }).show();
     }
@@ -108,6 +108,6 @@ final class AppLock {
         auth=null;
         if(r.enable){if(!prefs.edit().putBoolean("enabled",true).commit()){message(r.owner,"Не удалось сохранить блокировку. Она не включена.");return;}session.enabled(true);}
         for(Activity a:new ArrayList<>(activities))apply(a);for(Dialog d:new ArrayList<>(masks.values()))d.dismiss();masks.clear();messages.clear();
-        if(r.owner instanceof MainActivity)((MainActivity)r.owner).appLockChanged();
+        if(r.owner instanceof AppLockAware)((AppLockAware)r.owner).appLockChanged();else if(r.owner instanceof MainActivity)((MainActivity)r.owner).appLockChanged();
     }
 }

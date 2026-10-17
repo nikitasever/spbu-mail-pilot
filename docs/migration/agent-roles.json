@@ -1,0 +1,50 @@
+{
+  "description": "Task-routing manifest; not an OpenCode CLI configuration file",
+  "maxConcurrentExternalAgents": 1,
+  "paidFallback": false,
+  "roles": {
+    "implementation": {
+      "model": "opencode/deepseek-v4.1-flash-free",
+      "scope": "One bounded Kotlin/Java migration task; propose a patch against explicitly supplied files",
+      "inferenceVerified": true,
+      "lastTask": {
+        "task": "Compose mail threads, member screen, navigation and tests",
+        "status": "integrated_after_two_model_passes_and_coordinator_fixes",
+        "report": "docs/migration/free-model-thread-trial.md",
+        "apkBuilt": false
+      }
+    },
+    "maintenance": {
+      "model": "opencode/mimo-v2.6-flash-free",
+      "scope": "Small mechanical changes, documentation, test fixture preparation",
+      "inferenceVerified": false,
+      "lastProbe": {
+        "status": "transport_error_then_timeout",
+        "timeoutSeconds": 60,
+        "exitCode": 124,
+        "textResponseReceived": false,
+        "error": "Transport: The socket connection was closed unexpectedly."
+      }
+    },
+    "review": {
+      "model": "opencode/step-5-preview-free",
+      "scope": "Independent review of complex lifecycle, account isolation, storage or send changes; report concrete defects only",
+      "inferenceVerified": false,
+      "lastProbe": {
+        "status": "unavailable",
+        "error": "provider.no-route"
+      }
+    }
+  },
+  "coordinator": {
+    "scope": "Choose task, supply minimal context, review proposals, integrate code and run focused checks"
+  },
+  "rules": [
+    "Use exact allowlisted free model IDs; unavailable models stop the task without a paid fallback",
+    "Use an isolated working directory and explicit file attachments; do not supply credentials or real mailbox data",
+    "No automatic permission approval, live services, APK builds, publication or commits",
+    "One invocation per task; investigate a failure before retrying",
+    "Request concise findings or a patch; do not forward the full conversation or repository",
+    "Coordinator validates model output before applying changes"
+  ]
+}

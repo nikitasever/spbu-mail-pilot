@@ -41,7 +41,7 @@ public final class MailWidget extends AppWidgetProvider {
     private static int res(Context c,String type,String name){return c.getResources().getIdentifier(name,type,c.getPackageName());}
     private static void text(Context c,RemoteViews v,String id,String value){v.setTextViewText(res(c,"id",id),value);}
     private static PendingIntent open(Context c,int widget,String route,String account){
-        Intent intent=new Intent(c,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP).setData(android.net.Uri.parse("mailpilot://widget/"+widget+"/"+route)).putExtra("openWidgetRoute",route).putExtra("openWidgetAccount",account);
+        Intent intent=UiEntry.open(c).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP).setData(android.net.Uri.parse("mailpilot://widget/"+widget+"/"+route)).putExtra("openWidgetRoute",route).putExtra("openWidgetAccount",account);
         return PendingIntent.getActivity(c,widget*2+(route.equals("calendar")?1:0),intent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
     }
     private static void safeUpdate(Context c,long revision){try{update(c,revision);}catch(Exception unavailable){/* Launcher/binder failure must not crash mail or an asynchronous receiver. */}}

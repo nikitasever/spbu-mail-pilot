@@ -7,8 +7,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.function.BooleanSupplier;
 /** Text-only, explicit user initiated analysis. Credentials never enter WebView or URLs. */
 final class GeminiDigest {
+ private static final java.util.Set<GeminiDigest> instances=java.util.Collections.newSetFromMap(new java.util.WeakHashMap<GeminiDigest,Boolean>());
+ private final java.util.concurrent.atomic.AtomicLong generation=new java.util.concurrent.atomic.AtomicLong();
+ GeminiDigest(){synchronized(instances){instances.add(this);}}
+ static void cancelAll(){java.util.List<GeminiDigest> copy;synchronized(instances){copy=new java.util.ArrayList<>(instances);}for(GeminiDigest digest:copy)digest.cancel();}
  private volatile HttpsURLConnection active;
- void cancel(){HttpsURLConnection current=active;if(current!=null)current.disconnect();}
+ Runnable cancellation(){generation.incrementAndGet();HttpsURLConnection current=active;return ()->{if(current!=null)try{current.disconnect();}catch(RuntimeException unavailable){}};}
+ void cancel(){cancellation().run();}
  static JSONObject payload(JSONArray items,String user)throws Exception{
   if(items.length()<1||items.length()>20)throw new IllegalArgumentException();
   JSONArray input=new JSONArray();for(int i=0;i<items.length();i++){JSONObject item=items.getJSONObject(i),m=item.getJSONObject("message");input.put(new JSONObject().put("number",i+1).put("sender",m.optString("sender")).put("subject",m.optString("subject")).put("date",m.optString("date")).put("text",DigestBatch.cut(item.optString("text"),4000)).put("truncated",item.optBoolean("truncated")));}
@@ -27,13 +32,15 @@ final class GeminiDigest {
   return new JSONObject().put("overview",DigestBatch.cut(raw.getString("overview"),700)).put("points",clean);
  }
  static String status(int code){if(code==400||code==401)return "Gemini отклонил ключ или запрос. Проверьте API-ключ в настройках.";if(code==403)return "Доступ к Gemini запрещён: проверьте ключ, права и доступность сервиса в вашем регионе.";if(code==429)return "Лимит Gemini исчерпан. Повторите позже или проверьте квоту ключа.";if(code==404)return "Модель Gemini недоступна для этого ключа.";return "Gemini временно недоступен. Повторите позже.";}
- JSONObject analyze(String key,JSONArray items,String user,BooleanSupplier current)throws Exception{
+ JSONObject analyze(String key,JSONArray items,String user,BooleanSupplier current)throws Exception{return analyze(key,items,user,current,AiConfiguration.DEFAULT_MODEL);}
+ JSONObject analyze(String key,JSONArray items,String user,BooleanSupplier current,String model)throws Exception{
   if(key.isEmpty())throw new IOException("Добавьте API-ключ Gemini в настройках.");if(!current.getAsBoolean())throw new IOException("Отменено");
-  HttpsURLConnection connection=(HttpsURLConnection)new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent").openConnection();return exchange(connection,key,items,user,current);
+  HttpsURLConnection connection=(HttpsURLConnection)new URL(AiConfiguration.endpoint(model)).openConnection();return exchange(connection,key,items,user,current);
  }
  JSONObject exchange(HttpsURLConnection connection,String key,JSONArray items,String user,BooleanSupplier current)throws Exception{
+  long ticket=generation.get();BooleanSupplier allowed=()->generation.get()==ticket&&current.getAsBoolean();
   active=connection;
-  try{connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(10000);connection.setReadTimeout(60000);connection.setRequestMethod("POST");connection.setDoOutput(true);connection.setRequestProperty("Content-Type","application/json; charset=utf-8");connection.setRequestProperty("x-goog-api-key",key);byte[] body=payload(items,user).toString().getBytes(StandardCharsets.UTF_8);connection.setFixedLengthStreamingMode(body.length);if(!current.getAsBoolean())throw new IOException("Отменено");try(OutputStream out=connection.getOutputStream()){out.write(body);}int status=connection.getResponseCode();if(status!=200)throw new IOException(status(status));ByteArrayOutputStream out=new ByteArrayOutputStream();try(InputStream in=connection.getInputStream()){byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1){if(!current.getAsBoolean())throw new IOException("Отменено");if(out.size()+n>262144)throw new IOException("Слишком длинный ответ Gemini.");out.write(buf,0,n);}}return parse(new String(out.toByteArray(),StandardCharsets.UTF_8),items.length());}
+  try{connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(10000);connection.setReadTimeout(60000);connection.setRequestMethod("POST");connection.setDoOutput(true);connection.setRequestProperty("Content-Type","application/json; charset=utf-8");connection.setRequestProperty("x-goog-api-key",key);byte[] body=payload(items,user).toString().getBytes(StandardCharsets.UTF_8);connection.setFixedLengthStreamingMode(body.length);if(!allowed.getAsBoolean())throw new IOException("Отменено");try(OutputStream out=connection.getOutputStream()){if(!allowed.getAsBoolean())throw new IOException("Отменено");out.write(body);}if(!allowed.getAsBoolean())throw new IOException("Отменено");int status=connection.getResponseCode();if(status!=200)throw new IOException(status(status));ByteArrayOutputStream out=new ByteArrayOutputStream();try(InputStream in=connection.getInputStream()){byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1){if(!allowed.getAsBoolean())throw new IOException("Отменено");if(out.size()+n>262144)throw new IOException("Слишком длинный ответ Gemini.");out.write(buf,0,n);}}if(!allowed.getAsBoolean())throw new IOException("Отменено");JSONObject result=parse(new String(out.toByteArray(),StandardCharsets.UTF_8),items.length());if(!allowed.getAsBoolean())throw new IOException("Отменено");return result;}
   finally{connection.disconnect();if(active==connection)active=null;}
  }
 }
