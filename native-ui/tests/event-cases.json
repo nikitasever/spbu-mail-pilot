@@ -1,0 +1,732 @@
+[
+  {
+    "name": "edit-title",
+    "operation": "edit",
+    "state": {
+      "events": [
+        {
+          "id": "local-event",
+          "title": "Исходное событие",
+          "date": "2026-10-15",
+          "time": "15:00",
+          "custom": "retain"
+        },
+        {
+          "id": "other",
+          "title": "Другое",
+          "date": "2026-10-15",
+          "time": ""
+        }
+      ],
+      "eventMailLinks": [
+        {
+          "id": "link",
+          "eventKey": "local:local-event",
+          "eventTitle": "Исходное событие",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "folder": "INBOX",
+            "uid": "42",
+            "validity": "7"
+          }
+        },
+        {
+          "id": "unrelated",
+          "eventKey": "local:other",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "uid": "43"
+          }
+        },
+        {
+          "id": "remote",
+          "eventKey": "[\"work\",\"local-event\"]",
+          "eventTitle": "Remote"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task",
+          "title": "Задача",
+          "date": "2026-10-15",
+          "done": false
+        }
+      ],
+      "notes": [
+        {
+          "id": "note",
+          "title": "Заметка",
+          "body": "Текст"
+        }
+      ],
+      "unknown": {
+        "preserved": true
+      }
+    },
+    "fail": false,
+    "replacement": {
+      "id": "local-event",
+      "title": "  Новое событие  ",
+      "date": "2026-10-15",
+      "time": "15:00",
+      "custom": "retain"
+    }
+  },
+  {
+    "name": "move-date",
+    "operation": "edit",
+    "state": {
+      "events": [
+        {
+          "id": "local-event",
+          "title": "Исходное событие",
+          "date": "2026-10-15",
+          "time": "15:00",
+          "custom": "retain"
+        },
+        {
+          "id": "other",
+          "title": "Другое",
+          "date": "2026-10-15",
+          "time": ""
+        }
+      ],
+      "eventMailLinks": [
+        {
+          "id": "link",
+          "eventKey": "local:local-event",
+          "eventTitle": "Исходное событие",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "folder": "INBOX",
+            "uid": "42",
+            "validity": "7"
+          }
+        },
+        {
+          "id": "unrelated",
+          "eventKey": "local:other",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "uid": "43"
+          }
+        },
+        {
+          "id": "remote",
+          "eventKey": "[\"work\",\"local-event\"]",
+          "eventTitle": "Remote"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task",
+          "title": "Задача",
+          "date": "2026-10-15",
+          "done": false
+        }
+      ],
+      "notes": [
+        {
+          "id": "note",
+          "title": "Заметка",
+          "body": "Текст"
+        }
+      ],
+      "unknown": {
+        "preserved": true
+      }
+    },
+    "fail": false,
+    "replacement": {
+      "id": "local-event",
+      "title": "Исходное событие",
+      "date": "2026-11-01",
+      "time": "15:00",
+      "custom": "retain"
+    }
+  },
+  {
+    "name": "clear-time",
+    "operation": "edit",
+    "state": {
+      "events": [
+        {
+          "id": "local-event",
+          "title": "Исходное событие",
+          "date": "2026-10-15",
+          "time": "15:00",
+          "custom": "retain"
+        },
+        {
+          "id": "other",
+          "title": "Другое",
+          "date": "2026-10-15",
+          "time": ""
+        }
+      ],
+      "eventMailLinks": [
+        {
+          "id": "link",
+          "eventKey": "local:local-event",
+          "eventTitle": "Исходное событие",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "folder": "INBOX",
+            "uid": "42",
+            "validity": "7"
+          }
+        },
+        {
+          "id": "unrelated",
+          "eventKey": "local:other",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "uid": "43"
+          }
+        },
+        {
+          "id": "remote",
+          "eventKey": "[\"work\",\"local-event\"]",
+          "eventTitle": "Remote"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task",
+          "title": "Задача",
+          "date": "2026-10-15",
+          "done": false
+        }
+      ],
+      "notes": [
+        {
+          "id": "note",
+          "title": "Заметка",
+          "body": "Текст"
+        }
+      ],
+      "unknown": {
+        "preserved": true
+      }
+    },
+    "fail": false,
+    "replacement": {
+      "id": "local-event",
+      "title": "Исходное событие",
+      "date": "2026-10-15",
+      "time": "",
+      "custom": "retain"
+    }
+  },
+  {
+    "name": "unicode-markup",
+    "operation": "edit",
+    "state": {
+      "events": [
+        {
+          "id": "local-event",
+          "title": "Исходное событие",
+          "date": "2026-10-15",
+          "time": "15:00",
+          "custom": "retain"
+        },
+        {
+          "id": "other",
+          "title": "Другое",
+          "date": "2026-10-15",
+          "time": ""
+        }
+      ],
+      "eventMailLinks": [
+        {
+          "id": "link",
+          "eventKey": "local:local-event",
+          "eventTitle": "Исходное событие",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "folder": "INBOX",
+            "uid": "42",
+            "validity": "7"
+          }
+        },
+        {
+          "id": "unrelated",
+          "eventKey": "local:other",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "uid": "43"
+          }
+        },
+        {
+          "id": "remote",
+          "eventKey": "[\"work\",\"local-event\"]",
+          "eventTitle": "Remote"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task",
+          "title": "Задача",
+          "date": "2026-10-15",
+          "done": false
+        }
+      ],
+      "notes": [
+        {
+          "id": "note",
+          "title": "Заметка",
+          "body": "Текст"
+        }
+      ],
+      "unknown": {
+        "preserved": true
+      }
+    },
+    "fail": false,
+    "replacement": {
+      "id": "local-event",
+      "title": "Защита 🟣 <img src=x> & комиссия",
+      "date": "2026-10-15",
+      "time": "15:00",
+      "custom": "retain"
+    }
+  },
+  {
+    "name": "empty-title",
+    "operation": "edit",
+    "state": {
+      "events": [
+        {
+          "id": "local-event",
+          "title": "Исходное событие",
+          "date": "2026-10-15",
+          "time": "15:00",
+          "custom": "retain"
+        },
+        {
+          "id": "other",
+          "title": "Другое",
+          "date": "2026-10-15",
+          "time": ""
+        }
+      ],
+      "eventMailLinks": [
+        {
+          "id": "link",
+          "eventKey": "local:local-event",
+          "eventTitle": "Исходное событие",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "folder": "INBOX",
+            "uid": "42",
+            "validity": "7"
+          }
+        },
+        {
+          "id": "unrelated",
+          "eventKey": "local:other",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "uid": "43"
+          }
+        },
+        {
+          "id": "remote",
+          "eventKey": "[\"work\",\"local-event\"]",
+          "eventTitle": "Remote"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task",
+          "title": "Задача",
+          "date": "2026-10-15",
+          "done": false
+        }
+      ],
+      "notes": [
+        {
+          "id": "note",
+          "title": "Заметка",
+          "body": "Текст"
+        }
+      ],
+      "unknown": {
+        "preserved": true
+      }
+    },
+    "fail": false,
+    "replacement": {
+      "id": "local-event",
+      "title": "   ",
+      "date": "2026-10-15",
+      "time": "15:00",
+      "custom": "retain"
+    }
+  },
+  {
+    "name": "empty-date",
+    "operation": "edit",
+    "state": {
+      "events": [
+        {
+          "id": "local-event",
+          "title": "Исходное событие",
+          "date": "2026-10-15",
+          "time": "15:00",
+          "custom": "retain"
+        },
+        {
+          "id": "other",
+          "title": "Другое",
+          "date": "2026-10-15",
+          "time": ""
+        }
+      ],
+      "eventMailLinks": [
+        {
+          "id": "link",
+          "eventKey": "local:local-event",
+          "eventTitle": "Исходное событие",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "folder": "INBOX",
+            "uid": "42",
+            "validity": "7"
+          }
+        },
+        {
+          "id": "unrelated",
+          "eventKey": "local:other",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "uid": "43"
+          }
+        },
+        {
+          "id": "remote",
+          "eventKey": "[\"work\",\"local-event\"]",
+          "eventTitle": "Remote"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task",
+          "title": "Задача",
+          "date": "2026-10-15",
+          "done": false
+        }
+      ],
+      "notes": [
+        {
+          "id": "note",
+          "title": "Заметка",
+          "body": "Текст"
+        }
+      ],
+      "unknown": {
+        "preserved": true
+      }
+    },
+    "fail": false,
+    "replacement": {
+      "id": "local-event",
+      "title": "Исходное событие",
+      "date": "",
+      "time": "15:00",
+      "custom": "retain"
+    }
+  },
+  {
+    "name": "edit-save-failure",
+    "operation": "edit",
+    "state": {
+      "events": [
+        {
+          "id": "local-event",
+          "title": "Исходное событие",
+          "date": "2026-10-15",
+          "time": "15:00",
+          "custom": "retain"
+        },
+        {
+          "id": "other",
+          "title": "Другое",
+          "date": "2026-10-15",
+          "time": ""
+        }
+      ],
+      "eventMailLinks": [
+        {
+          "id": "link",
+          "eventKey": "local:local-event",
+          "eventTitle": "Исходное событие",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "folder": "INBOX",
+            "uid": "42",
+            "validity": "7"
+          }
+        },
+        {
+          "id": "unrelated",
+          "eventKey": "local:other",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "uid": "43"
+          }
+        },
+        {
+          "id": "remote",
+          "eventKey": "[\"work\",\"local-event\"]",
+          "eventTitle": "Remote"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task",
+          "title": "Задача",
+          "date": "2026-10-15",
+          "done": false
+        }
+      ],
+      "notes": [
+        {
+          "id": "note",
+          "title": "Заметка",
+          "body": "Текст"
+        }
+      ],
+      "unknown": {
+        "preserved": true
+      }
+    },
+    "fail": true,
+    "replacement": {
+      "id": "local-event",
+      "title": "Не записывать",
+      "date": "2026-10-15",
+      "time": "15:00",
+      "custom": "retain"
+    }
+  },
+  {
+    "name": "delete",
+    "operation": "delete",
+    "state": {
+      "events": [
+        {
+          "id": "local-event",
+          "title": "Исходное событие",
+          "date": "2026-10-15",
+          "time": "15:00",
+          "custom": "retain"
+        },
+        {
+          "id": "other",
+          "title": "Другое",
+          "date": "2026-10-15",
+          "time": ""
+        }
+      ],
+      "eventMailLinks": [
+        {
+          "id": "link",
+          "eventKey": "local:local-event",
+          "eventTitle": "Исходное событие",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "folder": "INBOX",
+            "uid": "42",
+            "validity": "7"
+          }
+        },
+        {
+          "id": "unrelated",
+          "eventKey": "local:other",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "uid": "43"
+          }
+        },
+        {
+          "id": "remote",
+          "eventKey": "[\"work\",\"local-event\"]",
+          "eventTitle": "Remote"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task",
+          "title": "Задача",
+          "date": "2026-10-15",
+          "done": false
+        }
+      ],
+      "notes": [
+        {
+          "id": "note",
+          "title": "Заметка",
+          "body": "Текст"
+        }
+      ],
+      "unknown": {
+        "preserved": true
+      }
+    },
+    "fail": false,
+    "replacement": {
+      "id": "local-event",
+      "title": "Исходное событие",
+      "date": "2026-10-15",
+      "time": "15:00",
+      "custom": "retain"
+    }
+  },
+  {
+    "name": "delete-save-failure",
+    "operation": "delete",
+    "state": {
+      "events": [
+        {
+          "id": "local-event",
+          "title": "Исходное событие",
+          "date": "2026-10-15",
+          "time": "15:00",
+          "custom": "retain"
+        },
+        {
+          "id": "other",
+          "title": "Другое",
+          "date": "2026-10-15",
+          "time": ""
+        }
+      ],
+      "eventMailLinks": [
+        {
+          "id": "link",
+          "eventKey": "local:local-event",
+          "eventTitle": "Исходное событие",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "folder": "INBOX",
+            "uid": "42",
+            "validity": "7"
+          }
+        },
+        {
+          "id": "unrelated",
+          "eventKey": "local:other",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "uid": "43"
+          }
+        },
+        {
+          "id": "remote",
+          "eventKey": "[\"work\",\"local-event\"]",
+          "eventTitle": "Remote"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task",
+          "title": "Задача",
+          "date": "2026-10-15",
+          "done": false
+        }
+      ],
+      "notes": [
+        {
+          "id": "note",
+          "title": "Заметка",
+          "body": "Текст"
+        }
+      ],
+      "unknown": {
+        "preserved": true
+      }
+    },
+    "fail": true,
+    "replacement": {
+      "id": "local-event",
+      "title": "Исходное событие",
+      "date": "2026-10-15",
+      "time": "15:00",
+      "custom": "retain"
+    }
+  },
+  {
+    "name": "cancel-delete",
+    "operation": "cancel-delete",
+    "state": {
+      "events": [
+        {
+          "id": "local-event",
+          "title": "Исходное событие",
+          "date": "2026-10-15",
+          "time": "15:00",
+          "custom": "retain"
+        },
+        {
+          "id": "other",
+          "title": "Другое",
+          "date": "2026-10-15",
+          "time": ""
+        }
+      ],
+      "eventMailLinks": [
+        {
+          "id": "link",
+          "eventKey": "local:local-event",
+          "eventTitle": "Исходное событие",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "folder": "INBOX",
+            "uid": "42",
+            "validity": "7"
+          }
+        },
+        {
+          "id": "unrelated",
+          "eventKey": "local:other",
+          "eventDate": "2026-10-15",
+          "mail": {
+            "uid": "43"
+          }
+        },
+        {
+          "id": "remote",
+          "eventKey": "[\"work\",\"local-event\"]",
+          "eventTitle": "Remote"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "task",
+          "title": "Задача",
+          "date": "2026-10-15",
+          "done": false
+        }
+      ],
+      "notes": [
+        {
+          "id": "note",
+          "title": "Заметка",
+          "body": "Текст"
+        }
+      ],
+      "unknown": {
+        "preserved": true
+      }
+    },
+    "fail": false,
+    "replacement": {
+      "id": "local-event",
+      "title": "Исходное событие",
+      "date": "2026-10-15",
+      "time": "15:00",
+      "custom": "retain"
+    }
+  }
+]

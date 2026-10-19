@@ -6,3 +6,14 @@ node_modules/
 *.jks
 *.apk
 .env*
+
+# Native migration workspace
+native-ui/.gradle/
+native-ui/.kotlin/
+native-ui/build/
+native-ui/app/build/
+native-ui/local.properties
+
+# Generated Python bytecode
+__pycache__/
+*.py[cod]

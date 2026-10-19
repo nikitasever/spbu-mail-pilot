@@ -13,3 +13,9 @@
 
 
 - esbuild 0.28.2 (MIT), build-time only; not bundled into the Android APK. Project/license: https://github.com/evanw/esbuild.
+
+## Gradle wrapper
+
+Gradle 8.9 wrapper (Apache-2.0), from https://github.com/gradle/gradle/tree/v8.9.0.
+Wrapper jar SHA-256: `498495120a03b9a6ab5d155f5de3c8f0d986a449153702fb80fc80e134484f17`, verified against the official services.gradle.org checksum.
+The Gradle distribution checksum is pinned in native-ui/gradle/wrapper/gradle-wrapper.properties.

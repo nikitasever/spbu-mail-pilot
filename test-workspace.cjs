@@ -14,3 +14,8 @@ console.log('PASS: server mail search, full paged filename scan, EML/file save r
 
 a.click('[data-route="mail"]');a.click('[data-action="compose"]');a.fill('body','Последний несохранённый текст');failWrites=true;a.fill('body','Изменённый текст');a.click('[data-action="cancel"]');assert.equal(a.root.querySelector('[name="body"]').value,'Изменённый текст');a.click('[data-route="calendar"]');assert.equal(a.root.querySelector('[name="body"]').value,'Изменённый текст');a.window.appBack();assert.equal(a.root.querySelector('[name="body"]').value,'Изменённый текст');failWrites=false;a.click('[data-action="cancel"]');assert.equal(stored.drafts.at(-1).body,'Изменённый текст');
 console.log('PASS: file folder never changes mailbox/list, failed task completion/deletion rolls back, failed draft close/navigation/Android Back keeps current text and successful retry persists it.');
+
+// Native writes appear when returning, but never replace an open editor's text.
+a.click('[data-route="notes"]');stored.notes.push({id:'native-note',title:'Из Compose',body:'Нативный текст'});a.window.reloadNativeState();assert.ok(a.root.textContent.includes('Из Compose'));
+a.click('[data-action="new-note"]');a.fill('title','В редакторе');a.fill('body','Не терять');stored.notes.push({id:'native-note-2',title:'Вторая из Compose',body:'Ещё'});a.window.reloadNativeState();assert.equal(a.root.querySelector('[name="body"]').value,'Не терять');a.click('[data-action="cancel"]');a.window.reloadNativeState();assert.ok(a.root.textContent.includes('Вторая из Compose'));
+console.log('PASS: native state refresh displays external notes and leaves an open editor untouched.');

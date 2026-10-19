@@ -23,6 +23,15 @@ final class SavedAccounts {
     void setActive(String identity){active=entries.containsKey(identity)?identity:"";}
     String activeId(){return active;}
     Login active(){return entries.get(active);}
+    Login get(String identity){return entries.get(identity);}
+    void updatePassword(Login expected,String newPassword){
+        if(expected==null||newPassword==null||newPassword.isEmpty()||newPassword.length()>4096||newPassword.indexOf('\0')>=0)
+            throw new IllegalArgumentException("Invalid password");
+        Login current=entries.get(expected.identity());
+        if(current==null||!current.identity().equals(expected.identity())||!current.password.equals(expected.password)||!current.smtpHost.equals(expected.smtpHost)||current.smtpPort!=expected.smtpPort||current.smtpSsl!=expected.smtpSsl||!current.from.equals(expected.from))
+            throw new IllegalStateException("Account changed");
+        entries.put(current.identity(),new Login(current.host,current.port,current.user,newPassword,current.smtpHost,current.smtpPort,current.smtpSsl,current.from));
+    }
     ArrayList<Login> list(){return new ArrayList<>(entries.values());}
     void deactivate(){active="";}
     void remove(Login login){entries.remove(login.identity());if(active.equals(login.identity()))deactivate();}
