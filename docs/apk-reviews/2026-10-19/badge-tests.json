@@ -1,0 +1,56 @@
+[
+  {
+    "case": "urgent18",
+    "subject": "Срочно: согласование до 18:30",
+    "preview": "",
+    "label": "AI: Срочно • 18:30"
+  },
+  {
+    "case": "urgentNoTime",
+    "subject": "Срочно: ответьте сегодня",
+    "preview": "",
+    "label": "AI: Срочно"
+  },
+  {
+    "case": "normalTime",
+    "subject": "Приглашение на встречу в 10:00",
+    "preview": "",
+    "label": "AI: Срочно • 10:00"
+  },
+  {
+    "case": "hyphenTime",
+    "subject": "Защита завтра в 15-00",
+    "preview": "",
+    "label": "AI: Срочно"
+  },
+  {
+    "case": "done",
+    "subject": "Согласование завершено",
+    "preview": "",
+    "label": "AI: Срочно"
+  },
+  {
+    "case": "reschedule",
+    "subject": "Срочно: перенос с 15:00 на 18:30",
+    "preview": "",
+    "label": "AI: Срочно • 15:00"
+  },
+  {
+    "case": "read",
+    "subject": "Срочно: ответ до 18:30",
+    "preview": "",
+    "label": null
+  },
+  {
+    "case": "previewTime",
+    "subject": "Срочно: нужен ответ",
+    "preview": "Ответьте до 21:05",
+    "label": "AI: Срочно • 21:05"
+  },
+  {
+    "case": "invalidTime",
+    "subject": "Срочно: встреча в 25:99",
+    "preview": "",
+    "label": "AI: Срочно"
+  }
+]
