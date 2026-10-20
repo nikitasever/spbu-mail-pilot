@@ -32,6 +32,26 @@ final class GeminiDigest {
   return new JSONObject().put("overview",DigestBatch.cut(raw.getString("overview"),700)).put("points",clean);
  }
  static String status(int code){if(code==400||code==401)return "Gemini отклонил ключ или запрос. Проверьте API-ключ в настройках.";if(code==403)return "Доступ к Gemini запрещён: проверьте ключ, права и доступность сервиса в вашем регионе.";if(code==429)return "Лимит Gemini исчерпан. Повторите позже или проверьте квоту ключа.";if(code==404)return "Модель Gemini недоступна для этого ключа.";return "Gemini временно недоступен. Повторите позже.";}
+ static final String REGION_ERROR="Google сообщает, что Gemini недоступен для этого региона. Настройка APK не снимает региональное ограничение прямого подключения.";
+ static String remoteError(int code,InputStream input,BooleanSupplier current)throws IOException {
+  if((code!=400&&code!=403)||input==null)return status(code);
+  ByteArrayOutputStream bytes=new ByteArrayOutputStream();byte[] buffer=new byte[1024];int n;
+  while((n=input.read(buffer))!=-1){if(!current.getAsBoolean())throw new IOException("Отменено");if(bytes.size()+n>16384)return status(code);bytes.write(buffer,0,n);}
+  try{
+   JSONObject error=new JSONObject(new String(bytes.toByteArray(),StandardCharsets.UTF_8)).optJSONObject("error");
+   String message=error==null?"":error.optString("message").toLowerCase(java.util.Locale.ROOT);
+   if(message.contains("location is not supported")||message.contains("not available in your country"))return REGION_ERROR;
+  }catch(JSONException invalid){}
+  return status(code);
+ }
+ static String safeFailure(Throwable error){
+  String message=error.getMessage();if(REGION_ERROR.equals(message))return REGION_ERROR;
+  for(int code:new int[]{400,403,404,429,500})if(status(code).equals(message))return status(code);
+  if(error instanceof java.net.UnknownHostException)return "Не удалось найти сервер Gemini. Проверьте подключение и DNS. Приложение использует прямой доступ к Google.";
+  if(error instanceof java.net.SocketTimeoutException||error instanceof java.net.ConnectException)return "Сервер Gemini не ответил. Возможны ограничения сети или сервиса; ключ не обязательно неверный.";
+  if(error instanceof javax.net.ssl.SSLException)return "Не удалось установить проверенное защищённое соединение с Google. Проверьте сеть и время устройства.";
+  return "Сводка не получена. Проверьте ключ, модель, доступность Gemini и разрешение анализа. Автоматического повтора нет.";
+ }
  JSONObject analyze(String key,JSONArray items,String user,BooleanSupplier current)throws Exception{return analyze(key,items,user,current,AiConfiguration.DEFAULT_MODEL);}
  JSONObject analyze(String key,JSONArray items,String user,BooleanSupplier current,String model)throws Exception{
   if(key.isEmpty())throw new IOException("Добавьте API-ключ Gemini в настройках.");if(!current.getAsBoolean())throw new IOException("Отменено");
@@ -40,7 +60,7 @@ final class GeminiDigest {
  JSONObject exchange(HttpsURLConnection connection,String key,JSONArray items,String user,BooleanSupplier current)throws Exception{
   long ticket=generation.get();BooleanSupplier allowed=()->generation.get()==ticket&&current.getAsBoolean();
   active=connection;
-  try{connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(10000);connection.setReadTimeout(60000);connection.setRequestMethod("POST");connection.setDoOutput(true);connection.setRequestProperty("Content-Type","application/json; charset=utf-8");connection.setRequestProperty("x-goog-api-key",key);byte[] body=payload(items,user).toString().getBytes(StandardCharsets.UTF_8);connection.setFixedLengthStreamingMode(body.length);if(!allowed.getAsBoolean())throw new IOException("Отменено");try(OutputStream out=connection.getOutputStream()){if(!allowed.getAsBoolean())throw new IOException("Отменено");out.write(body);}if(!allowed.getAsBoolean())throw new IOException("Отменено");int status=connection.getResponseCode();if(status!=200)throw new IOException(status(status));ByteArrayOutputStream out=new ByteArrayOutputStream();try(InputStream in=connection.getInputStream()){byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1){if(!allowed.getAsBoolean())throw new IOException("Отменено");if(out.size()+n>262144)throw new IOException("Слишком длинный ответ Gemini.");out.write(buf,0,n);}}if(!allowed.getAsBoolean())throw new IOException("Отменено");JSONObject result=parse(new String(out.toByteArray(),StandardCharsets.UTF_8),items.length());if(!allowed.getAsBoolean())throw new IOException("Отменено");return result;}
+  try{connection.setInstanceFollowRedirects(false);connection.setConnectTimeout(10000);connection.setReadTimeout(60000);connection.setRequestMethod("POST");connection.setDoOutput(true);connection.setRequestProperty("Content-Type","application/json; charset=utf-8");connection.setRequestProperty("x-goog-api-key",key);byte[] body=payload(items,user).toString().getBytes(StandardCharsets.UTF_8);connection.setFixedLengthStreamingMode(body.length);if(!allowed.getAsBoolean())throw new IOException("Отменено");try(OutputStream out=connection.getOutputStream()){if(!allowed.getAsBoolean())throw new IOException("Отменено");out.write(body);}if(!allowed.getAsBoolean())throw new IOException("Отменено");int status=connection.getResponseCode();if(status!=200){String message=status(status);if(status==400||status==403)try(InputStream input=connection.getErrorStream()){message=remoteError(status,input,allowed);}throw new IOException(message);}ByteArrayOutputStream out=new ByteArrayOutputStream();try(InputStream in=connection.getInputStream()){byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1){if(!allowed.getAsBoolean())throw new IOException("Отменено");if(out.size()+n>262144)throw new IOException("Слишком длинный ответ Gemini.");out.write(buf,0,n);}}if(!allowed.getAsBoolean())throw new IOException("Отменено");JSONObject result=parse(new String(out.toByteArray(),StandardCharsets.UTF_8),items.length());if(!allowed.getAsBoolean())throw new IOException("Отменено");return result;}
   finally{connection.disconnect();if(active==connection)active=null;}
  }
 }
