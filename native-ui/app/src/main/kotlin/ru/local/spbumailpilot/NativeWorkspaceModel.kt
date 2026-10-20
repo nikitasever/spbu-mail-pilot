@@ -52,6 +52,12 @@ internal class NativeWorkspaceModel(app: Application):AndroidViewModel(app) {
         state=WorkspaceState(open=true,owner=owner,kind="events",eventMail=JSONObject(mail.toString()))
         load()
     }
+    fun openCalendarNewTask(owner:String,day:String){
+        if(!foreground||closed||AppLock.locked(context)||owner.isBlank()||state.open)return
+        try{NativeAgenda.date(day)}catch(_:Exception){return}
+        state=WorkspaceState(open=true,owner=owner,kind="tasks",eventRoute=true,eventDay=day)
+        load()
+    }
     fun openEvent(owner: String,day: String,id: String?=null){
         if(!foreground||AppLock.locked(context)||owner.isBlank()||state.open)return
         try{NativeAgenda.date(day)}catch(_: Exception){return}
@@ -98,7 +104,7 @@ internal class NativeWorkspaceModel(app: Application):AndroidViewModel(app) {
                 val account=login(owner)
                 val data=synchronized(ReplyReminderCenter::class.java){JSONObject(NoticeCenter.state(context,account).getString("state","{}")!!)}
                 val tasksEnabled=data.optJSONObject("settings")?.optBoolean("showTasks",true)!=false
-                val chosen=if(!tasksEnabled&&kind=="tasks"&&state.editor==null&&snapshot.taskMail==null)"notes" else kind
+                val chosen=if(!tasksEnabled&&kind=="tasks"&&state.editor==null&&snapshot.taskMail==null&&!snapshot.eventRoute)"notes" else kind
                 val rows=NativeWorkspace.rows(data,chosen)
                 val items=(0 until rows.length()).map {JSONObject(rows.getJSONObject(it).toString())}
                 val mailEventExpected=snapshot.eventMail?.let {NativeMailEvents.existing(data,it)}
@@ -114,7 +120,8 @@ internal class NativeWorkspaceModel(app: Application):AndroidViewModel(app) {
                             else state.copy(error="Задачи отключены в настройках. Включите их в полном клиенте.")
                     }
                     if(snapshot.eventRoute&&state.editor==null) {
-                        if(snapshot.eventId==null)edit(initialDay=snapshot.eventDay)
+                        if(snapshot.kind=="tasks"&&!tasksEnabled)state=state.copy(rows=emptyList(),error="Задачи отключены в настройках. Включите их и вернитесь в календарь.")
+                        else if(snapshot.eventId==null)edit(initialDay=snapshot.eventDay)
                         else if(items.any {it.optString("id")==snapshot.eventId})edit(snapshot.eventId)
                         else state=state.copy(error="Событие больше не существует. Вернитесь в календарь и обновите его.")
                     }
@@ -129,7 +136,7 @@ internal class NativeWorkspaceModel(app: Application):AndroidViewModel(app) {
         if(!foreground||AppLock.locked(context)||state.busy||state.editor!=null)return
         val original=id?.let {key->state.rows.find {it.optString("id")==key}};if(id!=null&&original==null)return
         val entry=original?.let {JSONObject(it.toString())} ?: JSONObject().put("id",UUID.randomUUID().toString()).put("title","").apply {
-            if(state.kind=="notes")put("body","") else if(state.kind=="events"){put("date",initialDay);put("time","")} else {put("date","");put("time","");put("notes","");put("priority","normal");put("reminder","auto");put("done",false)}
+            if(state.kind=="notes")put("body","") else if(state.kind=="events"){put("date",initialDay);put("time","")} else {put("date",initialDay);put("time","");put("notes","");put("priority","normal");put("reminder","auto");put("done",false)}
         }
         state=state.copy(editor=entry,expected=original?.let {JSONObject(it.toString())},error=null,notice=null)
     }

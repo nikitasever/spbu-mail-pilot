@@ -62,7 +62,7 @@ internal fun NativeWorkspaceScreen(
                                 "tasks" -> "Задача"
                                 "events" -> "Своё событие"
                                 else -> "Заметка"
-                            } else if (state.eventRoute) "Своё событие" else "Задачи и заметки",
+                            } else if (state.eventRoute) (if(state.kind=="tasks")"Новая задача" else "Своё событие") else "Задачи и заметки",
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
                             color = MaterialTheme.colorScheme.onSurface,

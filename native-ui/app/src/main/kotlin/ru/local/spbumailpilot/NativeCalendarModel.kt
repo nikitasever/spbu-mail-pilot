@@ -203,12 +203,7 @@ internal class NativeCalendarModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun shift(amount: Long) {
-        val current = NativeAgenda.date(state.day)
-        val next = when (state.mode) {
-            "day" -> current.plusDays(amount)
-            "week" -> current.plusWeeks(amount)
-            else -> current.plusMonths(amount)
-        }
+        val next=try { NativeAgenda.shift(state.day,state.mode,amount) } catch (_:Exception) { return }
         select(next.toString())
     }
 
@@ -801,20 +796,7 @@ internal class NativeCalendarModel(app: Application) : AndroidViewModel(app) {
                 check(savedLinks.length() <= 5000)
                 val links = (0 until savedLinks.length()).mapNotNull { savedLinks.optJSONObject(it)?.let { link -> JSONObject(link.toString()) } }
                 val book = CalendarBook(context, login)
-                if (online) {
-                    val probeMonth = NativeAgenda.months(snapshot.day, "month").firstOrNull() ?: snapshot.day.substring(0, 7)
-                    val probePage = runCatching { book.list(probeMonth, false) { checkActive() } }.getOrNull()
-                    if (probePage != null && probePage.optJSONArray("calendars")?.length() == 0) {
-                        val (_, defaultUrl, defaultTitle) = defaultConnectConfig(login)
-                        val found = runCatching { CalendarDiscovery.discover(defaultUrl, login.user, login.password) }.getOrNull()
-                        if (found != null && found.size == 1 && checkActive()) {
-                            val chosen = found.first()
-                            runCatching {
-                                book.add(defaultTitle.ifEmpty { chosen.title.ifBlank { "Календарь" } }, chosen.url, login.user, login.password, probeMonth)
-                            }
-                        }
-                    }
-                }
+                // Refresh only the explicitly connected sources; connecting is a separate user action.
                 val remote = JSONArray()
                 val warnings = linkedSetOf<String>()
                 val sourceMap = linkedMapOf<String, CalendarSource>()

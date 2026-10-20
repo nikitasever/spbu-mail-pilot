@@ -10,6 +10,16 @@ public final class NativeAgendaTest {
         check(NativeAgenda.first("2026-11-01","week").toString().equals("2026-10-26"));
         check(NativeAgenda.months("2026-11-01","week").equals(Arrays.asList("2026-10","2026-11")));
         check(NativeAgenda.end("2028-02-20","month").toString().equals("2028-03-01"));
+        check(NativeAgenda.first("2026-12-25","agenda").toString().equals("2026-12-25"));
+        check(NativeAgenda.end("2026-12-25","agenda").toString().equals("2027-01-08"));
+        check(NativeAgenda.months("2026-12-25","agenda").equals(Arrays.asList("2026-12","2027-01")));
+        check(NativeAgenda.days("2026-12-25","agenda",false).size()==14);
+        check(NativeAgenda.days("2026-11-01","week",true).size()==7);
+        check(NativeAgenda.days("2028-02-20","month",true).size()==29);
+        check(NativeAgenda.days("2028-02-20","month",false).equals(Collections.singletonList(LocalDate.of(2028,2,20))));
+        check(NativeAgenda.shift("2026-12-25","agenda",1).equals(LocalDate.of(2027,1,8)));
+        check(NativeAgenda.shift("2027-01-08","agenda",-1).equals(LocalDate.of(2026,12,25)));
+        try{NativeAgenda.shift("2100-12-31","day",1);throw new AssertionError();}catch(IllegalArgumentException expected){}
         JSONObject allDay=event("one","2026-10-14","2026-10-16","",true);
         check(NativeAgenda.onDay(allDay,"2026-10-14")&&NativeAgenda.onDay(allDay,"2026-10-15")&&!NativeAgenda.onDay(allDay,"2026-10-16"));
         check(NativeAgenda.timeRange(allDay).contains("14")&&NativeAgenda.timeRange(allDay).contains("15")&&!NativeAgenda.timeRange(allDay).contains("16"));
@@ -24,6 +34,7 @@ public final class NativeAgendaTest {
         JSONArray merged=NativeAgenda.combine(local,remote);
         check(merged.length()==3);check(remote.length()==3&&task.getString("kind").equals("task"));
         check(NativeAgenda.onDay(merged.getJSONObject(0),"2026-10-15"));
+        check(NativeAgenda.combine(new JSONObject(local.toString()).put("settings",new JSONObject().put("showTasks",false)),remote).length()==2);
         System.out.println("NativeAgendaTest passed: cross-month weeks, leap year, timezone independence, exclusive all-day/midnight ends, completed task exclusion, calendar-scoped deduplication");
     }
 }

@@ -324,6 +324,8 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
                     model = calendar,
                     fullClient = fullClient,
                     editEvent = { day, id -> workspace.openEvent(calendar.state.owner, day, id) },
+                    newTask = { day -> workspace.openCalendarNewTask(calendar.state.owner,day) },
+                    tasksEnabled = settings.state.ready&&settings.state.owner==calendar.state.owner&&settings.state.options.optBoolean("showTasks",true),
                     openMail = { id ->
                         calendar.sourceMail(id)?.let { if (!inbox.openLinked(calendar.state.owner, it)) calendar.linkError() } ?: calendar.linkError()
                     },
