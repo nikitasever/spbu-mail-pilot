@@ -23,7 +23,9 @@ class NativePreviewTest {
         @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<InboxState>).value=state
         return model
     }
-    @Test fun inbox() {
+    @Test fun inbox() { renderInbox("dark") }
+    @Test fun inboxLight() { renderInbox("light") }
+    private fun renderInbox(mode:String) {
         val rows=listOf(
             mail("42","Учебный отдел","Материалы к защите завтра в 15:00","Коллеги, направляем материалы к заседанию.","10:24",true),
             mail("41","Перминов Виктор Олегович","По 191 аудитории — согласование","Направляю обновлённую спецификацию.","09:52",true),
@@ -31,38 +33,49 @@ class NativePreviewTest {
             mail("39","Ректорат","Материалы ректорского совещания","Повестка и презентации к совещанию.","08:45",false),
             mail("38","Рабочая группа","RE: Обсуждение расписания","Спасибо, изменения согласованы.","08:12",false),
             mail("37","Библиотека СПбГУ","Доступ к электронным ресурсам","Обновление списка доступных изданий.","08:02",false))
-        val agenda=listOf(
-            CalendarEntry("meeting",JSONObject().put("id","meeting").put("title","Защита Шахматовой (ауд. 191)").put("date","2026-10-15").put("time","15:00").put("endDate","2026-10-15").put("endTime","16:00").put("kind","remote").put("calendarTitle","Календарь СПбГУ")),
-            CalendarEntry("task",JSONObject().put("id","task").put("title","Проверить спецификацию по 191 аудитории").put("date","2026-10-15").put("time","17:00").put("kind","task")))
         val model=inbox(InboxState(account="demo@spbu.ru",owner=owner,rows=rows,total=1330,hasMore=true,cached=true,pageOffline=true))
-        paparazzi.snapshot(name="inbox"){InboxTheme{NativeInbox(model,{},{},{},{},{},null,{},savedAccountsCount=2,todayAgendaEntries=agenda,calendarSourcesCount=1)}}
+        paparazzi.snapshot(name="inbox-$mode"){InboxTheme(mode=mode){NativeInbox(model,{},{},{},{},{},null,{})}}
     }
     @Test fun search() {
         val rows=listOf(mail("42","Учебный отдел","Материалы к защите завтра в 15:00","Коллеги, направляем материалы.","10:24",true))
         val model=inbox(InboxState(account="demo@spbu.ru",owner=owner,rows=rows,total=1,query="защита",searchText="защита",searchOpen=true,cached=false,pageOffline=false))
         paparazzi.snapshot(name="search"){InboxTheme{NativeInbox(model,{},{},{},{},{},null,{})}}
     }
-    @Test fun contacts() {
+    @Test fun contacts() { renderContacts("dark") }
+    @Test fun contactsLight() { renderContacts("light") }
+    private fun renderContacts(mode:String) {
         val model=NativeContactsModel(PreviewApplication(paparazzi.context))
         val field=model.javaClass.getDeclaredField("state\$delegate").apply {isAccessible=true}
         @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<ContactsState>).value=ContactsState(open=true,owner=owner,account="demo@spbu.ru",book="company",supported=true,letter="П",applied="^:П",people=listOf(ContactPerson("Перминов Виктор Олегович","demo-perminov@spbu.ru"),ContactPerson("Петрова Елена Александровна","demo-petrova@spbu.ru")),more=true)
-        paparazzi.snapshot(name="contacts"){InboxTheme{NativeContactsScreen(model,{},{},bottomBar={NativeMainBottomBar("contacts",true,2,2,{},{},{},{},{})})}}
+        // A host render has no Activity; register launchers without performing external actions.
+        val registryOwner=object:androidx.activity.result.ActivityResultRegistryOwner {
+            override val activityResultRegistry=object:androidx.activity.result.ActivityResultRegistry() {
+                override fun <I,O> onLaunch(requestCode:Int,contract:androidx.activity.result.contract.ActivityResultContract<I,O>,input:I,options:androidx.core.app.ActivityOptionsCompat?) {}
+            }
+        }
+        paparazzi.snapshot(name="contacts"){
+            androidx.compose.runtime.CompositionLocalProvider(androidx.activity.compose.LocalActivityResultRegistryOwner provides registryOwner) {
+                InboxTheme(mode=mode){NativeContactsScreen(model,{},{})}
+            }
+        }
     }
-    @Test fun calendar() {
+    @Test fun calendar() { renderCalendar("dark") }
+    @Test fun calendarLight() { renderCalendar("light") }
+    private fun renderCalendar(mode:String) {
         val model=NativeCalendarModel(PreviewApplication(paparazzi.context))
         val field=model.javaClass.getDeclaredField("state\$delegate").apply {isAccessible=true}
         val entries=listOf(
             JSONObject().put("id","meeting").put("title","Материалы к защите Шахматовой").put("date","2026-10-15").put("time","15:00").put("endDate","2026-10-15").put("endTime","16:00").put("kind","remote").put("calendarTitle","Календарь подразделения"),
             JSONObject().put("id","task").put("title","Проверить спецификацию по 191 аудитории").put("date","2026-10-15").put("time","17:00").put("kind","task"))
-        @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<CalendarState>).value=CalendarState(open=true,owner=owner,day="2026-10-15",entries=entries.map {CalendarEntry(it.getString("id"),it)},sources=listOf(CalendarSource("spbu-cal","Календарь СПбГУ","https://mail.spbu.ru/caldav","demo@spbu.ru",true,"","2026-10-15T10:00:00Z")),notice="Сохранённые события календарей.")
-        paparazzi.snapshot(name="calendar"){InboxTheme{NativeCalendarScreen(model,{},accountEmail="demo@spbu.ru",bottomBar={NativeMainBottomBar("calendar",true,2,2,{},{},{},{},{})})}}
+        @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<CalendarState>).value=CalendarState(open=true,owner=owner,day="2026-10-15",entries=entries.map {CalendarEntry(it.getString("id"),it)},notice="Сохранённые события календарей.")
+        paparazzi.snapshot(name="calendar"){InboxTheme(mode=mode){NativeCalendarScreen(model,{})}}
     }
     @Test fun workspaceTasks() {
         val model=NativeWorkspaceModel(PreviewApplication(paparazzi.context))
         val task=JSONObject().put("id","demo-task").put("title","Проверить материалы к защите").put("date","2026-10-16").put("time","15:00").put("priority","important").put("done",false).put("notes","Уточнить подключение удалённого участника")
         val field=model.javaClass.getDeclaredField("state\$delegate").apply {isAccessible=true}
         @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<WorkspaceState>).value=WorkspaceState(open=true,owner=owner,rows=listOf(task))
-        paparazzi.snapshot(name="tasks"){InboxTheme{NativeWorkspaceScreen(model,accountEmail="demo@spbu.ru",bottomBar={NativeMainBottomBar("tasks",true,2,2,{},{},{},{},{})})}}
+        paparazzi.snapshot(name="tasks"){InboxTheme{NativeWorkspaceScreen(model)}}
     }
     @Test fun workspaceNote() {
         val model=NativeWorkspaceModel(PreviewApplication(paparazzi.context))
@@ -219,18 +232,22 @@ class NativePreviewTest {
         @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<CalendarState>).value=CalendarState(open=true,owner=owner,day="2026-10-16",entries=listOf(CalendarEntry("local:demo-event",event)),links=listOf(link))
         paparazzi.snapshot(name="event-mails"){InboxTheme{NativeCalendarScreen(model,{})}}
     }
-    @Test fun reader() {
+    @Test fun reader() { renderReader("dark") }
+    @Test fun readerLight() { renderReader("light") }
+    private fun renderReader(mode:String) {
         val mail=mail("42","Учебный отдел","Материалы к защите завтра в 15:00","","10:24",true)
         val header=JSONObject().put("sender",mail.sender).put("email","demo-office@spbu.ru").put("subject",mail.subject).put("seen",false)
         val body=MailBody("Коллеги, материалы на завтра. Будут 4 человека лично и 1 — удалённо.\n\nНачало в 15:00, аудитория 191.",listOf(NativeFile("Заключение комиссии.docx","1"),NativeFile("Диссертация — презентация.pptx","2")),header)
         val model=inbox(InboxState(account="demo@spbu.ru",owner=owner,rows=listOf(mail),selected=mail,body=body,cached=true,pageOffline=true))
-        paparazzi.snapshot(name="reader"){InboxTheme{NativeInbox(model,{},{},{},{},{},null,{})}}
+        paparazzi.snapshot(name="reader"){InboxTheme(mode=mode){NativeInbox(model,{},{},{},{},{},null,{})}}
     }
-    @Test fun folders() {
+    @Test fun folders() { renderFolders("dark") }
+    @Test fun foldersLight() { renderFolders("light") }
+    private fun renderFolders(mode:String) {
         val entries=NativeFolders.list(org.json.JSONArray().put("INBOX").put("Sent").put("Drafts").put("Archive").put("Junk").put("Trash").put("Проекты/2026"),"INBOX")
         val state=InboxState(account="demo@spbu.ru",owner=owner,folders=entries,foldersOnline=true)
         // Layoutlib does not capture the separate Android Dialog window. Render its actual content.
-        paparazzi.snapshot(name="folders-content"){InboxTheme{
+        paparazzi.snapshot(name="folders-content"){InboxTheme(mode=mode){
             androidx.compose.material3.Surface(androidx.compose.ui.Modifier.fillMaxSize()) {
                 androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize(),contentAlignment=androidx.compose.ui.Alignment.BottomCenter) {
                     androidx.compose.material3.Surface {NativeFolderList(state,{},{},{})}
@@ -238,10 +255,12 @@ class NativePreviewTest {
             }
         }}
     }
-    @Test fun composer() {
+    @Test fun composer() { renderComposer("dark") }
+    @Test fun composerLight() { renderComposer("light") }
+    private fun renderComposer(mode:String) {
         val model=NativeComposerModel(PreviewApplication(paparazzi.context))
         val field=model.javaClass.getDeclaredField("state\$delegate").apply {isAccessible=true}
         @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<ComposerState>).value=ComposerState(open=true,owner=owner,from="demo@spbu.ru",to="demo-office@spbu.ru",subject="Re: Материалы к защите завтра в 15:00",body="Добрый день!\n\nМатериалы получил, спасибо. Буду к 15:00.\n\nС уважением,\nДемонстрационный пользователь",draftId="00000000-0000-4000-8000-000000000001",accountValid=true,saved=true)
-        paparazzi.snapshot(name="composer"){InboxTheme{NativeComposer(model,{},{})}}
+        paparazzi.snapshot(name="composer"){InboxTheme(mode=mode){NativeComposer(model,{},{})}}
     }
 }

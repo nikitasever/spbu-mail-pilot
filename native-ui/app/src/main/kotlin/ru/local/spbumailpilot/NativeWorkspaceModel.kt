@@ -65,8 +65,22 @@ internal class NativeWorkspaceModel(app: Application):AndroidViewModel(app) {
         state=state.copy(eventRoute=false,notice=null)
         return result
     }
+    fun closeForNavigation() {
+        if (state.busy) return
+        generation++
+        state = state.copy(open = false, editor = null, expected = null, leaveOpen = false, error = null, notice = null)
+    }
+    fun close() { closeForNavigation() }
     fun back(){if(state.busy)return;if(state.editor!=null)state=state.copy(leaveOpen=true) else {generation++;state=state.copy(open=false)}}
-    fun leave(confirm: Boolean){if(state.busy)return;state=if(confirm)state.copy(open=!(state.eventRoute||(state.taskMail!=null||state.eventMail!=null)),editor=null,expected=null,leaveOpen=false,error=null) else state.copy(leaveOpen=false)}
+    fun leave(confirm: Boolean){
+        if(state.busy)return
+        if(!confirm) {
+            state=state.copy(leaveOpen=false)
+            return
+        }
+        val shouldStayOpen = state.editor != null && !state.eventRoute && state.taskMail == null && state.eventMail == null
+        state = state.copy(open = shouldStayOpen, editor = null, expected = null, leaveOpen = false, error = null)
+    }
     fun kind(value: String){if(state.editor!=null||state.busy||(state.taskMail!=null||state.eventMail!=null)||value=="tasks"&&!state.tasksEnabled)return;try{NativeWorkspace.kind(value)}catch(_: Exception){return};state=state.copy(kind=value,query="");load()}
     fun sourceMail(id: String):JSONObject? {
         if(!foreground||AppLock.locked(context)||state.busy||state.editor!=null||state.kind!="tasks")return null

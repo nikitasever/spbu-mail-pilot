@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -53,6 +54,7 @@ internal fun NativeCalendarScreen(
         .replaceFirstChar { if (it.isLowerCase()) it.titlecase(ruLocale) else it.toString() }
     var searchOpen by remember { mutableStateOf(false) }
     var viewMenuOpen by remember { mutableStateOf(false) }
+    var daySheetOpen by rememberSaveable { mutableStateOf(false) }
     val needle = state.searchQuery.trim().lowercase(Locale.ROOT)
     val matchesSearch: (CalendarEntry) -> Boolean = remember(needle) {
         { entry ->
@@ -61,9 +63,10 @@ internal fun NativeCalendarScreen(
                 .any { entry.data.optString(it).lowercase(Locale.ROOT).contains(needle) }
         }
     }
-    BackHandler(onBack = model::close)
+    BackHandler(enabled = daySheetOpen) { daySheetOpen = false }
+    BackHandler(enabled = !daySheetOpen, onBack = model::close)
     Scaffold(
-        containerColor = Color(0xFF0B0C10),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
@@ -78,14 +81,14 @@ internal fun NativeCalendarScreen(
                                 monthTitle,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 20.sp,
-                                color = Color(0xFFF3F4F8),
+                                color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Icon(
                                 NativeIcons.ChevronDown,
                                 contentDescription = null,
-                                tint = Color(0xFF8B5CF6),
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -94,7 +97,7 @@ internal fun NativeCalendarScreen(
                                 "$accountEmail ▾",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = Color(0xFF8E929F),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(top = 1.dp).clickable(onClick = onSwitchAccount)
@@ -150,18 +153,18 @@ internal fun NativeCalendarScreen(
                     if (searchOpen || state.searchQuery.isNotEmpty()) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFF1C1F2A),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)
                         ) {
                             Row(
                                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(NativeIcons.Search, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF8E929F))
+                                Icon(NativeIcons.Search, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 TextField(
                                     value = state.searchQuery,
                                     onValueChange = model::search,
-                                    placeholder = { Text("Поиск событий…", fontSize = 14.sp, color = Color(0xFF6B7080)) },
+                                    placeholder = { Text("Поиск событий…", fontSize = 14.sp, color = MaterialTheme.colorScheme.outline) },
                                     singleLine = true,
                                     colors = TextFieldDefaults.colors(
                                         focusedContainerColor = Color.Transparent,
@@ -175,22 +178,22 @@ internal fun NativeCalendarScreen(
                                 )
                                 if (state.searchQuery.isNotEmpty()) {
                                     IconButton(onClick = model::clearSearch, modifier = Modifier.size(28.dp)) {
-                                        Icon(NativeIcons.Close, contentDescription = "Сбросить", tint = Color(0xFF8E929F), modifier = Modifier.size(16.dp))
+                                        Icon(NativeIcons.Close, contentDescription = "Сбросить", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                                     }
                                 }
                             }
                         }
                     }
-                    if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 14.dp), color = Color(0xFF7C5CFF))
+                    if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 14.dp), color = MaterialTheme.colorScheme.primary)
                     state.error?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
-                    state.actionNotice?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp, color = Color(0xFF8B5CF6)) }
+                    state.actionNotice?.let { Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) }
 
                     // Sleek 3D glass calendar grid card
                     Surface(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
                         shape = RoundedCornerShape(18.dp),
-                        color = Color(0xFF14161D),
-                        border = BorderStroke(0.8.dp, Color(0x14FFFFFF))
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant)
                     ) {
                         Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp)) {
                             Row(
@@ -201,11 +204,11 @@ internal fun NativeCalendarScreen(
                                 Surface(
                                     onClick = { model.shift(-1) },
                                     shape = RoundedCornerShape(10.dp),
-                                    color = Color(0xFF1C1F2A),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                     modifier = Modifier.size(32.dp).semantics { contentDescription = "Предыдущий период" }
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        Text("‹", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFF3F4F8))
+                                        Text("‹", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                                     }
                                 }
                                 Row(
@@ -217,14 +220,14 @@ internal fun NativeCalendarScreen(
                                         Surface(
                                             onClick = { model.mode(mode) },
                                             shape = RoundedCornerShape(8.dp),
-                                            color = if (active) Color(0xFF282048) else Color.Transparent
+                                            color = if (active) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                                         ) {
                                             Text(
                                                 text,
                                                 Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                                                 fontSize = 11.sp,
                                                 fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-                                                color = if (active) Color(0xFFE0D7FF) else Color(0xFF8E929F),
+                                                color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                                 maxLines = 1
                                             )
                                         }
@@ -233,11 +236,11 @@ internal fun NativeCalendarScreen(
                                 Surface(
                                     onClick = { model.shift(1) },
                                     shape = RoundedCornerShape(10.dp),
-                                    color = Color(0xFF1C1F2A),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                     modifier = Modifier.size(32.dp).semantics { contentDescription = "Следующий период" }
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        Text("›", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFF3F4F8))
+                                        Text("›", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                                     }
                                 }
                             }
@@ -257,7 +260,7 @@ internal fun NativeCalendarScreen(
                                             textAlign = TextAlign.Center,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium,
-                                            color = if (idx >= 5) Color(0xFF686D80) else Color(0xFF8E929F)
+                                            color = if (idx >= 5) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
@@ -272,12 +275,17 @@ internal fun NativeCalendarScreen(
                                             val entries = state.entries.filter { NativeAgenda.onDay(it.data, day.toString()) && matchesSearch(it) }
                                             val selected = day == date
                                             val background = when {
-                                                selected -> Color(0xFF7C5CFF)
-                                                index >= 5 -> Color(0xFF101219)
+                                                selected -> MaterialTheme.colorScheme.primary
+                                                index >= 5 -> MaterialTheme.colorScheme.background
                                                 else -> Color.Transparent
                                             }
                                             Surface(
-                                                onClick = { model.select(day.toString()) },
+                                                onClick = {
+                                                    model.select(day.toString())
+                                                    if (state.mode == "week" || state.mode == "month") {
+                                                        daySheetOpen = true
+                                                    }
+                                                },
                                                 modifier = Modifier.weight(1f).height(44.dp).semantics {
                                                     contentDescription = day.format(label) + ", событий и задач: " + entries.size
                                                 },
@@ -293,7 +301,7 @@ internal fun NativeCalendarScreen(
                                                         day.dayOfMonth.toString(),
                                                         fontSize = 13.sp,
                                                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                                        color = if (selected) Color.White else Color(0xFFF3F4F8)
+                                                        color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface
                                                     )
                                                     if (entries.isNotEmpty()) {
                                                         Row(
@@ -319,40 +327,88 @@ internal fun NativeCalendarScreen(
                         }
                     }
 
-                    // Selected date heading (NO text legend above list)
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            date.format(shortDayLabel).replaceFirstChar { if (it.isLowerCase()) it.titlecase(ruLocale) else it.toString() },
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFF3F4F8)
-                        )
+                    if (state.mode == "day" || state.mode == "agenda" || needle.isNotEmpty()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                if (state.mode == "day") date.format(shortDayLabel).replaceFirstChar { if (it.isLowerCase()) it.titlecase(ruLocale) else it.toString() }
+                                else if (needle.isNotEmpty()) "Результаты поиска"
+                                else "Список событий на $monthTitle",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (state.sources.isEmpty()) {
+                                Surface(
+                                    onClick = model::connectAccountCalendar,
+                                    enabled = !state.busy,
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh
+                                ) {
+                                    Text(
+                                        "Подключить CalDAV",
+                                        Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    } else {
                         if (state.sources.isEmpty()) {
                             Surface(
                                 onClick = model::connectAccountCalendar,
                                 enabled = !state.busy,
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFF1C1F2A)
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp)
                             ) {
-                                Text(
-                                    "Подключить CalDAV",
-                                    Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFFA78BFA)
-                                )
+                                Row(
+                                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                                        Text("Календарь CalDAV", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                                        Text("Подключите СПбГУ, Яндекс или Mail.ru", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer
+                                    ) {
+                                        Text("Подключить", Modifier.padding(horizontal = 10.dp, vertical = 5.dp), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
                             }
+                        }
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                listOf("remote" to "Сервер", "event" to "События", "task" to "Задачи").forEach { (k, name) ->
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(shape = CircleShape, color = calendarColor(k), modifier = Modifier.size(6.dp)) {}
+                                        Text(name, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                            Text("Нажмите на день для событий", fontSize = 11.sp, color = MaterialTheme.colorScheme.outline)
                         }
                     }
                 }
                 val days = if (state.mode == "agenda" || needle.isNotEmpty()) {
                     generateSequence(month.atDay(1)) { it.plusDays(1) }.takeWhile { YearMonth.from(it) == month }.toList()
-                } else {
+                } else if (state.mode == "day") {
                     listOf(date)
+                } else {
+                    emptyList()
                 }
                 days.forEach { day ->
                     val entries = state.entries.filter { NativeAgenda.onDay(it.data, day.toString()) && matchesSearch(it) }
@@ -364,22 +420,43 @@ internal fun NativeCalendarScreen(
                                     Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF8B5CF6)
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
                         if (entries.isEmpty()) item(key = "empty:$day") {
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
-                                color = Color(0xFF14161D),
+                                color = MaterialTheme.colorScheme.surface,
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)
                             ) {
-                                Text(
-                                    if (state.busy) "Синхронизация…" else "Событий нет",
-                                    Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
-                                    fontSize = 13.sp,
-                                    color = Color(0xFF8E929F)
-                                )
+                                Column(
+                                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        if (state.busy) "Синхронизация…" else "Событий нет",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (state.sources.isEmpty() && !state.busy) {
+                                        Text(
+                                            "Университетский календарь CalDAV ещё не синхронизирован. Вы можете подключить календарь СПбГУ или создать локальное событие кнопкой «+».",
+                                            fontSize = 12.sp,
+                                            lineHeight = 17.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Button(
+                                            onClick = model::connectAccountCalendar,
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                                        ) {
+                                            Text("Подключить календарь", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                        }
+                                    }
+                                }
                             }
                         }
                         entries.forEach { entry ->
@@ -402,6 +479,151 @@ internal fun NativeCalendarScreen(
                     }
                 }
                 item { Spacer(Modifier.height(88.dp)) }
+            }
+        }
+    }
+
+    if (daySheetOpen && (state.mode == "week" || state.mode == "month")) {
+        val sheetDate = LocalDate.parse(state.day)
+        val dayEntries = state.entries.filter { NativeAgenda.onDay(it.data, state.day) && matchesSearch(it) }
+        ModalBottomSheet(
+            onDismissRequest = { daySheetOpen = false },
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            dragHandle = {
+                Surface(
+                    modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
+                    shape = RoundedCornerShape(2.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant
+                ) {
+                    Box(Modifier.size(width = 36.dp, height = 4.dp))
+                }
+            }
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp)
+            ) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(
+                            sheetDate.format(label).replaceFirstChar { if (it.isLowerCase()) it.titlecase(ruLocale) else it.toString() },
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            if (dayEntries.isEmpty()) "Нет событий" else "Событий и задач: ${dayEntries.size}",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Surface(
+                        onClick = {
+                            daySheetOpen = false
+                            editEvent(state.day, null)
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        enabled = !state.busy
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(NativeIcons.Plus, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                            Text("Событие", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                        }
+                    }
+                }
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+
+                if (dayEntries.isEmpty()) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 28.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                modifier = Modifier.size(48.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(NativeIcons.Calendar, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+                                }
+                            }
+                            Text("На этот день событий нет", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+                            Text("Вы можете запланировать новое событие или задачу", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                            Spacer(Modifier.height(4.dp))
+                            Surface(
+                                onClick = {
+                                    daySheetOpen = false
+                                    editEvent(state.day, null)
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                border = BorderStroke(0.8.dp, Color(0x228B5CF6))
+                            ) {
+                                Text(
+                                    "+ Добавить событие",
+                                    Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 380.dp),
+                        contentPadding = PaddingValues(vertical = 8.dp)
+                    ) {
+                        items(dayEntries, key = { it.key }) { entry ->
+                            NativeCalendarCard(
+                                entry = entry,
+                                enabled = !state.busy,
+                                links = remember(entry.key, state.links) {
+                                    val all = JSONArray()
+                                    state.links.forEach { all.put(it) }
+                                    runCatching { NativeMailLinks.forEvent(entry.data, all) }.getOrDefault(JSONArray())
+                                },
+                                edit = {
+                                    daySheetOpen = false
+                                    editEvent(entry.data.optString("date"), entry.data.optString("id"))
+                                },
+                                openMail = {
+                                    daySheetOpen = false
+                                    openMail(it)
+                                },
+                                unlinkMail = { linkId -> model.requestUnlink(linkId) },
+                                createTask = {
+                                    daySheetOpen = false
+                                    createTask(entry.data)
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -647,9 +869,9 @@ internal fun NativeMailEventPickerDialog(model: NativeCalendarModel) {
 
 @Composable
 private fun calendarColor(kind: String): Color = when (kind) {
-    "remote" -> Color(0xFF38BDF8)
-    "event" -> Color(0xFF34D399)
-    else -> Color(0xFF8B5CF6)
+    "remote" -> if(LocalInboxDark.current)Color(0xFF93C5FD) else Color(0xFF30649E)
+    "event" -> nativeSuccessColor()
+    else -> MaterialTheme.colorScheme.primary
 }
 
 @Composable
@@ -690,8 +912,8 @@ private fun NativeCalendarCard(
     Surface(
         onClick = { expanded = !expanded },
         shape = RoundedCornerShape(16.dp),
-        color = Color(0xFF14161D),
-        border = BorderStroke(0.7.dp, Color(0x14FFFFFF)),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(0.7.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp)
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)) {
@@ -714,14 +936,14 @@ private fun NativeCalendarCard(
                         startTime,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFFF3F4F8),
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1
                     )
                     if (endTime.isNotBlank()) {
                         Text(
                             endTime,
                             fontSize = 11.sp,
-                            color = Color(0xFF8E929F),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1
                         )
                     }
@@ -734,14 +956,14 @@ private fun NativeCalendarCard(
                         data.optString("title", "Без названия"),
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFFF3F4F8),
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = if (expanded) 4 else 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         if (location.isNotBlank()) "$sourceLabel · $location" else sourceLabel,
                         fontSize = 12.sp,
-                        color = Color(0xFF8E929F),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -777,7 +999,7 @@ private fun NativeCalendarCard(
                             data.optString(field),
                             Modifier.padding(start = 64.dp, top = 6.dp),
                             fontSize = 13.sp,
-                            color = Color(0xFF8E929F)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -785,7 +1007,7 @@ private fun NativeCalendarCard(
             if (links.length() > 0) {
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFF1C1F2A),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                 ) {
                     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
@@ -809,14 +1031,14 @@ private fun NativeCalendarCard(
                                         NativeIcons.Mail,
                                         contentDescription = null,
                                         modifier = Modifier.size(14.dp),
-                                        tint = Color(0xFF8B5CF6)
+                                        tint = MaterialTheme.colorScheme.primary
                                     )
                                     Text(
                                         mail?.optString("subject")?.ifBlank { "Открыть письмо" } ?: "Письмо",
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         fontSize = 12.sp,
-                                        color = Color(0xFFF3F4F8)
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                                 IconButton(
@@ -824,7 +1046,7 @@ private fun NativeCalendarCard(
                                     enabled = enabled,
                                     modifier = Modifier.size(26.dp)
                                 ) {
-                                    Icon(NativeIcons.Close, contentDescription = "Отвязать", modifier = Modifier.size(14.dp), tint = Color(0xFF8E929F))
+                                    Icon(NativeIcons.Close, contentDescription = "Отвязать", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }

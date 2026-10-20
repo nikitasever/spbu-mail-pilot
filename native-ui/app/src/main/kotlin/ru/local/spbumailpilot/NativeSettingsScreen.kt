@@ -14,11 +14,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-@Composable internal fun NativeSettingsScreen(model:NativeSettingsModel,activity:ComposeInboxActivity,accounts:()->Unit,writing:()->Unit,ai:()->Unit = {}) {
-    val s=model.state
-    BackHandler {model.back()}
+@Composable internal fun NativeSettingsScreen(
+    model: NativeSettingsModel,
+    activity: ComposeInboxActivity,
+    accounts: () -> Unit,
+    writing: () -> Unit,
+    ai: () -> Unit = {},
+    bottomBar: @Composable () -> Unit = {}
+) {
+    val s = model.state
+    BackHandler { model.back() }
     Scaffold(
-        topBar={
+        bottomBar = bottomBar,
+        topBar = {
             Column {
                 TopAppBar(
                     colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background),

@@ -16,16 +16,23 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-@Composable internal fun NativeAccountsScreen(model:NativeAccountsModel) {
+@Composable internal fun NativeAccountsScreen(model:NativeAccountsModel, onExit: (() -> Unit)? = null) {
     val s=model.state
-    BackHandler {model.back()}
+    val handleBack = {
+        if (s.rows.isEmpty() && s.editor == null && onExit != null) {
+            onExit()
+        } else {
+            model.back()
+        }
+    }
+    BackHandler { handleBack() }
     Scaffold(
         topBar={
             Column {
                 TopAppBar(
                     colors=TopAppBarDefaults.topAppBarColors(containerColor=MaterialTheme.colorScheme.background),
                     title={Text(if(s.editor=="login")"Добавить аккаунт" else if(s.editor=="smtp")"Отправка · SMTP" else if(s.editor=="password")"Обновить сохранённый пароль" else "Аккаунты",fontWeight=FontWeight.SemiBold)},
-                    navigationIcon={TextButton(onClick=model::back,enabled=!s.busy){Text("Назад")}}
+                    navigationIcon={TextButton(onClick=handleBack,enabled=!s.busy){Text("Назад")}}
                 )
                 HorizontalDivider(thickness=0.5.dp,color=MaterialTheme.colorScheme.outlineVariant)
             }

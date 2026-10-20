@@ -39,19 +39,19 @@ internal fun NativeWorkspaceScreen(
     val editor = state.editor
     BackHandler { model.back() }
     Scaffold(
-        containerColor = Color(0xFF0B0C10),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0B0C10),
-                    titleContentColor = Color(0xFFF3F4F6)
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 navigationIcon = {
                     IconButton(onClick = model::back, enabled = !state.busy) {
                         Icon(
                             NativeIcons.ArrowBack,
                             contentDescription = "Назад",
-                            tint = Color(0xFFF3F4F6)
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
@@ -65,7 +65,7 @@ internal fun NativeWorkspaceScreen(
                             } else if (state.eventRoute) "Своё событие" else "Задачи и заметки",
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
-                            color = Color(0xFFF3F4F6),
+                            color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -79,7 +79,7 @@ internal fun NativeWorkspaceScreen(
                                     accountEmail,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = Color(0xFF8E929F),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -87,7 +87,7 @@ internal fun NativeWorkspaceScreen(
                                     NativeIcons.ChevronDown,
                                     contentDescription = null,
                                     modifier = Modifier.size(12.dp),
-                                    tint = Color(0xFF8B5CF6)
+                                    tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
@@ -100,7 +100,7 @@ internal fun NativeWorkspaceScreen(
                                 NativeIcons.Refresh,
                                 contentDescription = "Обновить",
                                 modifier = Modifier.size(20.dp),
-                                tint = Color(0xFF8E929F)
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -119,9 +119,9 @@ internal fun NativeWorkspaceScreen(
         },
         bottomBar = {
             if (editor != null) {
-                Surface(color = Color(0xFF14161D)) {
+                Surface(color = MaterialTheme.colorScheme.surface) {
                     Column(Modifier.fillMaxWidth().navigationBarsPadding().imePadding()) {
-                        HorizontalDivider(thickness = 0.5.dp, color = Color(0x0FFFFFFF))
+                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                         Row(
                             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -136,7 +136,7 @@ internal fun NativeWorkspaceScreen(
                                 Surface(
                                     onClick = { if (!state.busy) model.requestDelete() },
                                     shape = RoundedCornerShape(12.dp),
-                                    color = Color(0xFF1C1F2A),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                     modifier = Modifier.heightIn(min = 44.dp)
                                 ) {
                                     Row(
@@ -166,7 +166,7 @@ internal fun NativeWorkspaceScreen(
             if (state.busy) {
                 LinearProgressIndicator(
                     Modifier.fillMaxWidth().height(2.dp),
-                    color = Color(0xFF7C5CFF),
+                    color = MaterialTheme.colorScheme.primary,
                     trackColor = Color.Transparent
                 )
             }
@@ -174,7 +174,7 @@ internal fun NativeWorkspaceScreen(
                 Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
             }
             state.notice?.let {
-                Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp, color = Color(0xFFA78BFA))
+                Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
             }
             if (editor != null) {
                 Column(
@@ -190,7 +190,7 @@ internal fun NativeWorkspaceScreen(
                     if (mailSource != null || calSource != null) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFF1C1F2A),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(
@@ -206,7 +206,7 @@ internal fun NativeWorkspaceScreen(
                                             NativeIcons.Mail,
                                             contentDescription = null,
                                             modifier = Modifier.size(14.dp),
-                                            tint = Color(0xFFA78BFA)
+                                            tint = MaterialTheme.colorScheme.primary
                                         )
                                         Text(
                                             "Исходное письмо: " + source.optString("subject").ifBlank { "Без темы" },
@@ -214,7 +214,7 @@ internal fun NativeWorkspaceScreen(
                                             overflow = TextOverflow.Ellipsis,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = Color(0xFFA78BFA)
+                                            color = MaterialTheme.colorScheme.primary
                                         )
                                     }
                                 }
@@ -227,7 +227,7 @@ internal fun NativeWorkspaceScreen(
                                             NativeIcons.Calendar,
                                             contentDescription = null,
                                             modifier = Modifier.size(14.dp),
-                                            tint = Color(0xFFA78BFA)
+                                            tint = MaterialTheme.colorScheme.primary
                                         )
                                         Text(
                                             "Из события календаря: " + source.optString("calendarTitle", "Календарь"),
@@ -235,7 +235,7 @@ internal fun NativeWorkspaceScreen(
                                             overflow = TextOverflow.Ellipsis,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = Color(0xFFA78BFA)
+                                            color = MaterialTheme.colorScheme.primary
                                         )
                                     }
                                 }
@@ -245,12 +245,12 @@ internal fun NativeWorkspaceScreen(
                     TextField(
                         value = value("title"),
                         onValueChange = { model.field("title", it) },
-                        label = { Text("Название", color = Color(0xFF8E929F)) },
+                        label = { Text("Название", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                         shape = RoundedCornerShape(12.dp),
                         colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color(0xFF1C1F2A),
-                            unfocusedContainerColor = Color(0xFF1C1F2A),
-                            disabledContainerColor = Color(0xFF14161D),
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            disabledContainerColor = MaterialTheme.colorScheme.surface,
                             focusedIndicatorColor = Color.Transparent,
                             unfocusedIndicatorColor = Color.Transparent,
                             disabledIndicatorColor = Color.Transparent
@@ -275,15 +275,15 @@ internal fun NativeWorkspaceScreen(
                                     }
                                 },
                                 shape = RoundedCornerShape(10.dp),
-                                color = Color(0xFF1C1F2A)
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh
                             ) {
                                 Row(
                                     Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Icon(NativeIcons.Calendar, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFFA78BFA))
-                                    Text("Показать в календаре", fontSize = 12.sp, color = Color(0xFFA78BFA), fontWeight = FontWeight.Medium)
+                                    Icon(NativeIcons.Calendar, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary)
+                                    Text("Показать в календаре", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
                                 }
                             }
                         }
@@ -321,13 +321,13 @@ internal fun NativeWorkspaceScreen(
                         TextField(
                             value = value(body),
                             onValueChange = { model.field(body, it) },
-                            label = { Text(if (body == "notes") "Комментарий" else "Текст", color = Color(0xFF8E929F)) },
+                            label = { Text(if (body == "notes") "Комментарий" else "Текст", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                             minLines = 6,
                             shape = RoundedCornerShape(12.dp),
                             colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFF1C1F2A),
-                                unfocusedContainerColor = Color(0xFF1C1F2A),
-                                disabledContainerColor = Color(0xFF14161D),
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                disabledContainerColor = MaterialTheme.colorScheme.surface,
                                 focusedIndicatorColor = Color.Transparent,
                                 unfocusedIndicatorColor = Color.Transparent,
                                 disabledIndicatorColor = Color.Transparent
@@ -341,7 +341,7 @@ internal fun NativeWorkspaceScreen(
                 Surface(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF14161D)
+                    color = MaterialTheme.colorScheme.surface
                 ) {
                     Row(
                         Modifier.fillMaxWidth().padding(3.dp),
@@ -353,14 +353,14 @@ internal fun NativeWorkspaceScreen(
                                 onClick = { if (!state.busy && (kindKey != "tasks" || state.tasksEnabled)) model.kind(kindKey) },
                                 modifier = Modifier.weight(1f).height(34.dp),
                                 shape = RoundedCornerShape(9.dp),
-                                color = if (active) Color(0xFF1C1F2A) else Color.Transparent
+                                color = if (active) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Text(
                                         label,
                                         fontSize = 13.sp,
                                         fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-                                        color = if (active) Color(0xFFA78BFA) else Color(0xFF8E929F)
+                                        color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -369,7 +369,7 @@ internal fun NativeWorkspaceScreen(
                 }
                 Surface(
                     shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFF1C1F2A),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
                 ) {
                     Row(
@@ -381,18 +381,18 @@ internal fun NativeWorkspaceScreen(
                             NativeIcons.Search,
                             contentDescription = null,
                             modifier = Modifier.size(17.dp),
-                            tint = Color(0xFF8E929F)
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                             if (state.query.isEmpty()) {
-                                Text("Поиск в записях…", fontSize = 13.sp, color = Color(0xFF8E929F).copy(alpha = 0.7f))
+                                Text("Поиск в записях…", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                             }
                             BasicTextField(
                                 value = state.query,
                                 onValueChange = model::query,
                                 singleLine = true,
-                                textStyle = TextStyle(color = Color(0xFFF3F4F6), fontSize = 13.sp),
-                                cursorBrush = SolidColor(Color(0xFF8B5CF6)),
+                                textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -408,13 +408,13 @@ internal fun NativeWorkspaceScreen(
                             Surface(
                                 onClick = { model.filter(value) },
                                 shape = RoundedCornerShape(10.dp),
-                                color = if (selected) Color(0xFF7C5CFF).copy(alpha = 0.22f) else Color(0xFF1C1F2A)
+                                color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHigh
                             ) {
                                 Text(
                                     label,
                                     fontSize = 12.sp,
                                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                                    color = if (selected) Color(0xFFA78BFA) else Color(0xFF8E929F),
+                                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                 )
                             }
@@ -447,14 +447,14 @@ internal fun NativeWorkspaceScreen(
                         item {
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF14161D),
+                                color = MaterialTheme.colorScheme.surface,
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                             ) {
                                 Text(
                                     "Здесь пока нет записей по выбранным условиям.",
                                     Modifier.padding(16.dp),
                                     fontSize = 13.sp,
-                                    color = Color(0xFF8E929F)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -465,7 +465,7 @@ internal fun NativeWorkspaceScreen(
                         Surface(
                             onClick = { if (!state.busy) model.edit(row.optString("id")) },
                             shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFF14161D),
+                            color = MaterialTheme.colorScheme.surface,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
                         ) {
                             Row(
@@ -477,14 +477,14 @@ internal fun NativeWorkspaceScreen(
                                     Surface(
                                         onClick = { if (!state.busy) model.done(row.optString("id")) },
                                         shape = CircleShape,
-                                        color = if (isDone) Color(0xFF7C5CFF) else Color.Transparent,
+                                        color = if (isDone) MaterialTheme.colorScheme.primary else Color.Transparent,
                                         border = BorderStroke(
                                             1.5.dp,
-                                            if (isDone) Color(0xFF7C5CFF)
+                                            if (isDone) MaterialTheme.colorScheme.primary
                                             else when (priority) {
-                                                "urgent" -> Color(0xFFEF4444)
-                                                "important" -> Color(0xFF8B5CF6)
-                                                else -> Color(0xFF8E929F).copy(alpha = 0.5f)
+                                                "urgent" -> MaterialTheme.colorScheme.error
+                                                "important" -> MaterialTheme.colorScheme.primary
+                                                else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                             }
                                         ),
                                         modifier = Modifier.padding(top = 2.dp).size(20.dp)
@@ -514,7 +514,7 @@ internal fun NativeWorkspaceScreen(
                                             row.optString("title"),
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = if (isDone) Color(0xFF8E929F) else Color(0xFFF3F4F6),
+                                            color = if (isDone) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                                             textDecoration = if (isDone) TextDecoration.LineThrough else TextDecoration.None,
                                             modifier = Modifier.weight(1f)
                                         )
@@ -522,15 +522,15 @@ internal fun NativeWorkspaceScreen(
                                             val isUrgent = priority == "urgent"
                                             Surface(
                                                 shape = RoundedCornerShape(6.dp),
-                                                color = if (isUrgent) Color(0xFFEF4444).copy(alpha = 0.18f)
-                                                else Color(0xFF7C5CFF).copy(alpha = 0.22f),
+                                                color = if (isUrgent) MaterialTheme.colorScheme.error.copy(alpha = 0.18f)
+                                                else MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
                                                 modifier = Modifier.padding(start = 8.dp)
                                             ) {
                                                 Text(
                                                     if (isUrgent) "Срочно" else "Важно",
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.SemiBold,
-                                                    color = if (isUrgent) Color(0xFFF87171) else Color(0xFFA78BFA),
+                                                    color = if (isUrgent) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                                 )
                                             }
@@ -543,7 +543,7 @@ internal fun NativeWorkspaceScreen(
                                         ) {
                                             Surface(
                                                 shape = RoundedCornerShape(6.dp),
-                                                color = Color(0xFF1C1F2A)
+                                                color = MaterialTheme.colorScheme.surfaceContainerHigh
                                             ) {
                                                 Row(
                                                     Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
@@ -554,14 +554,14 @@ internal fun NativeWorkspaceScreen(
                                                         NativeIcons.Clock,
                                                         contentDescription = null,
                                                         modifier = Modifier.size(12.dp),
-                                                        tint = Color(0xFF8E929F)
+                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
                                                     Text(
                                                         formatHumanDateTime(row.optString("date"), row.optString("time"))
                                                             .ifBlank { "Без срока" },
                                                         fontSize = 11.sp,
                                                         fontWeight = FontWeight.Medium,
-                                                        color = Color(0xFF8E929F)
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
                                                 }
                                             }
@@ -569,7 +569,7 @@ internal fun NativeWorkspaceScreen(
                                                 Text(
                                                     source.optString("calendarTitle", "Календарь"),
                                                     fontSize = 12.sp,
-                                                    color = Color(0xFFA78BFA),
+                                                    color = MaterialTheme.colorScheme.primary,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
@@ -583,14 +583,14 @@ internal fun NativeWorkspaceScreen(
                                             maxLines = 2,
                                             overflow = TextOverflow.Ellipsis,
                                             fontSize = 13.sp,
-                                            color = Color(0xFF8E929F)
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                     if (state.kind == "tasks" && row.optJSONObject("mail") != null) {
                                         Surface(
                                             onClick = { if (!state.busy) openMail(row.optString("id")) },
                                             shape = RoundedCornerShape(8.dp),
-                                            color = Color(0xFF1C1F2A)
+                                            color = MaterialTheme.colorScheme.surfaceContainerHigh
                                         ) {
                                             Row(
                                                 Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -601,13 +601,13 @@ internal fun NativeWorkspaceScreen(
                                                     NativeIcons.Mail,
                                                     contentDescription = null,
                                                     modifier = Modifier.size(12.dp),
-                                                    tint = Color(0xFFA78BFA)
+                                                    tint = MaterialTheme.colorScheme.primary
                                                 )
                                                 Text(
                                                     "Открыть исходное письмо",
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Medium,
-                                                    color = Color(0xFFA78BFA)
+                                                    color = MaterialTheme.colorScheme.primary
                                                 )
                                             }
                                         }
@@ -664,7 +664,7 @@ private fun WorkspaceChoice(
         Surface(
             onClick = { if (enabled) expanded = true },
             shape = RoundedCornerShape(12.dp),
-            color = Color(0xFF1C1F2A),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
         ) {
             Box(
@@ -674,7 +674,7 @@ private fun WorkspaceChoice(
                 Text(
                     "$title: ${options.find { it.first == value }?.second ?: value}",
                     fontSize = 12.sp,
-                    color = Color(0xFFF3F4F6),
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

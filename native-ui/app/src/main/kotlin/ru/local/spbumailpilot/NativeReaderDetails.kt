@@ -121,7 +121,7 @@ private fun readerAvatarLetters(sender: String): String {
                             append(date)
                         }
                     }
-                    Text(subline.ifBlank { "Сегодня" },Modifier.padding(top=2.dp),fontSize=12.sp,color=Color(0xFF8E929F),maxLines=1)
+                    Text(subline.ifBlank { "Сегодня" },Modifier.padding(top=2.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1)
                 }
             }
         }
@@ -129,8 +129,8 @@ private fun readerAvatarLetters(sender: String): String {
     if(externalExpanded&&details!=null) {
         Surface(
             shape=RoundedCornerShape(14.dp),
-            color=Color(0xFF14161D),
-            border=BorderStroke(1.dp,Color(0x14FFFFFF)),
+            color=MaterialTheme.colorScheme.surface,
+            border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),
             modifier=Modifier.fillMaxWidth().padding(bottom=10.dp)
         ) {
             SelectionContainer {

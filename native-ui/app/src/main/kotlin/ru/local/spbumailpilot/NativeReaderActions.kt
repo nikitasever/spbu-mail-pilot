@@ -30,22 +30,22 @@ import androidx.compose.ui.unit.sp
             Surface(
                 onClick={expanded=!expanded},
                 shape=RoundedCornerShape(10.dp),
-                color=Color(0xFF1C1F2A),
+                color=MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier=Modifier.padding(top=6.dp)
             ) {
                 Text(
                     if(expanded)"Скрыть ссылки и номера" else "Ссылки и номера · ${targets.links.size+targets.phones.size}",
                     Modifier.padding(horizontal=12.dp,vertical=6.dp),
                     fontSize=12.sp,
-                    color=Color(0xFF8E929F)
+                    color=MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
         if(expanded&&(targets.links.isNotEmpty()||targets.phones.isNotEmpty())) {
             Surface(
                 shape=RoundedCornerShape(12.dp),
-                color=Color(0xFF14161D),
-                border=BorderStroke(1.dp,Color(0x14FFFFFF)),
+                color=MaterialTheme.colorScheme.surface,
+                border=BorderStroke(1.dp,MaterialTheme.colorScheme.outlineVariant),
                 modifier=Modifier.fillMaxWidth().padding(top=8.dp)
             ) {
                 Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {

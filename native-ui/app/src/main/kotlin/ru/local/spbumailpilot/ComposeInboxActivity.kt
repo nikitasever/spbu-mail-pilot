@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -97,7 +98,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
         if(savedInstanceState==null)receiveNavigation(intent) else navigation.skipStartup()
         restoredComposerOwner = savedInstanceState?.getString("nativeComposerOwner")
         restoredComposerId=savedInstanceState?.getString("nativeComposerId")
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        applyFlagSecure()
         enableEdgeToEdge()
         setContent { InboxTheme(mode=settings.state.options.optString("theme","system"),large=settings.state.options.optBoolean("large"),compact=settings.state.options.optBoolean("compact")) {
             LaunchedEffect(accounts.state.restart,resumed,unlockEpoch){
@@ -112,9 +113,10 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
                     startActivity(next);finish()
                 }
             }
-            LaunchedEffect(settings.state.options,resumed){
+            val darkAppearance=LocalInboxDark.current
+            LaunchedEffect(settings.state.options,resumed,darkAppearance){
                 nativeAppearanceMode=settings.state.options.optString("theme","system")
-                val dark=AppearancePolicy.dark(nativeAppearanceMode,(resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES)
+                val dark=darkAppearance
                 val style=if(dark)androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else androidx.activity.SystemBarStyle.light(android.graphics.Color.TRANSPARENT,android.graphics.Color.TRANSPARENT)
                 enableEdgeToEdge(statusBarStyle=style,navigationBarStyle=style)
                 if(resumed&&!AppLock.locked(this@ComposeInboxActivity))BackgroundMailService.reconcile(this@ComposeInboxActivity,true)
@@ -192,13 +194,15 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             val goToMail = {
                 contacts.closeForNavigation()
                 calendar.close()
-                workspace.leave(true)
+                workspace.closeForNavigation()
+                settings.back()
                 inbox.backToList()
             }
             val goToCalendar = {
                 if (inbox.state.owner.isNotBlank()) {
                     contacts.closeForNavigation()
-                    workspace.leave(true)
+                    workspace.closeForNavigation()
+                    settings.back()
                     calendar.open(inbox.state.owner)
                 }
             }
@@ -206,13 +210,15 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
                 if (inbox.state.owner.isNotBlank()) {
                     contacts.closeForNavigation()
                     calendar.close()
+                    settings.back()
                     workspace.open(inbox.state.owner)
                 }
             }
             val goToContacts = {
                 if (inbox.state.owner.isNotBlank()) {
                     calendar.close()
-                    workspace.leave(true)
+                    workspace.closeForNavigation()
+                    settings.back()
                     contacts.open(inbox.state.owner)
                 }
             }
@@ -220,7 +226,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
                 if (inbox.state.owner.isNotBlank()) {
                     contacts.closeForNavigation()
                     calendar.close()
-                    workspace.leave(true)
+                    workspace.closeForNavigation()
                     settings.open()
                 } else {
                     accounts.open()
@@ -243,7 +249,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
                 Box(Modifier.weight(1f)) {
 
             if(accounts.state.restart) Box(Modifier.fillMaxSize(),contentAlignment=androidx.compose.ui.Alignment.Center){CircularProgressIndicator()}
-            else if(accounts.state.open) NativeAccountsScreen(accounts)
+            else if(accounts.state.open) NativeAccountsScreen(accounts, onExit = { finish() })
             else if (composer.state.open) NativeComposer(composer, fullClient) {
                 composer.beginPick {
                     if (!isDestroyed && resumed) try { attachmentPicker.launch(arrayOf("*/*")) } catch (_: Exception) { composer.pickerFailed() }
@@ -266,7 +272,26 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             else if(digest.state.open) holder.SaveableStateProvider("mail-digest") {
                 NativeDigestScreen(digest,{aiSettings.open(digest.state.owner)}){number->digest.source(number)?.let {if(!inbox.openLinked(digest.state.owner,it))digest.linkError()} ?: digest.linkError()}
             }
-            else if(settings.state.open) NativeSettingsScreen(settings,this@ComposeInboxActivity,{accounts.open()},{settings.back();writingSettings.open(inbox.state.owner)},{aiSettings.open(inbox.state.owner)})
+            else if(settings.state.open) NativeSettingsScreen(
+                model = settings,
+                activity = this@ComposeInboxActivity,
+                accounts = { accounts.open() },
+                writing = { settings.back(); writingSettings.open(inbox.state.owner) },
+                ai = { aiSettings.open(inbox.state.owner) },
+                bottomBar = {
+                    NativeMainBottomBar(
+                        activeTab = "settings",
+                        enabled = inbox.state.owner.isNotBlank() && !settings.state.busy,
+                        unreadCount = unreadCount,
+                        todayEventsCount = todayEntries.size,
+                        onMail = goToMail,
+                        onCalendar = goToCalendar,
+                        onTasks = goToTasks,
+                        onContacts = goToContacts,
+                        onMore = {}
+                    )
+                }
+            )
             else if(writingSettings.state.open) holder.SaveableStateProvider("writing-settings") {NativeWritingSettingsScreen(writingSettings)}
             else if(extras.state.open) holder.SaveableStateProvider("reply-reminders") {
                 NativeMailExtrasScreen(extras){record->extras.openResponse(record,false)?.let {if(!inbox.openLinked(extras.state.owner,it))extras.linkError()}}
@@ -393,8 +418,15 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
         } }
     }
     override fun getNativeAppearanceMode():String = nativeAppearanceMode
+    private fun applyFlagSecure() {
+        if (AppLock.enabled(this)) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
     override fun onResume() {
-        super.onResume(); resumed = true; files.resume();serverDrafts.resume();drafts.resume();scheduled.resume();digest.resume();aiSettings.resume();accounts.resume();settings.resume();composer.resume()
+        super.onResume(); resumed = true; applyFlagSecure(); files.resume();serverDrafts.resume();drafts.resume();scheduled.resume();digest.resume();aiSettings.resume();accounts.resume();settings.resume();composer.resume()
         restoreComposer()
         exports.resume();inbox.resume();contacts.resume();calendar.resume();workspace.resume();categories.resume();extras.resume();writingSettings.resume()
     }
@@ -408,6 +440,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
     }
     override fun appLockChanged() {
         unlockEpoch++
+        applyFlagSecure()
         if(resumed&&!AppLock.locked(this)){files.resume();serverDrafts.resume();drafts.resume();scheduled.resume();digest.resume();aiSettings.resume();accounts.resume();settings.resume();composer.resume();restoreComposer();exports.resume();inbox.resume();contacts.resume();calendar.resume();workspace.resume();categories.resume();extras.resume();writingSettings.resume()}
     }
     override fun onNewIntent(intent: Intent) {super.onNewIntent(intent);setIntent(intent);receiveNavigation(intent)}
@@ -423,7 +456,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             android.widget.Toast.makeText(this,"Выберите аккаунт уведомления. Его содержимое откроется только после вашего выбора.",android.widget.Toast.LENGTH_LONG).show()
             accounts.open();return
         }
-        contacts.closeForNavigation();writingSettings.closeForNavigation();calendar.close();workspace.back();categories.back();extras.back()
+        contacts.closeForNavigation();writingSettings.closeForNavigation();calendar.close();workspace.closeForNavigation();categories.back();extras.back()
         if(target.mail!=null){if(inbox.openNotice(target.mail))navigation.consume(target);return}
         inbox.backToList()
         when(target.kind){"tasks"->{workspace.kind("tasks");workspace.open(owner)};"calendar"->calendar.open(owner);"mailbox"->inbox.loadInbox(false,"INBOX")}
@@ -537,8 +570,10 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
         extraLarge = RoundedCornerShape(24.dp)
     )
     val density=androidx.compose.ui.platform.LocalDensity.current
-    CompositionLocalProvider(LocalCompactInbox provides compact,androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density,density.fontScale*(if(large)1.15f else 1f))) {
-        MaterialTheme(colorScheme = scheme, shapes = shapes, content = content)
+    CompositionLocalProvider(LocalInboxDark provides isDark,LocalCompactInbox provides compact,androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density,density.fontScale*(if(large)1.15f else 1f))) {
+        MaterialTheme(colorScheme = scheme, shapes = shapes) {
+            Surface(Modifier.fillMaxSize(),color=scheme.background,contentColor=scheme.onBackground) { content() }
+        }
     }
 }
 @Composable internal fun NativeInbox(
@@ -611,7 +646,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
     val displayRows=buildDisplayRows(loadedRows,state.owner,state.threadsEnabled,eligible)
     val visible=loadedRows.filter(eligible)
     val unreadTotal=remember(loadedRows){loadedRows.count {it.unread}}
-    val visibleRefs=remember(displayRows){displayRows.map {when(it){is InboxDisplayRow.Single->it.mail.ref;is InboxDisplayRow.Group->it.members.first().ref}}.toSet()}
+    val visibleRefs=remember(displayRows){displayRows.map {when(it){is InboxDisplayRow.Single->it.mail.ref;is InboxDisplayRow.Group->(it.members.firstOrNull { m -> eligible(m) } ?: it.members.first()).ref}}.toSet()}
     val activeSelection=state.activeSelection(visibleRefs)
     BackHandler(state.selected == null && state.thread.anchor == null && activeSelection.isNotEmpty()) { model.clearSelection() }
     BackHandler(state.selected != null || state.thread.anchor != null) { model.backToList() }
@@ -632,7 +667,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
         }
     }
     Scaffold(
-        containerColor = Color(0xFF0B0C10),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Column {
                 TopAppBar(
@@ -652,12 +687,12 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                         overflow=TextOverflow.Ellipsis,
                                         fontSize=22.sp,
                                         fontWeight=FontWeight.Bold,
-                                        color=Color(0xFFF3F4F8)
+                                        color=MaterialTheme.colorScheme.onSurface
                                     )
                                     Icon(
                                         NativeIcons.ChevronDown,
                                         contentDescription = null,
-                                        tint = Color(0xFF8E929F),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
@@ -672,14 +707,14 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                         fontWeight=FontWeight.Medium,
                                         maxLines=1,
                                         overflow=TextOverflow.Ellipsis,
-                                        color=Color(0xFF8E929F),
+                                        color=MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier=Modifier.clickable(enabled=!state.busy&&!state.linked,onClick=onSwitchAccount)
                                     )
                                     if(state.cached && state.searchKey.isEmpty()) {
                                         Icon(
                                             NativeIcons.Cloud,
                                             contentDescription = "Офлайн-кэш",
-                                            tint = Color(0xFF8E929F),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(13.dp)
                                         )
                                     }
@@ -695,13 +730,13 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                     maxLines=1,
                                     fontWeight=FontWeight.SemiBold,
                                     fontSize=17.sp,
-                                    color=Color(0xFFF3F4F8)
+                                    color=MaterialTheme.colorScheme.onSurface
                                 )
                                 if(state.cached) {
                                     Icon(
                                         NativeIcons.Cloud,
                                         contentDescription = "Офлайн-кэш",
-                                        tint = Color(0xFF8E929F),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(14.dp)
                                     )
                                 }
@@ -711,7 +746,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                     navigationIcon = {
                         if (state.selected != null||state.thread.anchor!=null) {
                             IconButton(onClick = model::backToList) {
-                                Icon(NativeIcons.ArrowBack, contentDescription = if(state.selected==null)"К списку" else "Назад", tint = Color(0xFFF3F4F8), modifier = Modifier.size(22.dp))
+                                Icon(NativeIcons.ArrowBack, contentDescription = if(state.selected==null)"К списку" else "Назад", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp))
                             }
                         }
                     },
@@ -748,7 +783,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                 onClick = reply,
                                 enabled = state.body != null && !state.busy
                             ) {
-                                Icon(NativeIcons.Reply, contentDescription = "Ответить", tint = Color(0xFFF3F4F8), modifier = Modifier.size(20.dp))
+                                Icon(NativeIcons.Reply, contentDescription = "Ответить", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
                             }
                             if(!state.linked) {
                                 val moveEnabled=!state.busy&&!state.cached&&!state.moveNeedsRefresh
@@ -756,7 +791,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                     onClick={model.requestMove("trash")},
                                     enabled=moveEnabled
                                 ) {
-                                    Icon(NativeIcons.Trash, contentDescription = "В корзину", tint = Color(0xFF8E929F), modifier = Modifier.size(20.dp))
+                                    Icon(NativeIcons.Trash, contentDescription = "В корзину", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                                 }
                             }
                             Box {
@@ -765,7 +800,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                     enabled = !state.busy,
                                     modifier = Modifier.semantics { contentDescription = "Другие действия письма" }
                                 ) {
-                                    Icon(NativeIcons.MoreHorizontal, contentDescription = null, tint = Color(0xFFF3F4F8), modifier = Modifier.size(22.dp))
+                                    Icon(NativeIcons.MoreHorizontal, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp))
                                 }
                                 DropdownMenu(expanded=readerActions,onDismissRequest={readerActions=false}) {
                                     DropdownMenuItem(
@@ -838,9 +873,9 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
         },
         bottomBar = {
             if (state.selected != null) {
-                Surface(color = Color(0xFF14161D)) {
+                Surface(color = MaterialTheme.colorScheme.surface) {
                     Column {
-                        HorizontalDivider(thickness = 0.5.dp, color = Color(0x0FFFFFFF))
+                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                         Row(
                             Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 14.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -850,7 +885,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                 onClick = reply,
                                 enabled = state.body != null && !state.busy,
                                 shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF7C5CFF),
+                                color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.weight(1f).height(42.dp)
                             ) {
                                 Row(
@@ -867,22 +902,22 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                 onClick = replyAll,
                                 enabled = state.body != null && !state.busy,
                                 shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF1C1F2A),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 modifier = Modifier.weight(1f).height(42.dp)
                             ) {
                                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("Ответить всем", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xFFF3F4F8), maxLines = 1)
+                                    Text("Ответить всем", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
                                 }
                             }
                             Surface(
                                 onClick = forwardText,
                                 enabled = state.body != null && !state.busy,
                                 shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF1C1F2A),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 modifier = Modifier.weight(0.9f).height(42.dp)
                             ) {
                                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("Переслать", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xFFF3F4F8), maxLines = 1)
+                                    Text("Переслать", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
                                 }
                             }
                         }
@@ -904,19 +939,19 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
             }
         }
     ) { padding ->
-        Box(Modifier.fillMaxSize().background(Color(0xFF0B0C10))) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             CosmicHeaderGlow()
             Column(Modifier.fillMaxSize().padding(padding)) {
                 notice?.let {
                     Surface(
                         modifier=Modifier.fillMaxWidth().padding(horizontal=14.dp,vertical=4.dp),
                         shape=RoundedCornerShape(12.dp),
-                        color=Color(0xFF1C1F2A)
+                        color=MaterialTheme.colorScheme.surfaceContainerHigh
                     ) {
                         Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=6.dp),verticalAlignment=Alignment.CenterVertically) {
-                            Text(it,Modifier.weight(1f),fontSize=12.sp,color=Color(0xFFF3F4F8))
+                            Text(it,Modifier.weight(1f),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurface)
                             IconButton(onClick=dismissNotice,modifier=Modifier.size(26.dp)){
-                                Icon(NativeIcons.Close, contentDescription="Закрыть", tint=Color(0xFF8E929F), modifier=Modifier.size(14.dp))
+                                Icon(NativeIcons.Close, contentDescription="Закрыть", tint=MaterialTheme.colorScheme.onSurfaceVariant, modifier=Modifier.size(14.dp))
                             }
                         }
                     }
@@ -940,65 +975,76 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                         Surface(
                             modifier=Modifier.fillMaxWidth().padding(horizontal=14.dp,vertical=4.dp),
                             shape=RoundedCornerShape(12.dp),
-                            color=Color(0xFF14161D)
+                            color=MaterialTheme.colorScheme.surface
                         ) {
                             Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
-                                Icon(NativeIcons.Search, contentDescription=null, modifier=Modifier.size(15.dp), tint=Color(0xFF8B5CF6))
+                                Icon(NativeIcons.Search, contentDescription=null, modifier=Modifier.size(15.dp), tint=MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.width(8.dp))
                                 Text(
                                     if(state.query.isNotEmpty()) "Поиск: «${state.query}»" else "Фильтр поиска",
                                     fontWeight=FontWeight.Medium,
                                     fontSize=13.sp,
-                                    color=Color(0xFFF3F4F8),
+                                    color=MaterialTheme.colorScheme.onSurface,
                                     modifier=Modifier.weight(1f)
                                 )
                                 IconButton(onClick={model.clearSearch()},enabled=!state.busy,modifier=Modifier.size(28.dp)) {
-                                    Icon(NativeIcons.Close, contentDescription="Сбросить", tint=Color(0xFF8E929F), modifier=Modifier.size(16.dp))
+                                    Icon(NativeIcons.Close, contentDescription="Сбросить", tint=MaterialTheme.colorScheme.onSurfaceVariant, modifier=Modifier.size(16.dp))
                                 }
                             }
                         }
                     }
-                    // Borderless sleek filter chips (NO thread toggle on main screen)
-                    Row(
-                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=14.dp,vertical=6.dp),
-                        horizontalArrangement=Arrangement.spacedBy(8.dp),
-                        verticalAlignment=Alignment.CenterVertically
+                    // Borderless sleek filter chips (LazyRow with toggle deselect & unread badge)
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        listOf("all" to "Все","unread" to "Непрочитанные","attachments" to "С вложениями").forEach {(value,label)->
+                        items(listOf("all" to "Все", "unread" to "Непрочитанные", "attachments" to "С вложениями")) { (value, label) ->
                             val active = state.filter == value
+                            val chipLabel = if (value == "unread" && unreadTotal > 0) "Непрочитанные ($unreadTotal)" else label
                             Surface(
-                                onClick={model.filter(value)},
-                                shape=RoundedCornerShape(10.dp),
-                                color=if(active) Color(0xFF282048) else Color(0xFF1C1F2A),
-                                border=if(active) BorderStroke(0.8.dp, Color(0x888B5CF6)) else null
+                                onClick = {
+                                    if (value == "all") {
+                                        model.filter("all")
+                                        selectCategory("")
+                                    } else {
+                                        model.filter(if (active) "all" else value)
+                                    }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                border = if (active) BorderStroke(0.8.dp, Color(0x888B5CF6)) else null
                             ) {
                                 Text(
-                                    label,
-                                    Modifier.padding(horizontal=13.dp,vertical=7.dp),
-                                    fontSize=12.sp,
-                                    fontWeight=if(active) FontWeight.SemiBold else FontWeight.Medium,
-                                    color=if(active) Color(0xFFE0D7FF) else Color(0xFF8E929F),
-                                    maxLines=1
+                                    chipLabel,
+                                    Modifier.padding(horizontal = 13.dp, vertical = 7.dp),
+                                    fontSize = 12.sp,
+                                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                                    color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1
                                 )
                             }
                         }
-                        if(categoryRules.isNotEmpty()) {
-                            categoryRules.filter {it.optBoolean("enabled",true)}.forEach {rule->
+                        if (categoryRules.isNotEmpty()) {
+                            val enabledRules = categoryRules.filter { it.optBoolean("enabled", true) }
+                            items(enabledRules) { rule ->
                                 val ruleId = rule.optString("id")
                                 val active = categoryFilter == ruleId
                                 val c = categoryColor(rule.optString("color"))
                                 Surface(
-                                    onClick={selectCategory(if(active) "" else ruleId)},
-                                    shape=RoundedCornerShape(10.dp),
-                                    color=if(active) c.copy(alpha = 0.22f) else Color(0xFF1C1F2A)
+                                    onClick = { selectCategory(if (active) "" else ruleId) },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (active) c.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    border = if (active) BorderStroke(0.8.dp, c.copy(alpha = 0.6f)) else null
                                 ) {
                                     Text(
                                         rule.optString("name"),
-                                        Modifier.padding(horizontal=12.dp,vertical=7.dp),
-                                        fontSize=12.sp,
-                                        fontWeight=if(active) FontWeight.SemiBold else FontWeight.Medium,
-                                        color=if(active) c else Color(0xFF8E929F),
-                                        maxLines=1
+                                        Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                        fontSize = 12.sp,
+                                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                                        color = if (active) c else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
                                     )
                                 }
                             }
@@ -1008,31 +1054,31 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                         Surface(
                             modifier=Modifier.fillMaxWidth().padding(horizontal=14.dp,vertical=4.dp),
                             shape=RoundedCornerShape(12.dp),
-                            color=Color(0xFF1C1F2A)
+                            color=MaterialTheme.colorScheme.surfaceContainerHigh
                         ) {
                             Row(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=6.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                Text("Выбрано: ${activeSelection.size}",fontWeight=FontWeight.SemiBold,fontSize=13.sp,color=Color(0xFFF3F4F8),modifier=Modifier.weight(1f))
+                                Text("Выбрано: ${activeSelection.size}",fontWeight=FontWeight.SemiBold,fontSize=13.sp,color=MaterialTheme.colorScheme.onSurface,modifier=Modifier.weight(1f))
                                 TextButton(onClick={model.batchMarkSeen(true,visibleRefs)},enabled=!state.busy,contentPadding=PaddingValues(horizontal=8.dp,vertical=0.dp)) {
-                                    Text("Прочитано",fontSize=12.sp,color=Color(0xFF8B5CF6))
+                                    Text("Прочитано",fontSize=12.sp,color=MaterialTheme.colorScheme.primary)
                                 }
                                 IconButton(onClick=model::clearSelection,enabled=!state.busy,modifier=Modifier.size(28.dp)) {
-                                    Icon(NativeIcons.Close, contentDescription="Снять выбор", tint=Color(0xFF8E929F), modifier=Modifier.size(16.dp))
+                                    Icon(NativeIcons.Close, contentDescription="Снять выбор", tint=MaterialTheme.colorScheme.onSurfaceVariant, modifier=Modifier.size(16.dp))
                                 }
                             }
                         }
                     }
                 }
-                if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Color(0xFF7C5CFF))
+                if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
                 state.error?.let {
                     Surface(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
                         shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFF2C1519)
+                        color = MaterialTheme.colorScheme.errorContainer
                     ) {
-                        Text(it, Modifier.padding(12.dp), color = Color(0xFFFECACA), fontSize = 13.sp)
+                        Text(it, Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 13.sp)
                     }
                 }
-                state.flagNotice?.let {Text(it,Modifier.padding(horizontal=16.dp,vertical=4.dp),fontSize=12.sp,color=Color(0xFF8B5CF6))}
+                state.flagNotice?.let {Text(it,Modifier.padding(horizontal=16.dp,vertical=4.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.primary)}
                 val mail = state.selected
                 if (mail == null && state.thread.anchor != null) {
                     Box(Modifier.weight(1f)) {
@@ -1055,26 +1101,29 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                         )
                     }
                     items(displayRows, key = { it.key }) { item ->
-                        val row=when(item){is InboxDisplayRow.Single->item.mail;is InboxDisplayRow.Group->item.members.first()}
-                        val rule=category(row)
-                        val isSelected=row.ref in activeSelection
-                        val onOpen={
-                            if(activeSelection.isNotEmpty())model.toggleSelection(row.ref)
-                            else if(item is InboxDisplayRow.Group)model.openThread(item.anchor,scope)
+                        val row = when(item) {
+                            is InboxDisplayRow.Single -> item.mail
+                            is InboxDisplayRow.Group -> item.members.firstOrNull { eligible(it) } ?: item.members.first()
+                        }
+                        val rule = category(row)
+                        val isSelected = row.ref in activeSelection
+                        val onOpen = {
+                            if (activeSelection.isNotEmpty()) model.toggleSelection(row.ref)
+                            else if (item is InboxDisplayRow.Group) model.openThread(item.anchor, scope)
                             else model.openMail(row)
                         }
                         MailRow(
-                            row,!state.busy,onOpen,state.owner,labels,responses,snoozed,followups,
-                            rule?.optString("name")?.takeIf { it.isNotBlank() },rule?.let{categoryColor(it.optString("color"))},
-                            if(item is InboxDisplayRow.Group)summaryOf(item.members) else null,
-                            selected=isSelected,
-                            onToggleSelect={model.toggleSelection(row.ref)},
-                            onToggleSeen=if(item is InboxDisplayRow.Single&&activeSelection.isEmpty())({model.toggleSeenFromList(row)}) else null
+                            row, !state.busy, onOpen, state.owner, labels, responses, snoozed, followups,
+                            rule?.optString("name")?.takeIf { it.isNotBlank() }, rule?.let { categoryColor(it.optString("color")) },
+                            if (item is InboxDisplayRow.Group) summaryOf(item.members) else null,
+                            selected = isSelected,
+                            onToggleSelect = { model.toggleSelection(row.ref) },
+                            onToggleSeen = if (item is InboxDisplayRow.Single && activeSelection.isEmpty()) ({ model.toggleSeenFromList(row) }) else null
                         )
                     }
                     if (state.hasMore) item {
-                        LaunchedEffect(displayRows.size, state.hasMore, state.busy, state.pageExpired) {
-                            if (!state.busy && !state.pageExpired && displayRows.isNotEmpty()) {
+                        LaunchedEffect(displayRows.size, state.hasMore, state.busy, state.pageExpired, state.filter, categoryFilter) {
+                            if (!state.busy && !state.pageExpired && (displayRows.isNotEmpty() || state.filter != "all" || categoryFilter.isNotEmpty())) {
                                 model.loadMore()
                             }
                         }
@@ -1083,13 +1132,13 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                 onClick = { if(state.pageExpired) model.loadInbox(!state.pageOffline) else model.loadMore() },
                                 enabled = !state.busy,
                                 shape = RoundedCornerShape(10.dp),
-                                color = Color(0xFF1C1F2A)
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh
                             ) {
                                 Text(
                                     if(state.pageExpired) "Обновить" else if(state.busy) "Загрузка…" else "Загрузить ещё",
                                     Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                                     fontSize = 12.sp,
-                                    color = Color(0xFF8E929F)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -1118,21 +1167,21 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                             fontSize = 20.sp,
                             lineHeight = 26.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFF3F4F8),
+                            color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.padding(top = 4.dp)
                         )
                         // Sender card
                         NativeReaderHeader(state.owner, mail, state.body?.message, externalExpanded = readerDetailsExpanded)
-                        HorizontalDivider(thickness = 0.5.dp, color = Color(0x0FFFFFFF), modifier = Modifier.padding(vertical = 4.dp))
+                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 4.dp))
 
                         if (state.body == null && !state.busy) {
                             Surface(
                                 onClick = { model.openMail(mail) },
                                 shape = RoundedCornerShape(10.dp),
-                                color = Color(0xFF1C1F2A),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 modifier = Modifier.padding(top = 8.dp)
                             ) {
-                                Text("Загрузить письмо", Modifier.padding(horizontal = 14.dp, vertical = 8.dp), fontSize = 13.sp, color = Color(0xFFF3F4F8))
+                                Text("Загрузить письмо", Modifier.padding(horizontal = 14.dp, vertical = 8.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
                             }
                         }
 
@@ -1144,13 +1193,13 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                     Modifier.fillMaxWidth().padding(vertical = 12.dp),
                                     fontSize = 15.sp,
                                     lineHeight = 23.sp,
-                                    color = Color(0xFFEAEDF6)
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                             }
 
                             // Full-width attachment cards so filenames are never truncated
                             if (body.files.isNotEmpty()) {
-                                HorizontalDivider(thickness = 0.5.dp, color = Color(0x0FFFFFFF), modifier = Modifier.padding(vertical = 6.dp))
+                                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 6.dp))
                                 Column(
                                     Modifier
                                         .fillMaxWidth()
@@ -1163,8 +1212,8 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                         Surface(
                                             onClick = { if (!state.busy && file.path.isNotBlank()) model.fileAction(state.owner, mail.ref, file) },
                                             shape = RoundedCornerShape(14.dp),
-                                            color = Color(0xFF14161D),
-                                            border = BorderStroke(0.7.dp, Color(0x18FFFFFF)),
+                                            color = MaterialTheme.colorScheme.surface,
+                                            border = BorderStroke(0.7.dp, MaterialTheme.colorScheme.outlineVariant),
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Row(
@@ -1193,12 +1242,12 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                                         overflow = TextOverflow.Ellipsis,
                                                         fontSize = 13.sp,
                                                         fontWeight = FontWeight.Medium,
-                                                        color = Color(0xFFF3F4F8)
+                                                        color = MaterialTheme.colorScheme.onSurface
                                                     )
                                                     Text(
                                                         ext,
                                                         fontSize = 11.sp,
-                                                        color = Color(0xFF8E929F)
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
                                                 }
                                                 IconButton(
@@ -1210,7 +1259,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                                         NativeIcons.Download,
                                                         contentDescription = null,
                                                         modifier = Modifier.size(16.dp),
-                                                        tint = Color(0xFF8E929F)
+                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
                                                 }
                                             }
@@ -1227,16 +1276,16 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                         enabled = !state.busy,
                                         modifier = Modifier.padding(top = 6.dp),
                                         shape = RoundedCornerShape(10.dp),
-                                        color = Color(0xFF1C1F2A)
+                                        color = MaterialTheme.colorScheme.surfaceContainerHigh
                                     ) {
                                         Row(
                                             Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            Icon(NativeIcons.Calendar, contentDescription = null, modifier = Modifier.size(15.dp), tint = Color(0xFF8B5CF6))
-                                            Text(formatHumanDateTime(it.date, it.time, includeYear = true), fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0xFFF3F4F8))
-                                            Text("Добавить в календарь", fontSize = 12.sp, color = Color(0xFF8B5CF6), fontWeight = FontWeight.SemiBold)
+                                            Icon(NativeIcons.Calendar, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary)
+                                            Text(formatHumanDateTime(it.date, it.time, includeYear = true), fontWeight = FontWeight.Medium, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+                                            Text("Добавить в календарь", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                                         }
                                     }
                                 }
@@ -1254,7 +1303,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
         text={Column {Text(state.selected?.subject ?: "");if(state.moveKind=="folder")Text("Папка: ${state.moveDestination}")}},
         confirmButton={TextButton(onClick=model::confirmMove){Text("Переместить")}},
         dismissButton={TextButton(onClick=model::cancelMove){Text("Отмена")}})
-    if(state.foldersOpen) ModalBottomSheet(onDismissRequest=model::closeFolders,containerColor=Color(0xFF14161D),sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
+    if(state.foldersOpen) ModalBottomSheet(onDismissRequest=model::closeFolders,containerColor=MaterialTheme.colorScheme.surface,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
         NativeFolderList(state,model::closeFolders,{model.loadFolders(true)},model::chooseFolder)
     }
 }
@@ -1262,12 +1311,12 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
     val ref=JSONObject().put("folder",mail.ref.folder).put("uid",mail.ref.uid).put("validity",mail.ref.validity)
     val key=NativeMailEvents.key(ref)
     val label=NativeMailExtras.labelName(labels.optString(key))
-    if(label.isNotEmpty())Text(label,Modifier.padding(top=4.dp),fontSize=11.sp,fontWeight=FontWeight.Medium,color=Color(0xFF8B5CF6))
+    if(label.isNotEmpty())Text(label,Modifier.padding(top=4.dp),fontSize=11.sp,fontWeight=FontWeight.Medium,color=MaterialTheme.colorScheme.primary)
     val response=responses.find {runCatching {NativeMailExtras.key(owner,it.getJSONObject("mail"))==key}.getOrDefault(false)}
-    response?.let {Text("Ответить · "+responseTime(it.optLong("at")),Modifier.padding(top=4.dp),fontSize=11.sp,fontWeight=FontWeight.Medium,color=Color(0xFF8B5CF6))}
+    response?.let {Text("Ответить · "+responseTime(it.optLong("at")),Modifier.padding(top=4.dp),fontSize=11.sp,fontWeight=FontWeight.Medium,color=MaterialTheme.colorScheme.primary)}
     for((rows,badgeLabel) in listOf(snoozed to "Отложено до",followups to "Проверить ответ")) {
         rows.find {runCatching {NativeMailExtras.key(owner,it.getJSONObject("mail"))==key}.getOrDefault(false)}?.let {
-            Text(badgeLabel+" · "+responseTime(it.optLong("at")),Modifier.padding(top=4.dp),fontSize=11.sp,fontWeight=FontWeight.Medium,color=Color(0xFF8B5CF6))
+            Text(badgeLabel+" · "+responseTime(it.optLong("at")),Modifier.padding(top=4.dp),fontSize=11.sp,fontWeight=FontWeight.Medium,color=MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -1326,7 +1375,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
             }
         ) {
             GlassSphereAvatar(
-                seed = mail.sender.ifBlank { mail.email },
+                seed = mail.email.ifBlank { mail.sender },
                 size = 44.dp,
                 selected = selected,
                 enabled = enabled,
@@ -1344,7 +1393,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                     overflow = TextOverflow.Ellipsis,
                     fontSize = 15.sp,
                     fontWeight = if (mail.unread) FontWeight.SemiBold else FontWeight.Medium,
-                    color = if (mail.unread) Color(0xFFF3F4F8) else Color(0xFFD0D4E0)
+                    color = if (mail.unread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Row(
                     Modifier.padding(start = 8.dp),
@@ -1356,7 +1405,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                             NativeIcons.Paperclip,
                             contentDescription = "Есть вложения",
                             modifier = Modifier.size(13.dp),
-                            tint = Color(0xFF8E929F)
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Text(
@@ -1364,7 +1413,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                         maxLines = 1,
                         fontSize = 12.sp,
                         fontWeight = if (mail.unread) FontWeight.Medium else FontWeight.Normal,
-                        color = if (mail.unread) Color(0xFFB4B8C8) else Color(0xFF8E929F)
+                        color = if (mail.unread) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (onToggleSeen != null) {
                         Surface(
@@ -1378,19 +1427,19 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 if (mail.unread) {
-                                    Surface(shape = CircleShape, color = Color(0xFF8B5CF6), modifier = Modifier.size(7.dp)) {}
+                                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(7.dp)) {}
                                 } else {
                                     Surface(
                                         shape = CircleShape,
                                         color = Color.Transparent,
-                                        border = BorderStroke(1.2.dp, Color(0xFF3E4356)),
+                                        border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.outline),
                                         modifier = Modifier.size(7.dp)
                                     ) {}
                                 }
                             }
                         }
                     } else if (mail.unread) {
-                        Surface(shape = CircleShape, color = Color(0xFF8B5CF6), modifier = Modifier.size(7.dp)) {}
+                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(7.dp)) {}
                     }
                 }
             }
@@ -1402,7 +1451,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                 overflow = TextOverflow.Ellipsis,
                 fontWeight = if (mail.unread) FontWeight.Bold else FontWeight.Medium,
                 fontSize = 14.sp,
-                color = if (mail.unread) Color(0xFFFFFFFF) else Color(0xFFCBD0DE),
+                color = if (mail.unread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 2.dp)
             )
 
@@ -1413,7 +1462,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     fontSize = 13.sp,
-                    color = Color(0xFF8E929F),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp)
                 )
             }
@@ -1429,7 +1478,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     validCategory?.let {
-                        val c = categoryTint ?: Color(0xFF8B5CF6)
+                        val c = categoryTint ?: MaterialTheme.colorScheme.primary
                         Surface(shape = RoundedCornerShape(6.dp), color = c.copy(alpha = 0.18f)) {
                             Text(
                                 it,
@@ -1444,7 +1493,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                     if (hasThreadBadge && chain != null) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
-                            color = Color(0xFF1C1F2A),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             modifier = Modifier.semantics { contentDescription = "Цепочка писем: ${chain.count}" }
                         ) {
                             Text(
@@ -1452,7 +1501,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                                 Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFFA78BFA)
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
@@ -1505,14 +1554,14 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
 
     val cardShape = RoundedCornerShape(18.dp)
     val cardBrush = when {
-        selected -> Brush.linearGradient(listOf(Color(0xFF282046), Color(0xFF1A1829)))
-        displayMail.unread -> Brush.verticalGradient(listOf(Color(0xFF1A1D29), Color(0xFF14161D)))
-        else -> Brush.verticalGradient(listOf(Color(0xFF14161D), Color(0xFF12141B)))
+        selected -> Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primaryContainer))
+        displayMail.unread -> Brush.verticalGradient(listOf(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.surface))
+        else -> Brush.verticalGradient(listOf(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.background))
     }
     val borderBrush = when {
-        selected -> Brush.linearGradient(listOf(Color(0xFF8B5CF6), Color(0xFF6366F1)))
-        displayMail.unread -> Brush.linearGradient(listOf(Color(0x33FFFFFF), Color(0x12FFFFFF), Color(0x388B5CF6)))
-        else -> Brush.linearGradient(listOf(Color(0x16FFFFFF), Color(0x08FFFFFF)))
+        selected -> Brush.linearGradient(listOf(MaterialTheme.colorScheme.primary, Color(0xFF6366F1)))
+        displayMail.unread -> Brush.linearGradient(listOf(MaterialTheme.colorScheme.outlineVariant, MaterialTheme.colorScheme.outlineVariant, Color(0x388B5CF6)))
+        else -> Brush.linearGradient(listOf(MaterialTheme.colorScheme.outlineVariant, MaterialTheme.colorScheme.outlineVariant))
     }
 
     Box(
@@ -1537,7 +1586,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                 Icon(
                     NativeIcons.Check,
                     contentDescription = null,
-                    tint = Color(0xFFC4B5FD),
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -1558,7 +1607,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                     elevation = if (displayMail.unread) 10.dp else 4.dp,
                     shape = cardShape,
                     ambientColor = Color(0xFF000000),
-                    spotColor = if (displayMail.unread) Color(0xFF5B3FD6) else Color(0xFF000000)
+                    spotColor = if (displayMail.unread) MaterialTheme.colorScheme.primary else Color(0xFF000000)
                 )
                 .clip(cardShape)
                 .background(cardBrush)
@@ -1594,8 +1643,8 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                         .fillMaxHeight()
                         .background(
                             when {
-                                selected -> Color(0xFFA78BFA)
-                                displayMail.unread -> Color(0xFF8B5CF6)
+                                selected -> MaterialTheme.colorScheme.primary
+                                displayMail.unread -> MaterialTheme.colorScheme.primary
                                 else -> Color.Transparent
                             }
                         )
@@ -1603,7 +1652,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                 Box(Modifier.weight(1f)) {
                     MailRowBody(
                         displayMail,
-                        Color(0xFF14161D),
+                        MaterialTheme.colorScheme.surface,
                         chain,
                         owner,
                         labels,
@@ -1629,19 +1678,19 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
     val members=if(anchor!=null)conversationMembers(state.rows,owner,MailRef(anchor.folder,anchor.uid,anchor.validity),displayRefs).asReversed() else emptyList()
     val summary=summaryOf(members)
     Column(Modifier.fillMaxSize()) {
-        Surface(color = Color(0xFF14161D)) {
+        Surface(color = MaterialTheme.colorScheme.surface) {
             Column {
                 Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=10.dp),verticalAlignment=Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(members.lastOrNull()?.subject ?: "Цепочка писем",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis)
-                        Text("${summary.count} писем",fontSize=12.sp,color=Color(0xFF8E929F),
+                        Text("${summary.count} писем",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier=Modifier.semantics {contentDescription="В цепочке ${summary.count} писем, непрочитанных ${summary.unread}"})
                     }
                     IconButton(onClick=model::backToList) {
-                        Icon(NativeIcons.Close, contentDescription="К списку", tint=Color(0xFF8E929F))
+                        Icon(NativeIcons.Close, contentDescription="К списку", tint=MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                HorizontalDivider(thickness=0.5.dp,color=Color(0x0FFFFFFF))
+                HorizontalDivider(thickness=0.5.dp,color=MaterialTheme.colorScheme.outlineVariant)
             }
         }
         if(members.isEmpty()) {
@@ -1673,24 +1722,24 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
     Surface(
         modifier=Modifier.fillMaxWidth().padding(horizontal=14.dp,vertical=6.dp),
         shape=RoundedCornerShape(16.dp),
-        color=Color(0xFF14161D)
+        color=MaterialTheme.colorScheme.surface
     ) {
         Column(Modifier.fillMaxWidth().padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF1C1F2A),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(NativeIcons.Search, contentDescription = null, tint = Color(0xFF8E929F), modifier = Modifier.size(18.dp))
+                    Icon(NativeIcons.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     TextField(
                         value = state.searchText,
                         onValueChange = changeText,
                         singleLine = true,
-                        placeholder = { Text("Поиск писем…", fontSize = 14.sp, color = Color(0xFF6B7080)) },
+                        placeholder = { Text("Поиск писем…", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
                             unfocusedContainerColor = Color.Transparent,
@@ -1704,11 +1753,11 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                         enabled = !state.busy
                     )
                     IconButton(onClick = toggleAdvanced, modifier = Modifier.size(32.dp)) {
-                        Icon(NativeIcons.Sliders, contentDescription = "Фильтры поиска", tint = if (state.advancedSearchOpen) Color(0xFF8B5CF6) else Color(0xFF8E929F), modifier = Modifier.size(18.dp))
+                        Icon(NativeIcons.Sliders, contentDescription = "Фильтры поиска", tint = if (state.advancedSearchOpen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     }
                     if (hasDraftFilters) {
                         IconButton(onClick = resetFilters, enabled = !state.busy, modifier = Modifier.size(32.dp)) {
-                            Icon(NativeIcons.Close, contentDescription = "Очистить поля", tint = Color(0xFF8E929F), modifier = Modifier.size(16.dp))
+                            Icon(NativeIcons.Close, contentDescription = "Очистить поля", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
@@ -1730,18 +1779,18 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                     onClick={focus.clearFocus();offline()},
                     enabled=!state.busy,
                     shape=RoundedCornerShape(10.dp),
-                    color=Color(0xFF1C1F2A),
+                    color=MaterialTheme.colorScheme.surfaceContainerHigh,
                     modifier=Modifier.weight(1f).height(38.dp)
                 ) {
                     Box(contentAlignment=Alignment.Center) {
-                        Text("В кэше", fontSize=13.sp, color=Color(0xFFF3F4F8), fontWeight=FontWeight.Medium)
+                        Text("В кэше", fontSize=13.sp, color=MaterialTheme.colorScheme.onSurface, fontWeight=FontWeight.Medium)
                     }
                 }
                 Surface(
                     onClick={focus.clearFocus();online()},
                     enabled=!state.busy,
                     shape=RoundedCornerShape(10.dp),
-                    color=Color(0xFF7C5CFF),
+                    color=MaterialTheme.colorScheme.primary,
                     modifier=Modifier.weight(1f).height(38.dp)
                 ) {
                     Box(contentAlignment=Alignment.Center) {
@@ -1758,13 +1807,13 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
         Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
             Text(if(state.movePicker)"Переместить в папку" else "Папки",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold,modifier=Modifier.weight(1f))
             IconButton(onClick=reload,enabled=!state.foldersBusy) {
-                Icon(NativeIcons.Refresh, contentDescription="Обновить папки", tint=Color(0xFF8E929F))
+                Icon(NativeIcons.Refresh, contentDescription="Обновить папки", tint=MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick=close) {
-                Icon(NativeIcons.Close, contentDescription="Закрыть", tint=Color(0xFF8E929F))
+                Icon(NativeIcons.Close, contentDescription="Закрыть", tint=MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        HorizontalDivider(thickness=0.5.dp,color=Color(0x0FFFFFFF))
+        HorizontalDivider(thickness=0.5.dp,color=MaterialTheme.colorScheme.outlineVariant)
         if(state.foldersBusy)LinearProgressIndicator(Modifier.fillMaxWidth())
         state.foldersError?.let {Text(it,Modifier.padding(16.dp),color=MaterialTheme.colorScheme.error,fontSize=13.sp)}
         LazyColumn(Modifier.weight(1f,fill=false).padding(vertical=6.dp)) {
@@ -1774,7 +1823,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                     onClick={select(folder.name)},
                     enabled=!state.movePicker||!isCurrent,
                     shape=RoundedCornerShape(12.dp),
-                    color=if(isCurrent) Color(0xFF231E3D) else Color.Transparent,
+                    color=if(isCurrent) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                     modifier=Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=2.dp)
                 ) {
                     Row(
@@ -1782,7 +1831,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                         verticalAlignment=Alignment.CenterVertically,
                         horizontalArrangement=Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(NativeIcons.Folder, contentDescription=null, modifier=Modifier.size(18.dp), tint=if(isCurrent) Color(0xFFA78BFA) else Color(0xFF8E929F))
+                        Icon(NativeIcons.Folder, contentDescription=null, modifier=Modifier.size(18.dp), tint=if(isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                         Column(Modifier.weight(1f)) {
                             Text(
                                 folder.title,
@@ -1790,11 +1839,11 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                                 maxLines=1,
                                 overflow=TextOverflow.Ellipsis,
                                 fontWeight=if(isCurrent) FontWeight.SemiBold else FontWeight.Normal,
-                                color=if(isCurrent) Color(0xFFF3F4F8) else Color(0xFFD0D4E0)
+                                color=if(isCurrent) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         if(isCurrent) {
-                            Icon(NativeIcons.Check, contentDescription="Выбрана", modifier=Modifier.size(16.dp), tint=Color(0xFFA78BFA))
+                            Icon(NativeIcons.Check, contentDescription="Выбрана", modifier=Modifier.size(16.dp), tint=MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -1824,11 +1873,11 @@ internal fun avatarLetters(sender: String): String {
 ) {
     // 4-tab Flagship Bottom Navigation Bar with top spotlight beam
     Surface(
-        color = Color(0xFF101218),
+        color = MaterialTheme.colorScheme.background,
         tonalElevation = 0.dp
     ) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
-            HorizontalDivider(thickness = 0.5.dp, color = Color(0x14FFFFFF))
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -1844,7 +1893,7 @@ internal fun avatarLetters(sender: String): String {
                     val badge: Int,
                     val onClick: (() -> Unit)?
                 )
-                val effectiveActive = if (activeTab == "tasks") "more" else activeTab
+                val effectiveActive = if (activeTab == "tasks" || activeTab == "settings") "more" else activeTab
                 val items = listOf(
                     NavItem("mail", "Почта", NativeIcons.Mail, unreadCount, onMail),
                     NavItem("calendar", "Календарь", NativeIcons.Calendar, todayEventsCount, onCalendar),
@@ -1882,7 +1931,7 @@ internal fun avatarLetters(sender: String): String {
                                     .clip(RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp))
                                     .background(
                                         Brush.horizontalGradient(
-                                            listOf(Color(0xFF7C5CFF), Color(0xFFC084FC), Color(0xFF7C5CFF))
+                                            listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primary)
                                         )
                                     )
                             )
@@ -1896,12 +1945,12 @@ internal fun avatarLetters(sender: String): String {
                                     imageVector = item.icon,
                                     contentDescription = null,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp).size(20.dp),
-                                    tint = if (isSelected) Color(0xFFA78BFA) else Color(0xFF7D8294)
+                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 if (item.badge > 0) {
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
-                                        color = Color(0xFF7C5CFF),
+                                        color = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.offset(x = 4.dp, y = (-2).dp)
                                     ) {
                                         Text(
@@ -1918,7 +1967,7 @@ internal fun avatarLetters(sender: String): String {
                                 text = item.label,
                                 fontSize = 11.sp,
                                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-                                color = if (isSelected) Color(0xFFF3F4F8) else Color(0xFF7D8294),
+                                color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(top = 2.dp)
@@ -1942,22 +1991,22 @@ internal fun avatarLetters(sender: String): String {
     val state = accounts.state
     AlertDialog(
         onDismissRequest = { if (!state.busy) onDismiss() },
-        containerColor = Color(0xFF14161D),
+        containerColor = MaterialTheme.colorScheme.surface,
         title = {
-            Text("Аккаунты", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = Color(0xFFF3F4F8))
+            Text("Аккаунты", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
         },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 state.error?.let {
-                    Surface(shape = RoundedCornerShape(10.dp), color = Color(0xFF2C1519), modifier = Modifier.fillMaxWidth()) {
-                        Text(it, Modifier.padding(10.dp), color = Color(0xFFFECACA), fontSize = 12.sp)
+                    Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
+                        Text(it, Modifier.padding(10.dp), color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 12.sp)
                     }
                 }
                 if (state.rows.isEmpty()) {
                     Text(
                         "Нет сохранённых аккаунтов",
                         fontSize = 13.sp,
-                        color = Color(0xFF8E929F)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {
                     state.rows.forEach { row ->
@@ -1972,8 +2021,8 @@ internal fun avatarLetters(sender: String): String {
                             },
                             enabled = !state.busy,
                             shape = RoundedCornerShape(14.dp),
-                            color = if (row.active) Color(0xFF231E3D) else Color(0xFF1C1F2A),
-                            border = if (row.active) BorderStroke(1.dp, Color(0xFF7C5CFF)) else null,
+                            color = if (row.active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                            border = if (row.active) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
@@ -1987,14 +2036,14 @@ internal fun avatarLetters(sender: String): String {
                                         row.user,
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 14.sp,
-                                        color = Color(0xFFF3F4F8),
+                                        color = MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         row.host,
                                         fontSize = 11.sp,
-                                        color = Color(0xFF8E929F),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -2003,7 +2052,7 @@ internal fun avatarLetters(sender: String): String {
                         }
                     }
                 }
-                HorizontalDivider(Modifier.padding(vertical = 4.dp), thickness = 0.5.dp, color = Color(0x0FFFFFFF))
+                HorizontalDivider(Modifier.padding(vertical = 4.dp), thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                 Button(
                     onClick = {
                         onDismiss()
@@ -2023,7 +2072,7 @@ internal fun avatarLetters(sender: String): String {
                     enabled = !state.busy,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Управление аккаунтами и SMTP", color = Color(0xFF8E929F))
+                    Text("Управление аккаунтами и SMTP", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         },

@@ -64,7 +64,7 @@ internal fun WorkspaceDateTime(
             onClick = { if (enabled) dateOpen = true },
             enabled = enabled,
             shape = RoundedCornerShape(12.dp),
-            color = Color(0xFF1C1F2A),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.weight(1.15f)
         ) {
             Row(
@@ -76,13 +76,13 @@ internal fun WorkspaceDateTime(
                     Text(
                         "Дата",
                         fontSize = 11.sp,
-                        color = Color(0xFF8E929F)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         formatHumanDate(day, includeYear = true).ifBlank { "Выбрать дату" },
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (day.isBlank()) Color(0xFF8E929F) else Color(0xFFF3F4F6),
+                        color = if (day.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(top = 2.dp)
                     )
                 }
@@ -90,7 +90,7 @@ internal fun WorkspaceDateTime(
                     NativeIcons.Calendar,
                     contentDescription = "Выбрать дату",
                     modifier = Modifier.size(16.dp),
-                    tint = Color(0xFFA78BFA)
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
         }
@@ -98,7 +98,7 @@ internal fun WorkspaceDateTime(
             onClick = { if (enabled && validDay) timeOpen = true },
             enabled = enabled && validDay,
             shape = RoundedCornerShape(12.dp),
-            color = Color(0xFF1C1F2A),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.weight(0.85f)
         ) {
             Row(
@@ -110,13 +110,13 @@ internal fun WorkspaceDateTime(
                     Text(
                         "Время (МСК)",
                         fontSize = 11.sp,
-                        color = Color(0xFF8E929F)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         time.ifBlank { if (allowEmptyTime) "Весь день" else "Выбрать" },
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (time.isBlank()) Color(0xFF8E929F) else Color(0xFFF3F4F6),
+                        color = if (time.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(top = 2.dp)
                     )
                 }
@@ -124,7 +124,7 @@ internal fun WorkspaceDateTime(
                     NativeIcons.Clock,
                     contentDescription = "Выбрать время",
                     modifier = Modifier.size(16.dp),
-                    tint = if (validDay) Color(0xFFA78BFA) else Color(0xFF5A5F72)
+                    tint = if (validDay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                 )
             }
         }
@@ -138,7 +138,7 @@ internal fun WorkspaceDateTime(
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                     modifier = Modifier.heightIn(min = 30.dp)
                 ) {
-                    Text("Убрать срок", fontSize = 12.sp, color = Color(0xFF8E929F))
+                    Text("Убрать срок", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             if (allowEmptyTime && time.isNotEmpty()) {
@@ -148,7 +148,7 @@ internal fun WorkspaceDateTime(
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                     modifier = Modifier.heightIn(min = 30.dp)
                 ) {
-                    Text("Без времени", fontSize = 12.sp, color = Color(0xFF8E929F))
+                    Text("Без времени", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

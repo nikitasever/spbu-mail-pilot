@@ -170,12 +170,17 @@ final class MailReader implements AutoCloseable {
     private String senderPersonal(Message message,InternetAddress envelope){
         try{String[] values=message.getHeader("From");if(values!=null&&values.length>0&&values[0].length()<=8192){InternetAddress[] parsed=InternetAddress.parseHeader(values[0],false);if(parsed.length>0&&envelope.getAddress()!=null&&envelope.getAddress().equalsIgnoreCase(parsed[0].getAddress()))return MimeWords.personal(parsed[0]);}}catch(Exception invalid){}return MimeWords.personal(envelope);
     }
+    static String cleanSubject(String subject) {
+        if (subject == null || subject.trim().isEmpty()) return "Без темы";
+        String decoded = MimeWords.decode(subject);
+        return decoded.trim().isEmpty() ? "Без темы" : decoded;
+    }
     private JSONObject header(Message m) throws Exception {
             JSONObject obj = new JSONObject();
             obj.put("uid", Long.toString(((UIDFolder) inbox).getUID(m)));
             obj.put("validity", Long.toString(validity));
             obj.put("folder", folderName);
-            obj.put("subject", m.getSubject() == null ? "Без темы" : m.getSubject());
+            obj.put("subject", cleanSubject(m.getSubject()));
             Address[] from = m.getFrom();
             String name = "Неизвестный отправитель", email = "";
             if (from != null && from.length > 0) {

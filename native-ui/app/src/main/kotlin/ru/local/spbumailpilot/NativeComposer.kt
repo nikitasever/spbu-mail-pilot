@@ -50,17 +50,17 @@ import androidx.compose.ui.unit.sp
     }
     Scaffold(
         modifier = Modifier.imePadding(),
-        containerColor = Color(0xFF0B0C10),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Column {
                 TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color(0xFF0B0C10),
-                        titleContentColor = Color(0xFFF3F4F8)
+                        containerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface
                     ),
                     navigationIcon = {
                         IconButton(onClick = model::close, enabled = !state.busy) {
-                            Icon(NativeIcons.ArrowBack, contentDescription = "Назад", tint = Color(0xFFF3F4F8), modifier = Modifier.size(22.dp))
+                            Icon(NativeIcons.ArrowBack, contentDescription = "Назад", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp))
                         }
                     },
                     title = {
@@ -72,11 +72,11 @@ import androidx.compose.ui.unit.sp
                                 if (state.forwardTextOnly || state.forwardEml) "Пересылка" else "Новое письмо",
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 17.sp,
-                                color = Color(0xFFF3F4F8)
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             Surface(
                                 shape = CircleShape,
-                                color = if (state.saved) Color(0xFF34D399) else Color(0xFF8B5CF6),
+                                color = if (state.saved) nativeSuccessColor() else MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(6.dp)
                             ) {}
                         }
@@ -86,7 +86,7 @@ import androidx.compose.ui.unit.sp
                             Icon(
                                 NativeIcons.Trash,
                                 contentDescription = "Удалить черновик",
-                                tint = if (editable) Color(0xFF8E929F) else Color(0xFF4B5060),
+                                tint = if (editable) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -95,7 +95,7 @@ import androidx.compose.ui.unit.sp
                             onClick = model::send,
                             enabled = editable && !state.originalPending,
                             shape = CircleShape,
-                            color = if (editable && !state.originalPending) Color(0xFF7C5CFF) else Color(0xFF1C1F2A),
+                            color = if (editable && !state.originalPending) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
                             shadowElevation = if (editable && !state.originalPending) 8.dp else 0.dp,
                             modifier = Modifier.padding(end = 8.dp).size(38.dp)
                         ) {
@@ -103,24 +103,24 @@ import androidx.compose.ui.unit.sp
                                 Icon(
                                     NativeIcons.Send,
                                     contentDescription = "Отправить",
-                                    tint = if (editable && !state.originalPending) Color.White else Color(0xFF5A5F72),
+                                    tint = if (editable && !state.originalPending) Color.White else MaterialTheme.colorScheme.outline,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
                     }
                 )
-                HorizontalDivider(thickness = 0.5.dp, color = Color(0x0FFFFFFF))
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
             }
         },
         bottomBar = {
-            Surface(color = Color(0xFF14161D), tonalElevation = 0.dp) {
+            Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                 Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
-                    HorizontalDivider(thickness = 0.5.dp, color = Color(0x0FFFFFFF))
+                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     when {
                         state.conflicted -> {
                             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
-                                Text("Черновик изменён в другом окне.", fontSize = 13.sp, color = Color(0xFF8E929F), modifier = Modifier.padding(bottom = 6.dp))
+                                Text("Черновик изменён в другом окне.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
                                 Button(onClick = model::close, enabled = !state.busy, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) { Text("Закрыть") }
                             }
                         }
@@ -130,13 +130,13 @@ import androidx.compose.ui.unit.sp
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Отправка через ${state.remaining} с…", fontSize = 14.sp, color = Color(0xFFF3F4F8))
-                                TextButton(onClick = model::cancelSend) { Text("Отменить", color = Color(0xFF8B5CF6), fontWeight = FontWeight.SemiBold) }
+                                Text("Отправка через ${state.remaining} с…", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
+                                TextButton(onClick = model::cancelSend) { Text("Отменить", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold) }
                             }
                         }
                         unresolved -> {
                             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("Статус отправки требует проверки.", fontSize = 13.sp, color = Color(0xFF8E929F))
+                                Text("Статус отправки требует проверки.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     TextButton(onClick = fullClient, modifier = Modifier.weight(1f)) { Text("Проверить") }
                                     Button(onClick = { confirmRetry = true }, enabled = !state.busy, shape = RoundedCornerShape(10.dp), modifier = Modifier.weight(1f)) { Text("Повторить") }
@@ -154,7 +154,7 @@ import androidx.compose.ui.unit.sp
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Запланировано к отправке", fontSize = 13.sp, color = Color(0xFF34D399))
+                                Text("Запланировано к отправке", fontSize = 13.sp, color = nativeSuccessColor())
                                 Button(onClick = model::close, enabled = !state.busy, shape = RoundedCornerShape(10.dp)) { Text("Готово") }
                             }
                         }
@@ -164,7 +164,7 @@ import androidx.compose.ui.unit.sp
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Письмо отправлено", color = Color(0xFF34D399), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Text("Письмо отправлено", color = nativeSuccessColor(), fontSize = 13.sp, fontWeight = FontWeight.Medium)
                                 Button(onClick = model::close, enabled = !state.busy, shape = RoundedCornerShape(10.dp)) { Text("Готово") }
                             }
                         }
@@ -209,7 +209,7 @@ import androidx.compose.ui.unit.sp
                                         onClick = { model.serverCopy() },
                                         enabled = editable && !state.serverWorking,
                                         active = state.serverBackup == "saved",
-                                        tint = if (state.serverBackup == "saved") Color(0xFF34D399) else Color(0xFFCBD5E1),
+                                        tint = if (state.serverBackup == "saved") nativeSuccessColor() else MaterialTheme.colorScheme.onSurfaceVariant,
                                         size = 38.dp
                                     )
                                 }
@@ -232,7 +232,7 @@ import androidx.compose.ui.unit.sp
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
-            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Color(0xFF7C5CFF))
+            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
             if (state.serverWorking) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
@@ -243,7 +243,7 @@ import androidx.compose.ui.unit.sp
                         if (state.serverTotal > 0) "Синхронизация: ${Formatter.formatShortFileSize(context, state.serverBytes)} / ${Formatter.formatShortFileSize(context, state.serverTotal)}"
                         else "Синхронизация с сервером…",
                         fontSize = 12.sp,
-                        color = Color(0xFF8E929F)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     TextButton(onClick = model::cancelServerTransfer) { Text("Стоп", fontSize = 12.sp) }
                 }
@@ -252,14 +252,14 @@ import androidx.compose.ui.unit.sp
                 Text(it, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
             }
             state.notice?.let {
-                Text(it, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = Color(0xFF8E929F), fontSize = 12.sp)
+                Text(it, Modifier.padding(horizontal = 16.dp, vertical = 6.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
             }
             if (state.originalFiles > 0) {
                 Surface(
                     onClick = { if (editable) confirmOriginalFiles = true },
                     enabled = editable,
                     shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFF1C1F2A),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
                 ) {
                     Row(
@@ -267,11 +267,11 @@ import androidx.compose.ui.unit.sp
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(NativeIcons.Paperclip, contentDescription = null, tint = Color(0xFF8B5CF6), modifier = Modifier.size(16.dp))
+                        Icon(NativeIcons.Paperclip, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                         Text(
                             if (state.forwardEml) "Прикрепить оригинал .eml" else "Прикрепить исходные файлы (${state.originalFiles})",
                             fontSize = 13.sp,
-                            color = Color(0xFFF3F4F8),
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Medium
                         )
                     }
@@ -292,11 +292,11 @@ import androidx.compose.ui.unit.sp
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("От", modifier = Modifier.width(58.dp), fontSize = 13.sp, color = Color(0xFF8E929F))
+                Text("От", modifier = Modifier.width(58.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
                     state.from,
                     fontSize = 13.sp,
-                    color = Color(0xFF8E929F),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -306,30 +306,30 @@ import androidx.compose.ui.unit.sp
                         onClick = { if (editable) copies = true },
                         enabled = editable,
                         shape = RoundedCornerShape(6.dp),
-                        color = Color(0xFF1C1F2A)
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh
                     ) {
                         Text(
                             "Копия / Скр.",
                             Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                             fontSize = 11.sp,
-                            color = Color(0xFF8E929F)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
-            HorizontalDivider(thickness = 0.5.dp, color = Color(0x0FFFFFFF))
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
 
             // Borderless recipient & subject rows with hairline dividers
             RecipientField("Кому", "to", state.to, editable, model)
-            HorizontalDivider(thickness = 0.5.dp, color = Color(0x0FFFFFFF))
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
             if (copies || state.cc.isNotBlank() || state.bcc.isNotBlank()) {
                 RecipientField("Копия", "cc", state.cc, editable, model)
-                HorizontalDivider(thickness = 0.5.dp, color = Color(0x0FFFFFFF))
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                 RecipientField("Скр.", "bcc", state.bcc, editable, model)
-                HorizontalDivider(thickness = 0.5.dp, color = Color(0x0FFFFFFF))
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
             }
             ComposeField("Тема", state.subject, editable, { model.edit("subject", it) }, focus = { model.recipients.clear() })
-            HorizontalDivider(thickness = 0.5.dp, color = Color(0x0FFFFFFF))
+            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
 
             if (state.importing) {
                 Row(
@@ -337,9 +337,9 @@ import androidx.compose.ui.unit.sp
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("${state.transferName} (${Formatter.formatShortFileSize(context, state.transferBytes)})", fontSize = 12.sp, color = Color(0xFF8E929F))
+                    Text("${state.transferName} (${Formatter.formatShortFileSize(context, state.transferBytes)})", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     IconButton(onClick = model::cancelImport, modifier = Modifier.size(28.dp)) {
-                        Icon(NativeIcons.Close, contentDescription = "Отменить добавление", tint = Color(0xFF8E929F), modifier = Modifier.size(16.dp))
+                        Icon(NativeIcons.Close, contentDescription = "Отменить добавление", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                     }
                 }
             }
@@ -352,7 +352,7 @@ import androidx.compose.ui.unit.sp
                     state.files.forEach { file ->
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFF1C1F2A),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             modifier = Modifier.weight(1f, fill = false)
                         ) {
                             Row(
@@ -360,23 +360,23 @@ import androidx.compose.ui.unit.sp
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Icon(NativeIcons.Paperclip, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF8B5CF6))
+                                Icon(NativeIcons.Paperclip, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
                                 Column(Modifier.widthIn(max = 180.dp)) {
-                                    Text(file.name, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFFF3F4F8), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(Formatter.formatShortFileSize(context, file.size), fontSize = 10.sp, color = Color(0xFF8E929F))
+                                    Text(file.name, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(Formatter.formatShortFileSize(context, file.size), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 IconButton(
                                     onClick = { model.removeFile(file.token) },
                                     enabled = editable,
                                     modifier = Modifier.size(24.dp)
                                 ) {
-                                    Icon(NativeIcons.Close, contentDescription = "Убрать из письма", modifier = Modifier.size(14.dp), tint = Color(0xFF8E929F))
+                                    Icon(NativeIcons.Close, contentDescription = "Убрать из письма", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
                     }
                 }
-                HorizontalDivider(thickness = 0.5.dp, color = Color(0x0FFFFFFF))
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
             }
 
             // Full-screen open space for email body
@@ -406,14 +406,14 @@ import androidx.compose.ui.unit.sp
     )
     if (state.writingOpen) ModalBottomSheet(
         onDismissRequest = model::closeWritingTools,
-        containerColor = Color(0xFF14161D),
+        containerColor = MaterialTheme.colorScheme.surface,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ) {
         Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Шаблоны", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 IconButton(onClick = model::closeWritingTools) {
-                    Icon(NativeIcons.Close, contentDescription = "Закрыть", tint = Color(0xFF8E929F))
+                    Icon(NativeIcons.Close, contentDescription = "Закрыть", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             when {
@@ -422,17 +422,17 @@ import androidx.compose.ui.unit.sp
                     Text(state.writingError, color = MaterialTheme.colorScheme.error)
                     TextButton(onClick = model::showTemplates) { Text("Повторить") }
                 }
-                state.templates.isEmpty() -> Text("Нет сохранённых шаблонов", Modifier.padding(vertical = 16.dp), color = Color(0xFF8E929F))
+                state.templates.isEmpty() -> Text("Нет сохранённых шаблонов", Modifier.padding(vertical = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else -> state.templates.forEach { template ->
                     Surface(
                         onClick = { model.insertTemplate(template.id) },
                         shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFF1C1F2A),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                     ) {
                         Column(Modifier.padding(12.dp)) {
                             Text(template.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                            Text(template.body, maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = Color(0xFF8E929F), modifier = Modifier.padding(top = 4.dp))
+                            Text(template.body, maxLines = 2, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
                         }
                     }
                 }
@@ -468,12 +468,12 @@ import androidx.compose.ui.unit.sp
         Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, modifier = Modifier.width(58.dp), fontSize = 13.sp, color = Color(0xFF8E929F))
+        Text(label, modifier = Modifier.width(58.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         TextField(
             value = value,
             onValueChange = change,
             readOnly = !editable,
-            placeholder = { Text(label, fontSize = 14.sp, color = Color(0xFF565B6E)) },
+            placeholder = { Text(label, fontSize = 14.sp, color = MaterialTheme.colorScheme.outline) },
             singleLine = true,
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
@@ -504,7 +504,7 @@ import androidx.compose.ui.unit.sp
         Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, modifier = Modifier.width(58.dp), fontSize = 13.sp, color = Color(0xFF8E929F))
+        Text(label, modifier = Modifier.width(58.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         TextField(
             value = input,
             onValueChange = { next ->
@@ -515,7 +515,7 @@ import androidx.compose.ui.unit.sp
                 }
             },
             readOnly = !editable,
-            placeholder = { Text("Получатели", fontSize = 14.sp, color = Color(0xFF565B6E)) },
+            placeholder = { Text("Получатели", fontSize = 14.sp, color = MaterialTheme.colorScheme.outline) },
             singleLine = true,
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
@@ -537,12 +537,12 @@ import androidx.compose.ui.unit.sp
     if (suggestions.request?.field == field && editable) {
         Surface(
             shape = RoundedCornerShape(12.dp),
-            color = Color(0xFF14161D),
+            color = MaterialTheme.colorScheme.surface,
             shadowElevation = 8.dp,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
         ) {
             Column(Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState()).padding(8.dp)) {
-                if (suggestions.loading) Text("Поиск…", Modifier.semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 12.sp, color = Color(0xFF8E929F))
+                if (suggestions.loading) Text("Поиск…", Modifier.semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 suggestions.choices.forEach { person ->
                     Surface(
                         onClick = { model.chooseRecipient(person.email) },
@@ -560,12 +560,12 @@ import androidx.compose.ui.unit.sp
                                 if (person.name.isNotBlank() && !person.name.equals(person.email, true)) {
                                     Text(person.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
-                                Text(person.email, fontSize = 12.sp, color = Color(0xFF8E929F), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(person.email, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     }
                 }
-                suggestions.message?.let { Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 12.sp, color = Color(0xFF8E929F)) }
+                suggestions.message?.let { Text(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (suggestions.retry) TextButton(onClick = { model.recipients.retry() }) { Text("Повторить") }
             }
         }
@@ -591,7 +591,7 @@ import androidx.compose.ui.unit.sp
             }
         },
         readOnly = !editable,
-        placeholder = { Text("Напишите сообщение…", fontSize = 15.sp, color = Color(0xFF565B6E)) },
+        placeholder = { Text("Напишите сообщение…", fontSize = 15.sp, color = MaterialTheme.colorScheme.outline) },
         colors = TextFieldDefaults.colors(
             focusedContainerColor = Color.Transparent,
             unfocusedContainerColor = Color.Transparent,

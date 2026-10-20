@@ -51,21 +51,15 @@ internal data class AvatarPalette(val container: Color, val content: Color)
 
 internal object NativeIcons {
 
-    private val darkAvatarPalettes = listOf(
-        AvatarPalette(Color(0xFF282D42), Color(0xFFE2E8FF)), // Metallic Indigo
-        AvatarPalette(Color(0xFF1F3248), Color(0xFFD6EAFF)), // Metallic Sapphire
-        AvatarPalette(Color(0xFF33264A), Color(0xFFEEE0FF)), // Metallic Amethyst
-        AvatarPalette(Color(0xFF1E3938), Color(0xFFD2F7F0)), // Metallic Teal
-        AvatarPalette(Color(0xFF3D273B), Color(0xFFFFE0F4)), // Metallic Rose
-        AvatarPalette(Color(0xFF3A3124), Color(0xFFFFEDD2)), // Metallic Bronze
-        AvatarPalette(Color(0xFF252A3C), Color(0xFFE4E9FA))  // Metallic Titanium
-    )
+    private val avatarPalettes = listOf(
+        0xFF6D4599,0xFF245EAD,0xFF006F68,0xFF3D7029,
+        0xFF875008,0xFF9E3B68,0xFFA53E36,0xFF4B50A0
+    ).map { AvatarPalette(Color(it),Color.White) }
 
     fun avatarPalette(seed: String): AvatarPalette {
-        val clean = seed.trim()
-        if (clean.isEmpty()) return darkAvatarPalettes[0]
-        val idx = abs(clean.hashCode()) % darkAvatarPalettes.size
-        return darkAvatarPalettes[idx]
+        val clean=seed.trim().lowercase(java.util.Locale.ROOT)
+        val hash=clean.hashCode()
+        return avatarPalettes[Math.floorMod(hash xor (hash ushr 16),avatarPalettes.size)]
     }
 
     fun fileBadgePalette(ext: String): AvatarPalette = when (ext.uppercase()) {
@@ -684,9 +678,15 @@ internal fun GlassSphereAvatar(
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val displayLetters = initials.ifBlank { letters }.ifBlank { sphereInitialsFromSeed(seed) }
+    val nativeColors=MaterialTheme.colorScheme
+    val raw = initials.ifBlank { letters }
+    val displayLetters = if (raw.isNotBlank() && raw.length <= 2) {
+        raw.uppercase(java.util.Locale.ROOT)
+    } else {
+        sphereInitialsFromSeed(seed.ifBlank { raw })
+    }
     val palette = NativeIcons.avatarPalette(seed.ifBlank { displayLetters })
-    val baseColor = if (selected) Color(0xFF7C5CFF) else palette.container
+    val baseColor = if (selected) nativeColors.primary else palette.container
     val clickMod = if (onClick != null) {
         Modifier.clip(CircleShape).clickable(enabled = enabled, onClick = onClick)
     } else {
@@ -705,7 +705,7 @@ internal fun GlassSphereAvatar(
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0xFF7C5CFF).copy(alpha = if (selected) 0.55f else 0.28f),
+                        nativeColors.primary.copy(alpha = if (selected) 0.55f else 0.28f),
                         Color.Transparent
                     ),
                     center = Offset(center.x, center.y + r * 0.14f),
@@ -718,9 +718,9 @@ internal fun GlassSphereAvatar(
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0xFF8E9EC7),
+                        androidx.compose.ui.graphics.lerp(baseColor,Color.White,0.12f),
                         baseColor,
-                        Color(0xFF10131D)
+                        androidx.compose.ui.graphics.lerp(baseColor,Color.Black,0.25f)
                     ),
                     center = Offset(center.x - r * 0.35f, center.y - r * 0.38f),
                     radius = r * 1.38f
@@ -732,8 +732,8 @@ internal fun GlassSphereAvatar(
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.52f),
-                        Color.White.copy(alpha = 0.10f),
+                        Color.White.copy(alpha = 0.20f),
+                        Color.White.copy(alpha = 0.04f),
                         Color.Transparent
                     ),
                     center = Offset(center.x - r * 0.32f, center.y - r * 0.36f),
@@ -748,7 +748,7 @@ internal fun GlassSphereAvatar(
                     colors = listOf(
                         Color.White.copy(alpha = 0.65f),
                         Color(0xFF93A5CF).copy(alpha = 0.25f),
-                        Color(0xFF8B5CF6).copy(alpha = 0.55f)
+                        nativeColors.primary.copy(alpha = 0.55f)
                     ),
                     start = Offset(0f, 0f),
                     end = Offset(this.size.width, this.size.height)
@@ -762,7 +762,7 @@ internal fun GlassSphereAvatar(
             text = if (selected) "✓" else displayLetters,
             fontSize = fontSize,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFFF5F7FF)
+            color = palette.content
         )
     }
 }
@@ -778,6 +778,7 @@ internal fun AiParticleOrb(
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val nativeColors=MaterialTheme.colorScheme
     val transition = rememberInfiniteTransition(label = "aiOrb")
     val phase by transition.animateFloat(
         initialValue = 0.65f,
@@ -808,13 +809,13 @@ internal fun AiParticleOrb(
         if (!label.isNullOrBlank()) {
             Surface(
                 shape = RoundedCornerShape(10.dp),
-                color = Color(0xFF1A172B).copy(alpha = 0.90f),
+                color = nativeColors.primaryContainer.copy(alpha = 0.90f),
                 border = BorderStroke(
                     0.8.dp,
                     Brush.horizontalGradient(
                         listOf(
-                            Color(0xFFC4B5FD).copy(alpha = 0.62f),
-                            Color(0xFF7C5CFF).copy(alpha = 0.40f)
+                            nativeColors.primary.copy(alpha = 0.62f),
+                            nativeColors.primary.copy(alpha = 0.40f)
                         )
                     )
                 )
@@ -824,12 +825,12 @@ internal fun AiParticleOrb(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
-                    Surface(shape = CircleShape, color = Color(0xFFA78BFA), modifier = Modifier.size(5.dp)) {}
+                    Surface(shape = CircleShape, color = nativeColors.primary, modifier = Modifier.size(5.dp)) {}
                     Text(
                         text = label,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFFEDE9FE),
+                        color = nativeColors.onPrimaryContainer,
                         maxLines = 1
                     )
                 }
@@ -846,7 +847,7 @@ internal fun AiParticleOrb(
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0xFF8B5CF6).copy(alpha = 0.65f),
+                        nativeColors.primary.copy(alpha = 0.65f),
                         Color(0xFF6366F1).copy(alpha = 0.30f),
                         Color.Transparent
                     ),
@@ -877,7 +878,7 @@ internal fun AiParticleOrb(
                 brush = Brush.linearGradient(
                     colors = listOf(
                         Color(0xFFDDD6FE).copy(alpha = 0.80f),
-                        Color(0xFF8B5CF6).copy(alpha = 0.42f),
+                        nativeColors.primary.copy(alpha = 0.42f),
                         Color(0xFF38BDF8).copy(alpha = 0.65f)
                     ),
                     start = Offset(cx - r, cy - r),
@@ -917,7 +918,7 @@ internal fun AiParticleOrb(
                 val dotRadius = (0.7f + depth * 1.4f).dp.toPx()
                 val dotColor = when {
                     depth > 0.75f -> Color(0xFFFFFFFF).copy(alpha = 0.96f)
-                    depth > 0.42f -> Color(0xFFC4B5FD).copy(alpha = 0.85f)
+                    depth > 0.42f -> nativeColors.primary.copy(alpha = 0.85f)
                     else -> Color(0xFF6366F1).copy(alpha = 0.40f)
                 }
                 drawCircle(
@@ -946,6 +947,7 @@ internal fun GlassIconButton(
     iconSize: Dp = 19.dp,
     modifier: Modifier = Modifier
 ) {
+    val nativeColors=MaterialTheme.colorScheme
     val shape = RoundedCornerShape(12.dp)
     Box(
         contentAlignment = Alignment.Center,
@@ -956,13 +958,13 @@ internal fun GlassIconButton(
                 Brush.linearGradient(
                     colors = if (active) {
                         listOf(
-                            Color(0xFF7C5CFF).copy(alpha = 0.42f),
-                            Color(0xFF231F3A).copy(alpha = 0.92f)
+                            nativeColors.primary.copy(alpha = 0.42f),
+                            nativeColors.primaryContainer.copy(alpha = 0.92f)
                         )
                     } else {
                         listOf(
-                            Color(0xFF232736).copy(alpha = 0.88f),
-                            Color(0xFF151822).copy(alpha = 0.92f)
+                            nativeColors.surfaceContainerHigh.copy(alpha = 0.88f),
+                            nativeColors.surface.copy(alpha = 0.92f)
                         )
                     }
                 )
@@ -973,12 +975,12 @@ internal fun GlassIconButton(
                     colors = if (active) {
                         listOf(
                             Color(0xFFD8B4FE).copy(alpha = 0.75f),
-                            Color(0xFF7C5CFF).copy(alpha = 0.45f)
+                            nativeColors.primary.copy(alpha = 0.45f)
                         )
                     } else {
                         listOf(
                             Color.White.copy(alpha = 0.22f),
-                            Color(0xFF7C5CFF).copy(alpha = 0.24f)
+                            nativeColors.primary.copy(alpha = 0.24f)
                         )
                     }
                 ),
@@ -990,7 +992,7 @@ internal fun GlassIconButton(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = tint ?: if (!enabled) Color(0xFF5A5F72) else if (active) Color(0xFFEDE9FE) else Color(0xFFE4E7F2),
+            tint = tint ?: if (!enabled) nativeColors.outline else if (active) nativeColors.onPrimaryContainer else nativeColors.onSurface,
             modifier = Modifier.size(iconSize)
         )
     }
@@ -1008,18 +1010,19 @@ internal fun GlowingCapsuleFab(
     enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    val nativeColors=MaterialTheme.colorScheme
     val displayLabel = label.ifBlank { text }
     val shape = RoundedCornerShape(24.dp)
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
-            .shadow(elevation = 16.dp, shape = shape, ambientColor = Color(0xFF7C5CFF), spotColor = Color(0xFF8B5CF6))
+            .shadow(elevation = 16.dp, shape = shape, ambientColor = nativeColors.primary, spotColor = nativeColors.primary)
             .clip(shape)
             .background(
                 Brush.horizontalGradient(
                     colors = listOf(
                         Color(0xFF9366FF),
-                        Color(0xFF7C5CFF),
+                        nativeColors.primary,
                         Color(0xFF5B3CF0)
                     )
                 )
@@ -1029,7 +1032,7 @@ internal fun GlowingCapsuleFab(
                 brush = Brush.linearGradient(
                     colors = listOf(
                         Color.White.copy(alpha = 0.62f),
-                        Color(0xFFC4B5FD).copy(alpha = 0.28f),
+                        nativeColors.primary.copy(alpha = 0.28f),
                         Color(0xFF38BDF8).copy(alpha = 0.45f)
                     )
                 ),
@@ -1067,6 +1070,7 @@ internal fun ZeroInbox3DScene(
     subtitle: String = "Все письма разобраны",
     modifier: Modifier = Modifier
 ) {
+    val nativeColors=MaterialTheme.colorScheme
     var tiltX by remember { mutableStateOf(0f) }
     var tiltY by remember { mutableStateOf(0f) }
     Column(
@@ -1093,7 +1097,7 @@ internal fun ZeroInbox3DScene(
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0xFF7C5CFF).copy(alpha = 0.35f),
+                        nativeColors.primary.copy(alpha = 0.35f),
                         Color(0xFF38BDF8).copy(alpha = 0.10f),
                         Color.Transparent
                     ),
@@ -1107,8 +1111,8 @@ internal fun ZeroInbox3DScene(
             drawRoundRect(
                 brush = Brush.linearGradient(
                     colors = listOf(
-                        Color(0xFF262B3D).copy(alpha = 0.9f),
-                        Color(0xFF14161D).copy(alpha = 0.95f)
+                        nativeColors.surfaceContainerHigh.copy(alpha = 0.9f),
+                        nativeColors.surface.copy(alpha = 0.95f)
                     )
                 ),
                 topLeft = Offset(cx - r * 0.95f, cy + r * 0.25f),
@@ -1126,7 +1130,7 @@ internal fun ZeroInbox3DScene(
             drawPath(
                 path = plane,
                 brush = Brush.linearGradient(
-                    colors = listOf(Color(0xFFC4B5FD), Color(0xFF7C5CFF))
+                    colors = listOf(nativeColors.primary, nativeColors.primary)
                 )
             )
         }
@@ -1134,12 +1138,12 @@ internal fun ZeroInbox3DScene(
             text = title,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFFF3F5FA)
+            color = nativeColors.onSurface
         )
         Text(
             text = subtitle,
             fontSize = 13.sp,
-            color = Color(0xFF8E929F),
+            color = nativeColors.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp)
         )
     }
@@ -1156,18 +1160,19 @@ internal fun GlowingCircleFab(
     enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    val nativeColors=MaterialTheme.colorScheme
     val shape = CircleShape
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .size(54.dp)
-            .shadow(elevation = 16.dp, shape = shape, ambientColor = Color(0xFF7C5CFF), spotColor = Color(0xFF8B5CF6))
+            .shadow(elevation = 16.dp, shape = shape, ambientColor = nativeColors.primary, spotColor = nativeColors.primary)
             .clip(shape)
             .background(
                 Brush.linearGradient(
                     colors = listOf(
                         Color(0xFF9366FF),
-                        Color(0xFF7C5CFF),
+                        nativeColors.primary,
                         Color(0xFF5B3CF0)
                     )
                 )
@@ -1177,7 +1182,7 @@ internal fun GlowingCircleFab(
                 brush = Brush.linearGradient(
                     colors = listOf(
                         Color.White.copy(alpha = 0.62f),
-                        Color(0xFFC4B5FD).copy(alpha = 0.28f),
+                        nativeColors.primary.copy(alpha = 0.28f),
                         Color(0xFF38BDF8).copy(alpha = 0.45f)
                     )
                 ),
@@ -1200,23 +1205,7 @@ internal fun GlowingCircleFab(
  */
 @Composable
 internal fun CosmicHeaderGlow(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier.fillMaxWidth().height(90.dp)) {
-        val w = size.width
-        val h = size.height
-        // Soft top-right indigo-violet nebula behind glass buttons (no bokeh dots overlapping text)
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    Color(0xFF7C5CFF).copy(alpha = 0.16f),
-                    Color(0xFF8B5CF6).copy(alpha = 0.05f),
-                    Color.Transparent
-                ),
-                center = Offset(w * 0.82f, h * 0.42f),
-                radius = w * 0.32f
-            ),
-            radius = w * 0.32f,
-            center = Offset(w * 0.82f, h * 0.42f)
-        )
-    }
+    val nativeColors=MaterialTheme.colorScheme
+    // Clean header area without overlapping bokeh circles or decorative particles
 }
 

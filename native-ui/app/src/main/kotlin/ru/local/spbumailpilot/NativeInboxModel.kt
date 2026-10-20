@@ -791,7 +791,11 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
         val messageId=if(ownIds.size==1)ownIds[0] else ""
         val references=NativeMailThreads.headerIds(value.opt("references"))
         val inReplyTo=NativeMailThreads.headerIds(value.opt("inReplyTo") as? String).joinToString(" ")
-        return NativeMail(key,value.optString("sender").ifBlank{value.optString("email")},value.optString("subject").ifBlank{"Без темы"},value.optString("preview"),value.optString("date"),!seen,value.opt("hasAttachments") as? Boolean,value.optString("email"),messageId,references,inReplyTo)
+        val rawSubject = value.optString("subject").ifBlank { "Без темы" }
+        val cleanSubject = MimeWords.decode(rawSubject).ifBlank { "Без темы" }
+        val rawSender = value.optString("sender").ifBlank { value.optString("email") }
+        val cleanSender = MimeWords.decode(rawSender).ifBlank { value.optString("email") }
+        return NativeMail(key,cleanSender,cleanSubject,value.optString("preview"),value.optString("date"),!seen,value.opt("hasAttachments") as? Boolean,value.optString("email"),messageId,references,inReplyTo)
     }
     private fun body(value: JSONObject): MailBody {
         val files=value.optJSONArray("attachments")

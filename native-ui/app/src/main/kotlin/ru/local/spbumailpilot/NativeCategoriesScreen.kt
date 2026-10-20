@@ -48,11 +48,12 @@ import androidx.compose.ui.unit.sp
         confirmButton={TextButton(onClick={model.leave(true)}){Text("Закрыть")}},dismissButton={TextButton(onClick={model.leave(false)}){Text("Продолжить")}})
 }
 @Composable internal fun categoryColor(color: String):androidx.compose.ui.graphics.Color {
+    val dark=LocalInboxDark.current
     return when(color){
-        "coral"->androidx.compose.ui.graphics.Color(0xFFFFB4AB)
-        "blue"->androidx.compose.ui.graphics.Color(0xFF93C5FD)
-        "green"->androidx.compose.ui.graphics.Color(0xFF86EFAC)
-        "pink"->androidx.compose.ui.graphics.Color(0xFFF9A8D4)
-        else->androidx.compose.ui.graphics.Color(0xFFC4B5FD)
+        "coral"->androidx.compose.ui.graphics.Color(if(dark)0xFFFFB4AB else 0xFFB33F35)
+        "blue"->androidx.compose.ui.graphics.Color(if(dark)0xFF93C5FD else 0xFF30649E)
+        "green"->androidx.compose.ui.graphics.Color(if(dark)0xFF86EFAC else 0xFF286942)
+        "pink"->androidx.compose.ui.graphics.Color(if(dark)0xFFF9A8D4 else 0xFF9D3D74)
+        else->MaterialTheme.colorScheme.primary
     }
 }

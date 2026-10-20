@@ -108,12 +108,12 @@ internal fun NativeContactsScreen(
         )
     }
     Scaffold(
-        containerColor = Color(0xFF0B0C10),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0B0C10),
-                    titleContentColor = Color(0xFFF3F4F6)
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 title = {
                     Column {
@@ -121,7 +121,7 @@ internal fun NativeContactsScreen(
                             "Контакты",
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
-                            color = Color(0xFFF3F4F6),
+                            color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -135,7 +135,7 @@ internal fun NativeContactsScreen(
                                     state.account,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = Color(0xFF8E929F),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -143,7 +143,7 @@ internal fun NativeContactsScreen(
                                     NativeIcons.ChevronDown,
                                     contentDescription = null,
                                     modifier = Modifier.size(12.dp),
-                                    tint = Color(0xFF8B5CF6)
+                                    tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
@@ -161,7 +161,7 @@ internal fun NativeContactsScreen(
                             NativeIcons.Refresh,
                             contentDescription = "Обновить",
                             modifier = Modifier.size(20.dp),
-                            tint = Color(0xFF8E929F)
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Box {
@@ -173,7 +173,7 @@ internal fun NativeContactsScreen(
                                 NativeIcons.MoreVert,
                                 contentDescription = "Ещё",
                                 modifier = Modifier.size(20.dp),
-                                tint = Color(0xFF8E929F)
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         DropdownMenu(
@@ -233,7 +233,7 @@ internal fun NativeContactsScreen(
             // Combined modern search bar with inline directory filter chip
             Surface(
                 shape = RoundedCornerShape(14.dp),
-                color = Color(0xFF1C1F2A),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -253,7 +253,7 @@ internal fun NativeContactsScreen(
                         if (state.query.isEmpty()) {
                             Text(
                                 "Поиск контактов…",
-                                color = Color(0xFF8E929F).copy(alpha = 0.7f),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                 fontSize = 14.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -264,11 +264,11 @@ internal fun NativeContactsScreen(
                             onValueChange = model::text,
                             singleLine = true,
                             textStyle = TextStyle(
-                                color = Color(0xFFF3F4F6),
+                                color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Normal
                             ),
-                            cursorBrush = SolidColor(Color(0xFF8B5CF6)),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(
                                 onSearch = {
@@ -288,7 +288,7 @@ internal fun NativeContactsScreen(
                                 }
                             },
                             shape = CircleShape,
-                            color = Color(0xFF14161D),
+                            color = MaterialTheme.colorScheme.surface,
                             modifier = Modifier.size(26.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
@@ -296,7 +296,7 @@ internal fun NativeContactsScreen(
                                     NativeIcons.Close,
                                     contentDescription = "Сброс",
                                     modifier = Modifier.size(13.dp),
-                                    tint = Color(0xFF8E929F)
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -306,7 +306,7 @@ internal fun NativeContactsScreen(
                         Surface(
                             onClick = { if (!state.busy) books = true },
                             shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFF14161D)
+                            color = MaterialTheme.colorScheme.surface
                         ) {
                             Row(
                                 Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -317,14 +317,14 @@ internal fun NativeContactsScreen(
                                     names[state.book] ?: "Университет",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFFA78BFA),
+                                    color = MaterialTheme.colorScheme.primary,
                                     maxLines = 1
                                 )
                                 Icon(
                                     NativeIcons.ChevronDown,
                                     contentDescription = "Справочник",
                                     modifier = Modifier.size(13.dp),
-                                    tint = Color(0xFFA78BFA)
+                                    tint = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
@@ -350,7 +350,7 @@ internal fun NativeContactsScreen(
                             }
                         },
                         shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFF7C5CFF).copy(alpha = 0.2f),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
                         modifier = Modifier.size(32.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -358,7 +358,7 @@ internal fun NativeContactsScreen(
                                 NativeIcons.Search,
                                 contentDescription = "Найти",
                                 modifier = Modifier.size(16.dp),
-                                tint = Color(0xFFA78BFA)
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
@@ -379,7 +379,7 @@ internal fun NativeContactsScreen(
                             model.letter(letter.toString())
                         },
                         shape = RoundedCornerShape(8.dp),
-                        color = if (selected) Color(0xFF7C5CFF).copy(alpha = 0.22f) else Color.Transparent,
+                        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else Color.Transparent,
                         modifier = Modifier.height(28.dp).widthIn(min = 28.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 6.dp)) {
@@ -387,7 +387,7 @@ internal fun NativeContactsScreen(
                                 letter.toString(),
                                 fontSize = 12.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (selected) Color(0xFFA78BFA) else Color(0xFF8E929F)
+                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -396,12 +396,12 @@ internal fun NativeContactsScreen(
             HorizontalDivider(
                 modifier = Modifier.padding(top = 4.dp),
                 thickness = 0.5.dp,
-                color = Color(0x0FFFFFFF)
+                color = MaterialTheme.colorScheme.outlineVariant
             )
             if (state.busy) {
                 LinearProgressIndicator(
                     Modifier.fillMaxWidth().height(2.dp),
-                    color = Color(0xFF7C5CFF),
+                    color = MaterialTheme.colorScheme.primary,
                     trackColor = Color.Transparent
                 )
             }
@@ -418,7 +418,7 @@ internal fun NativeContactsScreen(
                     it,
                     Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                     fontSize = 12.sp,
-                    color = Color(0xFFA78BFA)
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
             if (copied) {
@@ -426,7 +426,7 @@ internal fun NativeContactsScreen(
                     "Адрес скопирован",
                     Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     fontSize = 12.sp,
-                    color = Color(0xFFA78BFA)
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
             key(state.owner, state.book, state.applied) {
@@ -438,7 +438,7 @@ internal fun NativeContactsScreen(
                         item {
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF14161D),
+                                color = MaterialTheme.colorScheme.surface,
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                             ) {
                                 Text(
@@ -447,7 +447,7 @@ internal fun NativeContactsScreen(
                                     else "Совпадений не найдено",
                                     Modifier.padding(16.dp),
                                     fontSize = 13.sp,
-                                    color = Color(0xFF8E929F)
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -456,7 +456,7 @@ internal fun NativeContactsScreen(
                         Surface(
                             onClick = { if (!state.busy) model.show(person.email) },
                             shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFF14161D),
+                            color = MaterialTheme.colorScheme.surface,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
                         ) {
                             Row(
@@ -477,7 +477,7 @@ internal fun NativeContactsScreen(
                                         person.name,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFFF3F4F6),
+                                        color = MaterialTheme.colorScheme.onSurface,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -485,7 +485,7 @@ internal fun NativeContactsScreen(
                                         Text(
                                             person.email,
                                             fontSize = 12.sp,
-                                            color = Color(0xFF8E929F),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
@@ -565,17 +565,17 @@ private fun NativeContactDetail(model: NativeContactsModel, write: (String) -> U
     var status by remember(state.owner, person.email) { mutableStateOf<String?>(null) }
     BackHandler(onBack = model::close)
     Scaffold(
-        containerColor = Color(0xFF0B0C10),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0B0C10),
-                    titleContentColor = Color(0xFFF3F4F6)
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 title = { Text("Контакт", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
                 navigationIcon = {
                     IconButton(onClick = model::close, enabled = !state.busy) {
-                        Icon(NativeIcons.ArrowBack, contentDescription = "Назад", tint = Color(0xFFF3F4F6))
+                        Icon(NativeIcons.ArrowBack, contentDescription = "Назад", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             )
@@ -591,7 +591,7 @@ private fun NativeContactDetail(model: NativeContactsModel, write: (String) -> U
         ) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF14161D),
+                color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -605,10 +605,10 @@ private fun NativeContactDetail(model: NativeContactsModel, write: (String) -> U
                         size = 54.dp
                     )
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(person.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFF3F4F6))
-                        Text(person.email, fontSize = 14.sp, color = Color(0xFFA78BFA))
+                        Text(person.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                        Text(person.email, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
                         if (person.number.isNotBlank()) {
-                            Text(person.number, fontSize = 13.sp, color = Color(0xFF8E929F))
+                            Text(person.number, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -637,7 +637,7 @@ private fun NativeContactDetail(model: NativeContactsModel, write: (String) -> U
                         }
                     },
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF1C1F2A),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     modifier = Modifier.weight(1f).heightIn(min = 44.dp)
                 ) {
                     Row(
@@ -645,9 +645,9 @@ private fun NativeContactDetail(model: NativeContactsModel, write: (String) -> U
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(NativeIcons.Copy, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFF3F4F6))
+                        Icon(NativeIcons.Copy, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurface)
                         Spacer(Modifier.width(6.dp))
-                        Text("Копировать", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFFF3F4F6))
+                        Text("Копировать", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
@@ -671,18 +671,18 @@ private fun NativeContactDetail(model: NativeContactsModel, write: (String) -> U
                         }
                     },
                     shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF1C1F2A),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(10.dp)) {
-                        Text("Позвонить", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFFF3F4F6))
+                        Text("Позвонить", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
                     }
                 }
             }
             Surface(
                 onClick = { if (!state.busy) model.edit() },
                 shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF1C1F2A),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
             ) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(10.dp)) {
@@ -690,12 +690,12 @@ private fun NativeContactDetail(model: NativeContactsModel, write: (String) -> U
                         if (person.local) "Изменить" else "Сохранить на телефоне",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
-                        color = Color(0xFFF3F4F6)
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
-            status?.let { Text(it, color = Color(0xFFA78BFA), fontSize = 12.sp) }
+            status?.let { Text(it, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp) }
         }
     }
 }
@@ -707,12 +707,12 @@ private fun NativeContactEditor(model: NativeContactsModel) {
     val editor = state.editor ?: return
     BackHandler(onBack = model::close)
     Scaffold(
-        containerColor = Color(0xFF0B0C10),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0B0C10),
-                    titleContentColor = Color(0xFFF3F4F6)
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 ),
                 title = {
                     Text(
@@ -723,7 +723,7 @@ private fun NativeContactEditor(model: NativeContactsModel) {
                 },
                 navigationIcon = {
                     IconButton(onClick = model::close, enabled = !state.busy) {
-                        Icon(NativeIcons.Close, contentDescription = "Отмена", tint = Color(0xFFF3F4F6))
+                        Icon(NativeIcons.Close, contentDescription = "Отмена", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
@@ -736,7 +736,7 @@ private fun NativeContactEditor(model: NativeContactsModel) {
                         onClick = model::save,
                         enabled = !state.busy && !state.leaveOpen && !state.deleteOpen
                     ) {
-                        Icon(NativeIcons.Check, contentDescription = "Сохранить", tint = Color(0xFF8B5CF6))
+                        Icon(NativeIcons.Check, contentDescription = "Сохранить", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             )
@@ -754,13 +754,13 @@ private fun NativeContactEditor(model: NativeContactsModel) {
                 TextField(
                     value = editor.optString(key),
                     onValueChange = { model.field(key, it) },
-                    label = { Text(label, color = Color(0xFF8E929F)) },
+                    label = { Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant) },
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFF1C1F2A),
-                        unfocusedContainerColor = Color(0xFF1C1F2A),
-                        disabledContainerColor = Color(0xFF14161D),
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        disabledContainerColor = MaterialTheme.colorScheme.surface,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent,
                         disabledIndicatorColor = Color.Transparent
