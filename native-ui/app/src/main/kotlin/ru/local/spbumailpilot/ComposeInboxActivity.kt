@@ -96,9 +96,10 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
                     startActivity(next);finish()
                 }
             }
-            LaunchedEffect(settings.state.options,resumed){
+            val darkAppearance = LocalInboxDark.current
+            LaunchedEffect(settings.state.options,resumed,darkAppearance){
                 nativeAppearanceMode=settings.state.options.optString("theme","system")
-                val dark=AppearancePolicy.dark(nativeAppearanceMode,(resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES)
+                val dark=darkAppearance
                 val style=if(dark)androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else androidx.activity.SystemBarStyle.light(android.graphics.Color.TRANSPARENT,android.graphics.Color.TRANSPARENT)
                 enableEdgeToEdge(statusBarStyle=style,navigationBarStyle=style)
                 if(resumed&&!AppLock.locked(this@ComposeInboxActivity))BackgroundMailService.reconcile(this@ComposeInboxActivity,true)
@@ -356,11 +357,14 @@ internal fun mailSource(state: InboxState,mail: NativeMail):JSONObject=JSONObjec
 
 internal val LocalCompactInbox=staticCompositionLocalOf {false}
 @Composable internal fun InboxTheme(mode:String="system",large:Boolean=false,compact:Boolean=false,content: @Composable () -> Unit) {
-    val scheme = if (AppearancePolicy.dark(mode,isSystemInDarkTheme())) darkColorScheme(primary = Color(0xFFCEACF3), onPrimary = Color(0xFF28153A),
-        background = Color(0xFF13111A), surface = Color(0xFF1D1A27)) else lightColorScheme(primary = Color(0xFF70508F))
+    val dark = AppearancePolicy.dark(mode,isSystemInDarkTheme())
+    val scheme = inboxColorScheme(dark)
     val density=androidx.compose.ui.platform.LocalDensity.current
-    CompositionLocalProvider(LocalCompactInbox provides compact,androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density,density.fontScale*(if(large)1.15f else 1f))) {
-        MaterialTheme(colorScheme = scheme, content = content)
+    CompositionLocalProvider(LocalInboxDark provides dark,LocalCompactInbox provides compact,androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density,density.fontScale*(if(large)1.15f else 1f))) {
+        MaterialTheme(colorScheme = scheme) {
+            // MaterialTheme supplies tokens; Surface also paints the app window and text.
+            Surface(Modifier.fillMaxSize(), color=scheme.background, contentColor=scheme.onBackground) { content() }
+        }
     }
 }
 @Composable internal fun NativeInbox(model: NativeInboxModel, reply: () -> Unit, replyAll: () -> Unit, forwardText: () -> Unit, compose: () -> Unit, fullClient: () -> Unit, notice: String?, dismissNotice: () -> Unit, openContacts: ()->Unit = {}, openCalendar: ()->Unit = {}, openWorkspace: ()->Unit = {}, createTask: ()->Unit = {}, createEvent: ()->Unit = {}, linkMailToEvent: ()->Unit = {}, categoryRules: List<JSONObject> = emptyList(),categoryFilter: String="",selectCategory: (String)->Unit = {},openCategories: ()->Unit = {},labels: JSONObject=JSONObject(),responses: List<JSONObject> = emptyList(),setLabel: ()->Unit = {},setResponse: ()->Unit = {},openResponses: ()->Unit = {},extrasReady: Boolean=true,snoozed: List<JSONObject> = emptyList(),setSnooze: ()->Unit = {},setFollowup: ()->Unit = {},followups: List<JSONObject> = emptyList(),openWritingSettings: ()->Unit = {},openAccounts: ()->Unit = {},openSettings: ()->Unit = {},digestEnabled:Boolean=false,openDigest: ()->Unit = {},openScheduled: ()->Unit = {},openDrafts: ()->Unit = {},saveFiles: (String,MailRef,List<NativeFile>,Boolean)->Unit = {_,_,_,_->},forwardOriginal:()->Unit = {},openFiles:()->Unit = {},related:NativeRelatedSearchModel?=null,onSearchContact:(String)->Unit = {},onSearchEvent:(JSONObject)->Unit = {},openCalls:()->Unit = {},foreground:Boolean=true) {
@@ -710,14 +714,15 @@ private data class ThreadSummary(val count: Int, val unread: Int, val attachment
 private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,members.count {it.unread},members.any {it.hasAttachments==true})
 
 @Composable private fun MailRowBody(mail: NativeMail,rowColor: Color,chain: ThreadSummary?,owner: String,labels: JSONObject,responses: List<JSONObject>,snoozed: List<JSONObject>,followups: List<JSONObject>,categoryName: String?,categoryTint: Color?,selected: Boolean=false,onToggleSelect: (()->Unit)?=null,onToggleSeen: (()->Unit)?=null,enabled: Boolean=true) {
+    val avatar = senderAvatarColors(mail.email.ifBlank { mail.sender })
     Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=if(LocalCompactInbox.current)8.dp else 14.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
         if(onToggleSelect!=null) {
-            Surface(onClick=onToggleSelect,enabled=enabled,shape=CircleShape,color=if(selected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha=.16f).compositeOver(rowColor),modifier=Modifier.size(40.dp).semantics {contentDescription=if(selected)"Снять выбор письма" else "Выбрать письмо"}) {
-                Box(contentAlignment=androidx.compose.ui.Alignment.Center) {Text(if(selected)"✓" else avatarLetters(mail.sender),fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=if(selected)MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary)}
+            Surface(onClick=onToggleSelect,enabled=enabled,shape=CircleShape,color=if(selected)MaterialTheme.colorScheme.primary else avatar.background,modifier=Modifier.size(40.dp).semantics {contentDescription=if(selected)"Снять выбор письма" else "Выбрать письмо"}) {
+                Box(contentAlignment=androidx.compose.ui.Alignment.Center) {Text(if(selected)"✓" else avatarLetters(mail.sender),fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=if(selected)MaterialTheme.colorScheme.onPrimary else avatar.foreground)}
             }
         } else {
-            Surface(shape=CircleShape,color=MaterialTheme.colorScheme.primary.copy(alpha=.16f).compositeOver(rowColor),modifier=Modifier.size(40.dp).clearAndSetSemantics {}) {
-                Box(contentAlignment=androidx.compose.ui.Alignment.Center) {Text(avatarLetters(mail.sender),fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.primary)}
+            Surface(shape=CircleShape,color=avatar.background,modifier=Modifier.size(40.dp).clearAndSetSemantics {}) {
+                Box(contentAlignment=androidx.compose.ui.Alignment.Center) {Text(avatarLetters(mail.sender),fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=avatar.foreground)}
             }
         }
         Column(Modifier.weight(1f)) {

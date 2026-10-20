@@ -23,7 +23,9 @@ class NativePreviewTest {
         @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<InboxState>).value=state
         return model
     }
-    @Test fun inbox() {
+    @Test fun inbox() { renderInbox("dark") }
+    @Test fun inboxLight() { renderInbox("light") }
+    private fun renderInbox(mode:String) {
         val rows=listOf(
             mail("42","Учебный отдел","Материалы к защите завтра в 15:00","Коллеги, направляем материалы к заседанию.","10:24",true),
             mail("41","Перминов Виктор Олегович","По 191 аудитории — согласование","Направляю обновлённую спецификацию.","09:52",true),
@@ -32,7 +34,7 @@ class NativePreviewTest {
             mail("38","Рабочая группа","RE: Обсуждение расписания","Спасибо, изменения согласованы.","08:12",false),
             mail("37","Библиотека СПбГУ","Доступ к электронным ресурсам","Обновление списка доступных изданий.","08:02",false))
         val model=inbox(InboxState(account="demo@spbu.ru",owner=owner,rows=rows,total=1330,hasMore=true,cached=true,pageOffline=true))
-        paparazzi.snapshot(name="inbox"){InboxTheme{NativeInbox(model,{},{},{},{},{},null,{})}}
+        paparazzi.snapshot(name="inbox-$mode"){InboxTheme(mode=mode){NativeInbox(model,{},{},{},{},{},null,{})}}
     }
     @Test fun search() {
         val rows=listOf(mail("42","Учебный отдел","Материалы к защите завтра в 15:00","Коллеги, направляем материалы.","10:24",true))

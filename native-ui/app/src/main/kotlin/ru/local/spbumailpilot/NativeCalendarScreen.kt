@@ -466,7 +466,7 @@ internal fun NativeMailEventPickerDialog(model: NativeCalendarModel) {
 
 @Composable
 private fun calendarColor(kind: String): Color {
-    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    val dark = LocalInboxDark.current
     return when (kind) {
         "remote" -> if (dark) Color(0xFF99C6F5) else Color(0xFF355E8E)
         "event" -> if (dark) Color(0xFF87D4B5) else Color(0xFF287052)
