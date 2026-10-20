@@ -96,7 +96,12 @@ jobs:
           set -euo pipefail
           test -n "$UPDATE_DEPLOY_KEY"
           umask 077
-          printf '%s\n' "$UPDATE_DEPLOY_KEY" > "$RUNNER_TEMP/update-deploy-key"
+          python3 - <<'PYTHON'
+          import os,pathlib
+          key=pathlib.Path(os.environ['RUNNER_TEMP'])/'update-deploy-key'
+          key.write_text(os.environ['UPDATE_DEPLOY_KEY'].replace('\r','').strip()+'\n')
+          key.chmod(0o600)
+          PYTHON
           ssh-keyscan github.com > "$RUNNER_TEMP/update-known-hosts" 2>/dev/null
           export GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/update-deploy-key -o UserKnownHostsFile=$RUNNER_TEMP/update-known-hosts -o StrictHostKeyChecking=yes"
           git clone --single-branch --branch codex/compose-theme-0.74-native.1 git@github.com:nikitasever/spbu-mail-pilot-updates.git updates
