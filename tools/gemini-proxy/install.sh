@@ -7,7 +7,7 @@ DIR=/etc/spbu-gemini-proxy
 [[ ! -e $DIR ]] || { echo "$DIR уже существует. Повторная установка остановлена."; exit 1; }
 python3 - <<'PY'
 import socket
-for host,port in [('0.0.0.0',9443),('127.0.0.1',31290)]:
+for host,port in [('0.0.0.0',19443),('127.0.0.1',31290)]:
  with socket.socket() as s:s.bind((host,port))
 PY
 # Не останавливать существующий Squid, если он уже использовался.
@@ -59,7 +59,7 @@ sslVersionMin = TLSv1.2
 cert = /etc/spbu-gemini-proxy/server.crt
 key = /etc/spbu-gemini-proxy/server.key
 [gemini]
-accept = 0.0.0.0:9443
+accept = 0.0.0.0:19443
 connect = 127.0.0.1:31290
 TIMEOUTconnect = 10
 TIMEOUTidle = 90
@@ -106,9 +106,9 @@ sleep 1
 systemctl is-active --quiet spbu-gemini-squid spbu-gemini-tls
 PIN=$(openssl x509 -in "$DIR/server.crt" -outform DER | openssl dgst -sha256 -binary | openssl base64 -A)
 # Пароль остаётся только на сервере, в файле root:root 0600.
-printf 'host=79.137.206.221\nport=9443\nusername=gemini\npassword=%s\ncertificateSha256Base64=%s\n' "$PASSWORD" "$PIN" > /root/spbu-gemini-client.conf
+printf 'host=79.137.206.221\nport=19443\nusername=gemini\npassword=%s\ncertificateSha256Base64=%s\n' "$PASSWORD" "$PIN" > /root/spbu-gemini-client.conf
 unset PASSWORD
 install -m 644 "$DIR/server.crt" /root/spbu-gemini-proxy-public.crt
 printf '\nГотово. Конфигурация: /root/spbu-gemini-client.conf (не публиковать).\nПубличный сертификат: /root/spbu-gemini-proxy-public.crt\n'
-printf 'Если включён firewall, разрешите TCP 9443. Скрипт firewall и Xray не меняет.\n'
+printf 'Если включён firewall, разрешите TCP 19443. Скрипт firewall и Xray не меняет.\n'
 printf 'Сертификат действует 365 дней: до истечения потребуется обновить сертификат и pin в клиентах.\n'
