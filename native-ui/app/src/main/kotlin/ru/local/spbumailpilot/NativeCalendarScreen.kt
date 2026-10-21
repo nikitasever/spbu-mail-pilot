@@ -1,6 +1,8 @@
 package ru.local.spbumailpilot
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -34,6 +36,7 @@ internal fun NativeCalendarScreen(
     createTask: (JSONObject) -> Unit = {}
 ) {
     val state = model.state
+    val visibleEntries=state.entries.filter {NativeCalendarVisibility.visible(it.data,state.hiddenCalendars)}
     val date = LocalDate.parse(state.day)
     val month = YearMonth.from(date)
     val label = DateTimeFormatter.ofPattern("d MMMM, EEEE", Locale.forLanguageTag("ru"))
@@ -53,7 +56,7 @@ internal fun NativeCalendarScreen(
                 title = { Text("Календарь") },
                 navigationIcon = { TextButton(onClick = model::close) { Text("Назад") } },
                 actions = {
-                    TextButton(onClick = model::openSources, enabled = !state.busy) { Text("Источники") }
+                    TextButton(onClick = model::openSources, enabled = true) { Text("Источники") }
                     TextButton(onClick = {
                         if (searchOpen && state.searchQuery.isNotEmpty()) model.clearSearch()
                         searchOpen = !searchOpen
@@ -76,6 +79,11 @@ internal fun NativeCalendarScreen(
         }
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+            item(key="calendar-source-selector") {
+                OutlinedButton(onClick=model::openSources,modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=6.dp).heightIn(min=44.dp)) {
+                    Text(if(state.hiddenCalendars.isEmpty())"Календари · Все ▾" else "Календари · Фильтр включён ▾")
+                }
+            }
             item {
                 if (searchOpen || state.searchQuery.isNotEmpty()) {
                     Row(
@@ -139,7 +147,7 @@ internal fun NativeCalendarScreen(
                             val day = start.plusDays((week * 7 + index).toLong())
                             val present = state.mode == "week" || YearMonth.from(day) == month
                             if (!present) Spacer(Modifier.weight(1f).height(64.dp)) else {
-                                val entries = state.entries.filter { NativeAgenda.onDay(it.data, day.toString()) && matchesSearch(it) }
+                                val entries = visibleEntries.filter { NativeAgenda.onDay(it.data, day.toString()) && matchesSearch(it) }
                                 val selected = day == date
                                 val background = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.background
                                 Surface(
@@ -192,7 +200,7 @@ internal fun NativeCalendarScreen(
                 listOf(date)
             }
             days.forEach { day ->
-                val entries = state.entries.filter { NativeAgenda.onDay(it.data, day.toString()) && matchesSearch(it) }
+                val entries = visibleEntries.filter { NativeAgenda.onDay(it.data, day.toString()) && matchesSearch(it) }
                 if ((day == date && needle.isEmpty()) || entries.isNotEmpty()) {
                     item(key = "day:$day") {
                         Text(
@@ -235,16 +243,20 @@ internal fun NativeCalendarScreen(
     if (state.sourcesOpen) {
         AlertDialog(
             onDismissRequest = model::closeSources,
-            title = { Text("Источники календарей") },
+            title = { Text("Выбрать календари") },
             text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.heightIn(max=500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Отметьте календари для отображения. Скрытие не отключает синхронизацию и не удаляет события.",fontSize=12.sp)
+                    TextButton(onClick=model::showAllCalendars){Text("Показать все")}
+                    CalendarVisibilityChoice("Свои события","local" !in state.hiddenCalendars){model.toggleCalendar("local")}
+                    CalendarVisibilityChoice("Задачи","tasks" !in state.hiddenCalendars){model.toggleCalendar("tasks")}
                     if (state.sources.isEmpty()) {
-                        Text("Внешние календари пока не подключены.", fontSize = 13.sp)
+                        Text(if(state.busy)"Загрузка списка календарей…" else "Внешние календари пока не подключены.", fontSize = 13.sp)
                     } else {
                         state.sources.forEach { src ->
                             Surface(tonalElevation = 1.dp, shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) {
                                 Column(Modifier.fillMaxWidth().padding(10.dp)) {
-                                    Text(src.title, style = MaterialTheme.typography.titleSmall)
+                                    CalendarVisibilityChoice(src.title,"calendar:"+src.id !in state.hiddenCalendars){model.toggleCalendar("calendar:"+src.id)}
                                     if (src.user.isNotBlank()) Text(src.user, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(
                                         if (src.error.isNotBlank()) "Ошибка: ${src.error}"
@@ -535,5 +547,12 @@ private fun NativeCalendarCard(
                 }
             }
         }
+    }
+}
+
+@Composable private fun CalendarVisibilityChoice(title:String,checked:Boolean,toggle:()->Unit){
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).clickable(onClick=toggle),verticalAlignment=Alignment.CenterVertically){
+        Checkbox(checked=checked,onCheckedChange=null)
+        Text(title,modifier=Modifier.weight(1f).padding(start=8.dp),style=MaterialTheme.typography.bodyMedium)
     }
 }
