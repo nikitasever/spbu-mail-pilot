@@ -29,3 +29,8 @@ Stop and remove dedicated proxy if needed:
 systemctl disable --now spbu-gemini-tls spbu-gemini-squid
 Then remove only the two spbu-gemini units and /etc/spbu-gemini-proxy.
 Do not uninstall shared packages without checking their other uses.
+
+Installer fix (2026-10-21): squid.conf must be root:proxy 0640, because the
+dedicated Squid systemd service runs as proxy. Config parsing now runs as that
+same user instead of root. TLS private key remains root-only. For an existing
+installation use repair-permissions.sh; it does not rotate credentials/certificates.

@@ -47,6 +47,9 @@ logfile_rotate 0
 forwarded_for delete
 via off
 CONF
+# Config is read by the unprivileged Squid service; keep it private to root/proxy.
+chown root:proxy "$DIR/squid.conf"
+chmod 640 "$DIR/squid.conf"
 cat > "$DIR/stunnel.conf" <<'CONF'
 foreground = yes
 pid =
@@ -96,7 +99,7 @@ ProtectSystem=strict
 [Install]
 WantedBy=multi-user.target
 CONF
-/usr/sbin/squid -k parse -f "$DIR/squid.conf"
+runuser -u proxy -- /usr/sbin/squid -k parse -f "$DIR/squid.conf"
 systemctl daemon-reload
 systemctl enable --now spbu-gemini-squid spbu-gemini-tls
 sleep 1
