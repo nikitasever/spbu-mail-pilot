@@ -35,7 +35,7 @@ final class GeminiProxyVault {
  void save(String value)throws Exception{save(value,-1);}
  void save(String value,long expected)throws Exception{synchronized(GeminiProxyVault.class){
     if(expected>=0&&expected!=revision)throw new IllegalStateException("AI configuration changed");
-    if(!value.matches("[0-9a-f]{48}"))throw new IllegalArgumentException("Invalid proxy password");++revision;
+    if(!GeminiProxyTransport.validPassword(value))throw new IllegalArgumentException("Invalid proxy password");++revision;
     byte[] plain=value.getBytes(StandardCharsets.UTF_8);
     try{String packet=Base64.encodeToString(SessionSecret.encrypt(key(true),plain),Base64.NO_WRAP);if(!prefs.edit().putString("encrypted",packet).commit())throw new IllegalStateException();}
     finally{Arrays.fill(plain,(byte)0);}

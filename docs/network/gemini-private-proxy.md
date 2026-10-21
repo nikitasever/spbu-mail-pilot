@@ -1,7 +1,7 @@
 # Private proxy for Gemini (2026-10-21)
 
 Opt-in, shared across accounts on the phone. Native AI settings accept the server-generated
-48-character hexadecimal proxy password, with fixed username `gemini`. Stored separately
+server password (1–256 characters, nonblank, no control characters), with fixed username `gemini`. Stored separately
 from the Google key, AES-GCM/Android Keystore; existing credentials are never displayed.
 Unsaved values clear on pause and are absent from diagnostic state and saved-state bundles.
 
@@ -33,3 +33,5 @@ TLS, absence of Google key on the proxy hop, followed by independent origin TLS 
 Existing Gemini parser/error/privacy tests retained. Real server reachability, firewall,
 credentials, Google account eligibility and RF mobile routes require device testing; local
 fixtures do not establish any of these. No guarantee that Google accepts a given server IP.
+
+Native.4 removes the original installer-password format restriction. Passwords retain their exact value (no trimming); proxy Basic authentication uses UTF-8, matching htpasswd terminal input. Existing saved hexadecimal passwords remain valid.

@@ -14,8 +14,13 @@ final class GeminiProxyTransport implements GeminiDigest.Transport {
  static final String HOST="79.137.206.221";
  static final int PORT=19443;
  static final String CERT_SHA256="318b2e48ba51b8c936e8ff22ebe3bf1b3241d46579f88a1f0150a26ffc17d3f4";
+ static boolean validPassword(String value){
+  if(value==null||value.isEmpty()||value.length()>256||value.trim().isEmpty())return false;
+  for(int i=0;i<value.length();i++)if(Character.isISOControl(value.charAt(i)))return false;
+  return true;
+ }
  private final String password;
- GeminiProxyTransport(String password){if(!password.matches("[0-9a-f]{48}"))throw new IllegalArgumentException("Некорректный пароль прокси");this.password=password;}
+ GeminiProxyTransport(String password){if(!validPassword(password))throw new IllegalArgumentException("Некорректный пароль прокси");this.password=password;}
  @Override public String toString(){return "GeminiProxyTransport(redacted)";}
  static void verifyCertificate(X509Certificate[] chain)throws CertificateException {verifyCertificate(chain,CERT_SHA256);}
  static void verifyCertificate(X509Certificate[] chain,String fingerprint)throws CertificateException {
@@ -53,7 +58,7 @@ final class GeminiProxyTransport implements GeminiDigest.Transport {
     if(!"CONNECT".equals(response.request().method()))return null;
     if(response.request().header("Proxy-Authorization")!=null)return null;
     if(!current.getAsBoolean())return null;
-    return response.request().newBuilder().header("Proxy-Authorization",Credentials.basic("gemini",password)).build();
+    return response.request().newBuilder().header("Proxy-Authorization",Credentials.basic("gemini",password,java.nio.charset.StandardCharsets.UTF_8)).build();
    })
    .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false)
    .connectTimeout(10,TimeUnit.SECONDS).readTimeout(60,TimeUnit.SECONDS).callTimeout(90,TimeUnit.SECONDS).build();

@@ -100,8 +100,8 @@ internal class NativeAiSettingsModel(app:Application):AndroidViewModel(app) {
             main.post {mutating=false;if(!closed&&state.owner==owner){keyVersion=next.second;state=state.copy(busy=false,key="",removeConfirm=false,configured=next.first,notice=if(value==null)"Общий ключ удалён для всех ящиков." else "Общий ключ зашифрован и сохранён. Сетевой запрос не выполнялся.")}}
         }catch(_:Exception){GeminiDigest.cancelAll();main.post {mutating=false;if(!closed)state=state.copy(busy=false,removeConfirm=false,error="Ключ не сохранён или удаление не подтверждено. Возможно, его изменили в другом окне. Перечитайте статус перед повтором.")}}}
     }
-    fun proxyPassword(value:String){if(interactive()&&value.length<=48)state=state.copy(proxyPassword=value,error=null,notice=null)}
-    fun saveProxy(){if(interactive()&&state.proxyPassword.matches(Regex("[0-9a-f]{48}")))proxySecret(state.proxyPassword)}
+    fun proxyPassword(value:String){if(interactive()&&value.length<=256)state=state.copy(proxyPassword=value,error=null,notice=null)}
+    fun saveProxy(){if(interactive()&&GeminiProxyTransport.validPassword(state.proxyPassword))proxySecret(state.proxyPassword)}
     fun disableProxy(){if(interactive()&&state.proxyConfigured)proxySecret(null)}
     private fun proxySecret(value:String?){
         val owner=state.owner;val expected=proxyVersion;mutating=true;generation++;state=state.copy(busy=true,error=null,notice=null)
