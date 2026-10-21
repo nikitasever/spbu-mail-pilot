@@ -50,6 +50,7 @@ final class GeminiProxyTransport implements GeminiDigest.Transport {
    .proxy(new Proxy(Proxy.Type.HTTP,address))
    .socketFactory(proxySockets(fingerprint))
    .proxyAuthenticator((route,response)->{
+    if(!"CONNECT".equals(response.request().method()))return null;
     if(response.request().header("Proxy-Authorization")!=null)return null;
     if(!current.getAsBoolean())return null;
     return response.request().newBuilder().header("Proxy-Authorization",Credentials.basic("gemini",password)).build();
