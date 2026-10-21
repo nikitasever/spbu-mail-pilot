@@ -408,3 +408,10 @@ NativeAgenda владеет границами и сдвигами период�
 сохраняется до нажатия «Сохранить». Отключённые задачи не отображаются и не
 создаются через календарь. Серверные события остаются только для чтения.
 Обновление не подключает новые CalDAV-источники; подключение — отдельное действие.
+
+## Gemini private proxy
+
+AI settings include an opt-in shared proxy section after API key controls, retaining the
+existing light/dark purple theme and scrollable form. Show route status and fixed server,
+never show a saved password. Only save/disable controls change routing; opening settings
+performs no network request. Empty unsaved password does not disable a saved route.
