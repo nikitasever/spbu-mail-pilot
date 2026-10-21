@@ -65,7 +65,7 @@ class NativePreviewTest {
     @Test fun calendarAgendaLight(){renderCalendar("light","agenda")}
     @Test fun calendarDayLight(){renderCalendar("light","day")}
     @Test fun calendarWeekSearchLight(){renderCalendar("light","week","защита")}
-    private fun renderCalendar(mode:String,view:String="week",query:String="") {
+    private fun renderCalendar(mode:String,view:String="week",query:String="",hidden:Set<String> = emptySet()) {
         val model=NativeCalendarModel(PreviewApplication(paparazzi.context))
         val field=model.javaClass.getDeclaredField("state\$delegate").apply {isAccessible=true}
         val entries=listOf(
@@ -73,9 +73,10 @@ class NativePreviewTest {
             JSONObject().put("id","task").put("title","Проверить спецификацию по 191 аудитории").put("date","2026-10-15").put("time","17:00").put("kind","task"),
             JSONObject().put("id","monday").put("title","Проверить расписание недели").put("date","2026-10-12").put("time","09:00").put("kind","event"),
             JSONObject().put("id","after-week").put("title","Планирование следующей недели").put("date","2026-10-24").put("time","11:00").put("kind","event"))
-        @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<CalendarState>).value=CalendarState(open=true,owner=owner,day="2026-10-15",mode=view,searchQuery=query,entries=entries.map {CalendarEntry(it.getString("id"),it)},notice="Сохранённые события календарей.")
+        @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<CalendarState>).value=CalendarState(open=true,owner=owner,day="2026-10-15",mode=view,searchQuery=query,hiddenCalendars=hidden,entries=entries.map {CalendarEntry(it.getString("id"),it)},notice="Сохранённые события календарей.")
         paparazzi.snapshot(name="calendar"){InboxTheme(mode=mode){NativeCalendarScreen(model,{})}}
     }
+    @Test fun calendarFilteredDayLight(){renderCalendar("light","day","",setOf("tasks"))}
     @Test fun calendarDayPopupLight(){renderCalendarPopup("light")}
     @Test fun calendarDayPopupDark(){renderCalendarPopup("dark")}
     private fun renderCalendarPopup(mode:String){
@@ -273,10 +274,11 @@ class NativePreviewTest {
     }
     @Test fun reader() { renderReader("dark") }
     @Test fun readerLight() { renderReader("light") }
-    private fun renderReader(mode:String) {
+    @Test fun readerLongBodyAttachmentsLight(){renderReader("light",true)}
+    private fun renderReader(mode:String,longBody:Boolean=false) {
         val mail=mail("42","Учебный отдел","Материалы к защите завтра в 15:00","","10:24",true)
         val header=JSONObject().put("sender",mail.sender).put("email","demo-office@spbu.ru").put("subject",mail.subject).put("seen",false)
-        val body=MailBody("Коллеги, материалы на завтра. Будут 4 человека лично и 1 — удалённо.\n\nНачало в 15:00, аудитория 191.",listOf(NativeFile("Заключение комиссии.docx","1"),NativeFile("Диссертация — презентация.pptx","2")),header)
+        val body=MailBody((if(longBody) (1..80).joinToString("\n\n"){"История переписки: подробные материалы заседания комиссии, согласование документов и организационные вопросы."} else "Коллеги, материалы на завтра. Будут 4 человека лично и 1 — удалённо.\n\nНачало в 15:00, аудитория 191."),listOf(NativeFile("Заключение комиссии.docx","1"),NativeFile("Диссертация — презентация.pptx","2")),header)
         val model=inbox(InboxState(account="demo@spbu.ru",owner=owner,rows=listOf(mail),selected=mail,body=body,cached=true,pageOffline=true))
         paparazzi.snapshot(name="reader"){InboxTheme(mode=mode){NativeInbox(model,{},{},{},{},{},null,{})}}
     }

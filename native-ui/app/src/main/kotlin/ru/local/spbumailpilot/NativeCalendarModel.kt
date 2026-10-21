@@ -38,6 +38,7 @@ internal data class CalendarState(
     val links: List<JSONObject> = emptyList(),
     val sources: List<CalendarSource> = emptyList(),
     val sourcesOpen: Boolean = false,
+    val hiddenCalendars: Set<String> = emptySet(),
     val connectOpen: Boolean = false,
     val connectMode: String = "mailru",
     val connectUrl: String = "",
@@ -220,13 +221,23 @@ internal class NativeCalendarModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun openSources() {
-        if (!foreground || closed || AppLock.locked(context) || state.busy || mutating) return
+        if (!foreground || closed || AppLock.locked(context) || mutating) return
         state = state.copy(sourcesOpen = true, error = null, actionNotice = null)
     }
 
     fun closeSources() {
-        if (state.busy || mutating) return
+        if (mutating) return
         state = state.copy(sourcesOpen = false, deleteSourceId = null)
+    }
+
+    fun toggleCalendar(key: String) {
+        if(!foreground||closed||AppLock.locked(context)||mutating)return
+        if(key!="local"&&key!="tasks"&&state.sources.none {"calendar:"+it.id==key})return
+        state=state.copy(hiddenCalendars=if(key in state.hiddenCalendars)state.hiddenCalendars-key else state.hiddenCalendars+key)
+    }
+    fun showAllCalendars(){
+        if(!foreground||closed||AppLock.locked(context)||mutating)return
+        state=state.copy(hiddenCalendars=emptySet())
     }
 
     private fun defaultConnectConfig(login: SavedAccounts.Login?): Triple<String, String, String> {

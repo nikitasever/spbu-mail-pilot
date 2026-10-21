@@ -415,3 +415,15 @@ AI settings include an opt-in shared proxy section after API key controls, retai
 existing light/dark purple theme and scrollable form. Show route status and fixed server,
 never show a saved password. Only save/disable controls change routing; opening settings
 performs no network request. Empty unsaved password does not disable a saved route.
+
+## Calendar selection and reader attachments (native.4)
+
+Expose an explicit labeled Calendars selector above the grid, alongside the existing
+sources toolbar icon. Visibility checkboxes are separate from disconnect actions; selecting
+sources changes the view immediately, not synchronization or saved events. Apply selection
+to counts, search and the day sheet consistently. The source chooser can be opened/closed
+during a read, while destructive actions remain disabled until it finishes.
+
+Reader order: subject, sender, attachment count/save-all and existing file cards, then mail
+body. Long mail histories must not push the attachment block below the fold. Preserve file
+open/save handlers, reply semantics, purple theme and scroll restoration.

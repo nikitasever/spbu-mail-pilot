@@ -1187,20 +1187,14 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                             }
                         }
 
-                        // IMMEDIATELY BELOW SENDER CARD: EMAIL BODY TEXT
+                        // Attachments are available immediately below sender, before a potentially long body.
                         state.body?.let { body ->
-                            androidx.compose.foundation.text.selection.SelectionContainer {
-                                Text(
-                                    body.text.ifBlank { "Текстовая часть отсутствует." },
-                                    Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                                    fontSize = 15.sp,
-                                    lineHeight = 23.sp,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-
                             // Full-width attachment cards so filenames are never truncated
                             if (body.files.isNotEmpty()) {
+                                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){
+                                    Text("Вложения · ${body.files.size}",modifier=Modifier.weight(1f),style=MaterialTheme.typography.titleSmall)
+                                    TextButton(onClick={saveFiles(state.owner,mail.ref,body.files,false)},enabled=!state.busy){Text("Сохранить все")}
+                                }
                                 HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 6.dp))
                                 Column(
                                     Modifier
@@ -1268,6 +1262,16 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                                         }
                                     }
                                 }
+                            }
+
+                            androidx.compose.foundation.text.selection.SelectionContainer {
+                                Text(
+                                    body.text.ifBlank { "Текстовая часть отсутствует." },
+                                    Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                    fontSize = 15.sp,
+                                    lineHeight = 23.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
                             }
 
                             if(!state.linked) {

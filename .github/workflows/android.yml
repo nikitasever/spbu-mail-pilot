@@ -35,6 +35,8 @@ jobs:
           mkdir -p build/calendar-tests
           javac -cp lib/json-test-20240303.jar -d build/calendar-tests native-ui/app/src/main/java/ru/local/spbumailpilot/NativeAgenda.java native-ui/tests/NativeAgendaTest.java
           java -cp build/calendar-tests:lib/json-test-20240303.jar ru.local.spbumailpilot.NativeAgendaTest
+          javac -cp lib/json-test-20240303.jar -d build/calendar-tests native-ui/app/src/main/java/ru/local/spbumailpilot/NativeCalendarVisibility.java native-ui/tests/NativeCalendarVisibilityTest.java
+          java -cp build/calendar-tests:lib/json-test-20240303.jar ru.local.spbumailpilot.NativeCalendarVisibilityTest
           javac -cp lib/json-test-20240303.jar -d build/calendar-tests src/ru/local/spbumailpilot/{GeminiDigest,AiConfiguration,DigestBatch}.java tests/GeminiDigestTest.java
           java -cp build/calendar-tests:lib/json-test-20240303.jar ru.local.spbumailpilot.GeminiDigestTest
       - name: Private proxy TLS and cancellation fixtures
@@ -44,7 +46,7 @@ jobs:
         run: >-
           ./gradlew --no-daemon -PrenderUi -PnativeVersionCode=93 -PnativeVersionName=0.74-native.4
           :app:assembleRelease :app:testDebugUnitTest
-          --tests '*.NativeAppearanceTest' --tests '*.NativeDigestPrivacyTest'
+          --tests '*.NativeAppearanceTest' --tests '*.NativeDigestPrivacyTest' --tests '*.NativePreviewTest.reader*' --tests '*.NativePreviewTest.calendarLight' --tests '*.NativePreviewTest.calendarFilteredDayLight' --tests '*.NativePreviewTest.calendarDayPopupLight'
       - name: Sign with existing project key
         env:
           APK_KEYSTORE_BASE64: ${{ secrets.APK_KEYSTORE_BASE64 }}

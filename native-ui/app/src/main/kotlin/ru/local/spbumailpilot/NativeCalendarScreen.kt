@@ -47,6 +47,7 @@ internal fun NativeCalendarScreen(
     tasksEnabled: Boolean = true
 ) {
     val state = model.state
+    val visibleEntries=state.entries.filter {NativeCalendarVisibility.visible(it.data,state.hiddenCalendars)}
     val date = LocalDate.parse(state.day)
     val month = YearMonth.from(date)
     val ruLocale = Locale.forLanguageTag("ru")
@@ -129,9 +130,9 @@ internal fun NativeCalendarScreen(
                     Spacer(Modifier.width(6.dp))
                     GlassIconButton(
                         icon = NativeIcons.Sliders,
-                        contentDescription = "Источники",
+                        contentDescription = "Выбрать календари",
                         onClick = model::openSources,
-                        enabled = !state.busy,
+                        enabled = true,
                         size = 36.dp
                     )
                     Spacer(Modifier.width(8.dp))
@@ -151,6 +152,11 @@ internal fun NativeCalendarScreen(
         Box(Modifier.fillMaxSize()) {
             CosmicHeaderGlow()
             LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+                item(key="calendar-source-selector") {
+                    OutlinedButton(onClick=model::openSources,modifier=Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=6.dp).heightIn(min=44.dp)) {
+                        Text(if(state.hiddenCalendars.isEmpty())"Календари · Все ▾" else "Календари · Фильтр включён ▾")
+                    }
+                }
                 item {
                     if (searchOpen || state.searchQuery.isNotEmpty()) {
                         Surface(
@@ -245,7 +251,7 @@ internal fun NativeCalendarScreen(
                                         val day = start.plusDays((week * 7 + index).toLong())
                                         val present = state.mode == "week" || YearMonth.from(day) == month
                                         if (!present) Spacer(Modifier.weight(1f).height(44.dp)) else {
-                                            val entries = state.entries.filter { NativeAgenda.onDay(it.data, day.toString()) && matchesSearch(it) }
+                                            val entries = visibleEntries.filter { NativeAgenda.onDay(it.data, day.toString()) && matchesSearch(it) }
                                             val selected = day == date
                                             val background = when {
                                                 selected -> MaterialTheme.colorScheme.primary
@@ -380,7 +386,7 @@ internal fun NativeCalendarScreen(
                 }
                 val periodDays=NativeAgenda.days(state.day,state.mode,needle.isNotEmpty())
                 val days=if(state.mode=="week"||state.mode=="month")emptyList<LocalDate>() else periodDays
-                if(needle.isNotEmpty()&&periodDays.none {day->state.entries.any {NativeAgenda.onDay(it.data,day.toString())&&matchesSearch(it)}})item(key="no-search-results") {
+                if(needle.isNotEmpty()&&periodDays.none {day->visibleEntries.any {NativeAgenda.onDay(it.data,day.toString())&&matchesSearch(it)}})item(key="no-search-results") {
                     Text(if(state.busy)"Поиск в доступных событиях…" else "Ничего не найдено в выбранном периоде.",Modifier.padding(16.dp),color=MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 item(key="calendar-period-actions") {
@@ -398,7 +404,7 @@ internal fun NativeCalendarScreen(
                     }
                 }
                 days.forEach { day ->
-                    val entries = state.entries.filter { NativeAgenda.onDay(it.data, day.toString()) && matchesSearch(it) }
+                    val entries = visibleEntries.filter { NativeAgenda.onDay(it.data, day.toString()) && matchesSearch(it) }
                     if ((day == date && needle.isEmpty()) || entries.isNotEmpty()) {
                         if (days.size > 1 || state.mode=="week" || state.mode=="month") {
                             item(key = "day:$day") {
@@ -471,7 +477,7 @@ internal fun NativeCalendarScreen(
     }
 
     if (daySheetOpen && (state.mode == "week" || state.mode == "month")) {
-        val dayEntries=state.entries.filter { NativeAgenda.onDay(it.data,state.day)&&matchesSearch(it) }
+        val dayEntries=visibleEntries.filter { NativeAgenda.onDay(it.data,state.day)&&matchesSearch(it) }
         NativeCalendarDaySheet(state,dayEntries,tasksEnabled,{daySheetOpen=false},
             editEvent={day,id->daySheetOpen=false;editEvent(day,id)},
             newTask={day->daySheetOpen=false;newTask(day)},
@@ -491,16 +497,20 @@ internal fun NativeCalendarScreen(
     if (state.sourcesOpen) {
         AlertDialog(
             onDismissRequest = model::closeSources,
-            title = { Text("Источники календарей") },
+            title = { Text("Выбрать календари") },
             text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.heightIn(max=500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Отметьте календари для отображения. Скрытие не отключает синхронизацию и не удаляет события.",fontSize=12.sp)
+                    TextButton(onClick=model::showAllCalendars){Text("Показать все")}
+                    CalendarVisibilityChoice("Свои события","local" !in state.hiddenCalendars){model.toggleCalendar("local")}
+                    CalendarVisibilityChoice("Задачи","tasks" !in state.hiddenCalendars){model.toggleCalendar("tasks")}
                     if (state.sources.isEmpty()) {
-                        Text("Внешние календари пока не подключены.", fontSize = 13.sp)
+                        Text(if(state.busy)"Загрузка списка календарей…" else "Внешние календари пока не подключены.", fontSize = 13.sp)
                     } else {
                         state.sources.forEach { src ->
                             Surface(tonalElevation = 1.dp, shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) {
                                 Column(Modifier.fillMaxWidth().padding(10.dp)) {
-                                    Text(src.title, style = MaterialTheme.typography.titleSmall)
+                                    CalendarVisibilityChoice(src.title,"calendar:"+src.id !in state.hiddenCalendars){model.toggleCalendar("calendar:"+src.id)}
                                     if (src.user.isNotBlank()) Text(src.user, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(
                                         if (src.error.isNotBlank()) "Ошибка: ${src.error}"
@@ -963,5 +973,12 @@ private fun NativeCalendarCard(
                 }
             }
         }
+    }
+}
+
+@Composable private fun CalendarVisibilityChoice(title:String,checked:Boolean,toggle:()->Unit){
+    Row(Modifier.fillMaxWidth().heightIn(min=48.dp).clickable(onClick=toggle),verticalAlignment=Alignment.CenterVertically){
+        Checkbox(checked=checked,onCheckedChange=null)
+        Text(title,modifier=Modifier.weight(1f).padding(start=8.dp),style=MaterialTheme.typography.bodyMedium)
     }
 }

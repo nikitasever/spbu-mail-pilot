@@ -35,3 +35,12 @@ credentials, Google account eligibility and RF mobile routes require device test
 fixtures do not establish any of these. No guarantee that Google accepts a given server IP.
 
 Native.4 removes the original installer-password format restriction. Passwords retain their exact value (no trimming); proxy Basic authentication uses UTF-8, matching htpasswd terminal input. Existing saved hexadecimal passwords remain valid.
+
+The same native.4 candidate also contains user-requested calendar visibility and reader
+layout repairs. Calendar view-only selections are account-bound ViewModel state, retained
+across rotation and reset on process recreation/account change; they do not disconnect,
+modify, or delete calendars. Grid counts, day sheet, agenda and search use the same visible
+entries. A labeled selector remains available while a read is in progress. Personal/task
+and per-source visibility can be restored with Show All. Reader attachments precede body
+text in the Gemini layout, including long quoted histories; original Compose already used
+that ordering. Attachment actions/paths and mail mutations retain their prior handlers.
