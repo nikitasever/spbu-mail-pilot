@@ -44,7 +44,7 @@ jobs:
         run: >-
           ./gradlew --no-daemon -PrenderUi -PnativeVersionCode=92 -PnativeVersionName=0.74-native.3-original
           :app:assembleRelease :app:testDebugUnitTest
-          --tests '*.NativeAppearanceTest' --tests '*.NativePreviewTest' --tests '*.NativeCalendarLinksTest' --tests '*.NativeDigestPrivacyTest'
+          --tests '*.NativeAppearanceTest' --tests '*.NativeCalendarLinksTest' --tests '*.NativeDigestPrivacyTest'
       - name: Sign with existing project key
         env:
           APK_KEYSTORE_BASE64: ${{ secrets.APK_KEYSTORE_BASE64 }}

@@ -30,8 +30,8 @@ android {
     defaultConfig {
         applicationId = "ru.local.spbumailpilot"
         minSdk = 26; targetSdk = 34
-        versionCode = Regex("versionCode=\"(\\d+)\"").find(legacyManifest)!!.groupValues[1].toInt()
-        versionName = Regex("versionName=\"([^\"]+)\"").find(legacyManifest)!!.groupValues[1] + if (providers.gradleProperty("candidateRelease").isPresent) "" else "-native-dev"
+        versionCode = providers.gradleProperty("nativeVersionCode").orNull?.toInt() ?: Regex("versionCode=\"(\\d+)\"").find(legacyManifest)!!.groupValues[1].toInt()
+        versionName = providers.gradleProperty("nativeVersionName").orNull ?: (Regex("versionName=\"([^\"]+)\"").find(legacyManifest)!!.groupValues[1] + if (providers.gradleProperty("candidateRelease").isPresent) "" else "-native-dev")
     }
     sourceSets["main"].apply {
         java.srcDir(legacyRoot.resolve("src")); res.srcDir(legacyRoot.resolve("res"))
