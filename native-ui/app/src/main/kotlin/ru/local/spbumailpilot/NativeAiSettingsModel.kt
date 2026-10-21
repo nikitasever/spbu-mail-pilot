@@ -10,7 +10,7 @@ import java.util.concurrent.Executors
 
 internal data class NativeAiState(val owner:String="",val open:Boolean=false,val ready:Boolean=false,val busy:Boolean=false,
     val enabled:Boolean=true,val configured:Boolean=false,val model:String=AiConfiguration.DEFAULT_MODEL,val initialModel:String=AiConfiguration.DEFAULT_MODEL,
-    val key:String="",val removeConfirm:Boolean=false,val discard:Boolean=false,val error:String?=null,val notice:String?=null) {
+    val proxyConfigured:Boolean=false,val proxyPassword:String="",val key:String="",val removeConfirm:Boolean=false,val discard:Boolean=false,val error:String?=null,val notice:String?=null) {
     override fun toString()="NativeAiState(open=$open,ready=$ready,busy=$busy)"
 }
 
@@ -26,6 +26,7 @@ internal class NativeAiSettingsModel(app:Application):AndroidViewModel(app) {
     private var options=JSONObject()
     private var modelBaseline=JSONObject()
     private var keyVersion=-1L
+    private var proxyVersion=-1L
     var state by mutableStateOf(NativeAiState());private set
     private fun allowed(owner:String):SavedAccounts.Login {
         check(foreground&&!closed&&!AppLock.locked(context));val login=CredentialVault(context).load() ?: error("No account")
@@ -33,7 +34,7 @@ internal class NativeAiSettingsModel(app:Application):AndroidViewModel(app) {
     }
     private fun interactive()=foreground&&!closed&&!AppLock.locked(context)&&state.open&&state.ready&&!state.busy&&!state.discard&&!state.removeConfirm
     fun resume(){foreground=true;if(state.open&&!mutating)load()}
-    fun pause(){foreground=false;generation++;state=state.copy(key="",removeConfirm=false,discard=false)}
+    fun pause(){foreground=false;generation++;state=state.copy(key="",proxyPassword="",removeConfirm=false,discard=false)}
     fun open(owner:String){if(!foreground||closed||state.busy||AppLock.locked(context)||!NativeOpenTarget.account(owner))return
         if(state.owner!=owner){state=NativeAiState(owner=owner);options=JSONObject();modelBaseline=JSONObject();keyVersion=-1}
         state=state.copy(open=true);load()
@@ -44,13 +45,14 @@ internal class NativeAiSettingsModel(app:Application):AndroidViewModel(app) {
         worker.execute {try {
             val login=allowed(snapshot.owner)
             val data=synchronized(ReplyReminderCenter::class.java){JSONObject(NoticeCenter.state(context,login).getString("state","{}")!!)}
+            val proxyStatus=synchronized(GeminiProxyVault::class.java){val proxy=GeminiProxyVault(context);proxy.configured() to proxy.version()}
             val next=NativeGeneralSettings.options(data);val model=AiConfiguration.model(data)
             val status=synchronized(AiVault::class.java){val vault=AiVault(context);vault.configured() to vault.version()};allowed(snapshot.owner)
             main.post {if(!closed&&foreground&&generation==ticket&&!AppLock.locked(context)){
-                options=next;keyVersion=status.second
+                options=next;keyVersion=status.second;proxyVersion=proxyStatus.second
                 val dirtyModel=state.model!=state.initialModel
                 if(!dirtyModel)modelBaseline=JSONObject(next.toString())
-                state=state.copy(busy=false,ready=true,enabled=AiPolicy.enabled(data.toString()),configured=status.first,
+                state=state.copy(busy=false,ready=true,proxyConfigured=proxyStatus.first,enabled=AiPolicy.enabled(data.toString()),configured=status.first,
                     model=if(dirtyModel)state.model else model,initialModel=if(dirtyModel)state.initialModel else model)
             }}
         }catch(_:Exception){main.post {if(!closed&&foreground&&generation==ticket)state=state.copy(busy=false,ready=false,error="Не удалось прочитать настройки ИИ. Ключ не удалён; повторите загрузку.")}}}
@@ -98,11 +100,23 @@ internal class NativeAiSettingsModel(app:Application):AndroidViewModel(app) {
             main.post {mutating=false;if(!closed&&state.owner==owner){keyVersion=next.second;state=state.copy(busy=false,key="",removeConfirm=false,configured=next.first,notice=if(value==null)"Общий ключ удалён для всех ящиков." else "Общий ключ зашифрован и сохранён. Сетевой запрос не выполнялся.")}}
         }catch(_:Exception){GeminiDigest.cancelAll();main.post {mutating=false;if(!closed)state=state.copy(busy=false,removeConfirm=false,error="Ключ не сохранён или удаление не подтверждено. Возможно, его изменили в другом окне. Перечитайте статус перед повтором.")}}}
     }
-    private fun dirty()=state.key.isNotEmpty()||state.model!=state.initialModel
+    fun proxyPassword(value:String){if(interactive()&&value.length<=48)state=state.copy(proxyPassword=value,error=null,notice=null)}
+    fun saveProxy(){if(interactive()&&state.proxyPassword.matches(Regex("[0-9a-f]{48}")))proxySecret(state.proxyPassword)}
+    fun disableProxy(){if(interactive()&&state.proxyConfigured)proxySecret(null)}
+    private fun proxySecret(value:String?){
+        val owner=state.owner;val expected=proxyVersion;mutating=true;generation++;state=state.copy(busy=true,error=null,notice=null)
+        worker.execute {try{
+            allowed(owner)
+            val status=synchronized(GeminiProxyVault::class.java){allowed(owner);val vault=GeminiProxyVault(context);if(value==null)vault.remove(expected) else vault.save(value,expected);vault.configured() to vault.version()}
+            GeminiDigest.cancelAll()
+            main.post {mutating=false;if(!closed&&state.owner==owner){proxyVersion=status.second;state=state.copy(busy=false,proxyPassword="",proxyConfigured=status.first,notice=if(value==null)"Прокси отключён. Gemini будет подключаться напрямую." else "Прокси сохранён для Gemini. Почта и календарь подключаются напрямую. Соединение ещё не проверено.")}}
+        }catch(_:Exception){GeminiDigest.cancelAll();main.post{mutating=false;if(!closed)state=state.copy(busy=false,error="Не удалось сохранить прокси. Перечитайте статус и повторите.")}}}
+    }
+    private fun dirty()=state.proxyPassword.isNotEmpty()||state.key.isNotEmpty()||state.model!=state.initialModel
     fun back(){if(!foreground||closed||state.busy)return
         if(state.removeConfirm){state=state.copy(removeConfirm=false);return}
-        if(dirty())state=state.copy(discard=true) else {generation++;state=state.copy(open=false,key="")}
+        if(dirty())state=state.copy(discard=true) else {generation++;state=state.copy(open=false,key="",proxyPassword="")}
     }
-    fun discard(value:Boolean){if(!state.busy){state=if(value)state.copy(open=false,key="",model=state.initialModel,discard=false) else state.copy(discard=false);if(value)generation++}}
+    fun discard(value:Boolean){if(!state.busy){state=if(value)state.copy(open=false,key="",proxyPassword="",model=state.initialModel,discard=false) else state.copy(discard=false);if(value)generation++}}
     override fun onCleared(){closed=true;foreground=false;generation++;state=NativeAiState();worker.shutdown()}
 }

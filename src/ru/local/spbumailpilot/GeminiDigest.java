@@ -11,8 +11,10 @@ final class GeminiDigest {
  private final java.util.concurrent.atomic.AtomicLong generation=new java.util.concurrent.atomic.AtomicLong();
  GeminiDigest(){synchronized(instances){instances.add(this);}}
  static void cancelAll(){java.util.List<GeminiDigest> copy;synchronized(instances){copy=new java.util.ArrayList<>(instances);}for(GeminiDigest digest:copy)digest.cancel();}
+ interface Transport { String post(String endpoint,String key,String body,BooleanSupplier current,java.util.function.Consumer<Runnable> cancellation)throws Exception; }
+ private volatile Runnable activeTransport;
  private volatile HttpsURLConnection active;
- Runnable cancellation(){generation.incrementAndGet();HttpsURLConnection current=active;return ()->{if(current!=null)try{current.disconnect();}catch(RuntimeException unavailable){}};}
+ Runnable cancellation(){generation.incrementAndGet();HttpsURLConnection current=active;Runnable transport=activeTransport;return ()->{if(transport!=null)transport.run();if(current!=null)try{current.disconnect();}catch(RuntimeException unavailable){}};}
  void cancel(){cancellation().run();}
  static JSONObject payload(JSONArray items,String user)throws Exception{
   if(items.length()<1||items.length()>20)throw new IllegalArgumentException();
@@ -56,6 +58,17 @@ final class GeminiDigest {
  JSONObject analyze(String key,JSONArray items,String user,BooleanSupplier current,String model)throws Exception{
   if(key.isEmpty())throw new IOException("Добавьте API-ключ Gemini в настройках.");if(!current.getAsBoolean())throw new IOException("Отменено");
   HttpsURLConnection connection=(HttpsURLConnection)new URL(AiConfiguration.endpoint(model)).openConnection();return exchange(connection,key,items,user,current);
+ }
+ JSONObject analyze(String key,JSONArray items,String user,BooleanSupplier current,String model,Transport transport)throws Exception{
+  if(transport==null)return analyze(key,items,user,current,model);
+  if(key.isEmpty())throw new IOException("Добавьте API-ключ Gemini в настройках.");
+  long ticket=generation.get();BooleanSupplier allowed=()->generation.get()==ticket&&current.getAsBoolean();
+  if(!allowed.getAsBoolean())throw new IOException("Отменено");
+  try{
+   String response=transport.post(AiConfiguration.endpoint(model),key,payload(items,user).toString(),allowed,cancel->{activeTransport=cancel;if(!allowed.getAsBoolean())cancel.run();});
+   if(!allowed.getAsBoolean())throw new IOException("Отменено");
+   JSONObject result=parse(response,items.length());if(!allowed.getAsBoolean())throw new IOException("Отменено");return result;
+  }finally{activeTransport=null;}
  }
  JSONObject exchange(HttpsURLConnection connection,String key,JSONArray items,String user,BooleanSupplier current)throws Exception{
   long ticket=generation.get();BooleanSupplier allowed=()->generation.get()==ticket&&current.getAsBoolean();
