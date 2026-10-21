@@ -40,7 +40,8 @@ import androidx.compose.ui.unit.dp
             Text(if(s.proxyConfigured)"Включён · Финляндия · 79.137.206.221:19443" else "Выключен · прямое подключение к Google")
             Text("Почта и календарь идут напрямую. Прокси защищён TLS с закреплённым сертификатом. Логин: gemini. Пароль хранится зашифрованным на телефоне и не отображается после сохранения. При ошибке прокси прямого повтора нет.",style=MaterialTheme.typography.bodySmall)
             OutlinedTextField(s.proxyPassword,model::proxyPassword,label={Text("Пароль прокси")},singleLine=true,visualTransformation=PasswordVisualTransformation(),keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Password),enabled=s.ready&&!s.busy,modifier=Modifier.fillMaxWidth())
-            Button(onClick=model::saveProxy,enabled=s.ready&&!s.busy&&s.proxyPassword.matches(Regex("[0-9a-f]{48}")),modifier=Modifier.fillMaxWidth()){Text("Сохранить и включить прокси")}
+            Text("Введите текущий пароль пользователя gemini на сервере. Допускаются буквы, цифры и специальные символы; формат из 48 символов больше не требуется.",style=MaterialTheme.typography.bodySmall)
+            Button(onClick=model::saveProxy,enabled=s.ready&&!s.busy&&GeminiProxyTransport.validPassword(s.proxyPassword),modifier=Modifier.fillMaxWidth()){Text("Сохранить и включить прокси")}
             OutlinedButton(onClick=model::disableProxy,enabled=s.ready&&!s.busy&&s.proxyConfigured,modifier=Modifier.fillMaxWidth()){Text("Отключить прокси")}
             TextButton(onClick=model::load,enabled=!s.busy){Text("Перечитать статус")}
         }

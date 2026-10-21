@@ -16,6 +16,8 @@ public final class GeminiProxyTransportTest {
   try{GeminiProxyTransport.verifyCertificate(new X509Certificate[]{cert});throw new AssertionError("Foreign pin accepted");}catch(CertificateException expected){}
   try{new GeminiProxyTransport("bad\r\npassword");throw new AssertionError();}catch(IllegalArgumentException expected){}
   check(!new GeminiProxyTransport(new String(new char[48]).replace('\0','a')).toString().contains("aaaa"));
+  for(String value:new String[]{"fixture-Short9!","Fixture-Пароль:9!",new String(new char[48]).replace('\0','a')}){check(GeminiProxyTransport.validPassword(value));new GeminiProxyTransport(value);}
+  for(String value:new String[]{"","   ","bad\r\nheader","bad\u0000value",new String(new char[257]).replace('\0','a')})check(!GeminiProxyTransport.validPassword(value));
   KeyManagerFactory km=KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());km.init(keys,"changeit".toCharArray());
   SSLContext server=SSLContext.getInstance("TLS");server.init(km.getKeyManagers(),null,null);
   for(boolean valid:new boolean[]{true,false}){
@@ -39,11 +41,11 @@ public final class GeminiProxyTransportTest {
     accepted.setSoTimeout(5000);InputStream in=accepted.getInputStream();ByteArrayOutputStream header=new ByteArrayOutputStream();
     int value;while((value=in.read())!=-1){header.write(value);if(header.size()>8192)throw new AssertionError();if(header.toString("US-ASCII").endsWith("\r\n\r\n"))break;}
     String text=header.toString("US-ASCII");check(text.startsWith("CONNECT generativelanguage.googleapis.com:443 HTTP/1.1"));
-    check(text.contains("Proxy-Authorization: Basic "));check(!text.toLowerCase().contains("x-goog-api-key"));
+    check(text.contains("Proxy-Authorization: Basic "+java.util.Base64.getEncoder().encodeToString("gemini:Fixture-Пароль:9!".getBytes(java.nio.charset.StandardCharsets.UTF_8))));check(!text.toLowerCase().contains("x-goog-api-key"));
     accepted.getOutputStream().write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes("US-ASCII"));accepted.getOutputStream().flush();
     return in.read()==22; // TLS handshake record for the independently verified Google connection.
    }});
-   okhttp3.OkHttpClient client=GeminiProxyTransport.client(new String(new char[48]).replace('\0','a'),new InetSocketAddress(InetAddress.getLoopbackAddress(),listener.getLocalPort()),pin.toString(),()->true);
+   okhttp3.OkHttpClient client=GeminiProxyTransport.client("Fixture-Пароль:9!",new InetSocketAddress(InetAddress.getLoopbackAddress(),listener.getLocalPort()),pin.toString(),()->true);
    okhttp3.Request origin=new okhttp3.Request.Builder().url("https://generativelanguage.googleapis.com/").build();
    okhttp3.Response fake407=new okhttp3.Response.Builder().request(origin).protocol(okhttp3.Protocol.HTTP_1_1).code(407).message("fixture").build();
    check(client.proxyAuthenticator().authenticate(null,fake407)==null);
