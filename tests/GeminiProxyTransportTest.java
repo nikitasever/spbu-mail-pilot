@@ -44,6 +44,9 @@ public final class GeminiProxyTransportTest {
     return in.read()==22; // TLS handshake record for the independently verified Google connection.
    }});
    okhttp3.OkHttpClient client=GeminiProxyTransport.client(new String(new char[48]).replace('\0','a'),new InetSocketAddress(InetAddress.getLoopbackAddress(),listener.getLocalPort()),pin.toString(),()->true);
+   okhttp3.Request origin=new okhttp3.Request.Builder().url("https://generativelanguage.googleapis.com/").build();
+   okhttp3.Response fake407=new okhttp3.Response.Builder().request(origin).protocol(okhttp3.Protocol.HTTP_1_1).code(407).message("fixture").build();
+   check(client.proxyAuthenticator().authenticate(null,fake407)==null);
    try(okhttp3.Response response=client.newCall(new okhttp3.Request.Builder().url("https://generativelanguage.googleapis.com/").header("x-goog-api-key","fixture-not-a-secret").build()).execute()){throw new AssertionError("Unverified origin accepted");}catch(IOException expected){}
    check(tunneled.get(7,TimeUnit.SECONDS));client.connectionPool().evictAll();client.dispatcher().executorService().shutdown();worker.shutdownNow();
   }
