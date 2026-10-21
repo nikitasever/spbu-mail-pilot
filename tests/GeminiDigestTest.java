@@ -26,6 +26,13 @@ public class GeminiDigestTest {
   if(!GeminiDigest.safeFailure(new java.net.UnknownHostException("fixture-key")).contains("DNS"))throw new AssertionError();
   if(GeminiDigest.safeFailure(new java.net.SocketTimeoutException("fixture-key")).contains("fixture-key"))throw new AssertionError();
   if(!GeminiDigest.status(429).contains("Лимит")||!GeminiDigest.status(403).contains("регион"))throw new AssertionError();
+  GeminiDigest proxied=new GeminiDigest();java.util.concurrent.atomic.AtomicBoolean proxyCancelled=new java.util.concurrent.atomic.AtomicBoolean();
+  try{proxied.analyze("fixture-key",items,"fixture@example.invalid",()->true,AiConfiguration.DEFAULT_MODEL,(endpoint,apiKey,body,current,cancel)->{
+   cancel.accept(()->proxyCancelled.set(true));proxied.cancel();if(current.getAsBoolean())throw new AssertionError("Stale proxy generation");return response(valid,"STOP");
+  });throw new AssertionError("Cancelled proxy result accepted");}catch(java.io.IOException expected){}
+  if(!proxyCancelled.get())throw new AssertionError("Proxy call not closed on cancellation");
+  final int[] calls={0};try{new GeminiDigest().analyze("fixture-key",items,"fixture@example.invalid",()->true,AiConfiguration.DEFAULT_MODEL,(endpoint,apiKey,body,current,cancel)->{calls[0]++;throw new java.io.IOException("fixture proxy failure");});throw new AssertionError();}catch(java.io.IOException expected){}
+  if(calls[0]!=1)throw new AssertionError("Proxy failure retried");
   System.out.println("PASS: Gemini prompt isolates untrusted mail, excludes credentials/attachments; incomplete, invalid and invented source responses rejected; sources deduplicated and errors sanitized.");
  }
 }
