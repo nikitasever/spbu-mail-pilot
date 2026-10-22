@@ -22,6 +22,11 @@ public final class EmlDocumentTest {
    check(Arrays.equals(Files.readAllBytes(new File(pdf.getString("file")).toPath()),"%PDF-1.7\nfixture".getBytes(StandardCharsets.US_ASCII)));
    int before=dir.list().length;try{document.extract(path,dir,()->true);throw new AssertionError();}catch(BulkAttachments.Cancelled expected){}check(dir.list().length==before);
    try{document.extract("../1",dir,()->false);throw new AssertionError();}catch(IOException expected){}
+   EmlDocument global=EmlDocument.read(write(dir,"global.eml",root.replace("Content-Type: message/rfc822", "Content-Type: message/global")));
+   check(global.files.length()==1&&global.files.getJSONObject(0).getString("name").endsWith(".eml"));
+   JSONObject globalFile=global.extract(global.files.getJSONObject(0).getString("path"),dir,()->false);
+   check(globalFile.getString("mime").equals("message/rfc822"));
+   check(Arrays.equals(Files.readAllBytes(new File(globalFile.getString("file")).toPath()),nested.getBytes(StandardCharsets.UTF_8)));
    EmlDocument html=EmlDocument.read(write(dir,"html.eml","From: sender@example.invalid\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n<p>Текст</p><img src=\"https://example.invalid/image\"><script>doNotRun()</script>"));
    check(html.segments.size()==1&&html.segments.get(0).html&&html.segments.get(0).text.contains("Текст"));
    try{EmlDocument.read(write(dir,"bad.eml","not an RFC message"));throw new AssertionError();}catch(IOException expected){}
