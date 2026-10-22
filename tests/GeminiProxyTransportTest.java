@@ -33,6 +33,13 @@ public final class GeminiProxyTransportTest {
    String visible=GeminiDigest.safeFailure(new GeminiDigest.ConnectionFailure(step,new IOException("fixture-private-value")));
    check(!visible.contains("fixture-private-value"));check(visible.contains("[P")||visible.contains("[G"));
   }
+  attempt.googleStatus=200;
+  check(GeminiDigest.safeFailure(attempt.describe(new SocketTimeoutException())).contains("[G02]"));
+  check(GeminiDigest.safeFailure(attempt.describe(new IOException("unexpected end of stream"))).contains("[G03]"));
+  attempt.googleStatus=429;
+  IOException quota=new IOException(GeminiDigest.status(429));check(attempt.describe(quota)==quota);
+  check(GeminiDigest.safeFailure(attempt.describe(new SocketTimeoutException())).contains("[G02]"));
+  check(GeminiDigest.safeFailure(attempt.describe(new IOException(GeminiDigest.RESPONSE_TOO_LARGE))).equals(GeminiDigest.RESPONSE_TOO_LARGE));
   okhttp3.Request probe=GeminiProxyTransport.connectionCheckRequest();
   check(probe.method().equals("GET")&&probe.body()==null&&probe.url().query()==null);
   check(probe.url().toString().equals("https://generativelanguage.googleapis.com/"));

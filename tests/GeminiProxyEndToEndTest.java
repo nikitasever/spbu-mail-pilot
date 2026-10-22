@@ -18,6 +18,34 @@ public final class GeminiProxyEndToEndTest {
    if(bytes.toString("US-ASCII").endsWith("\r\n\r\n"))return bytes.toString("US-ASCII");}
   throw new EOFException();
  }
+ static void responseBodyTimeout(SSLContext server,SSLContext originTrust,X509TrustManager trust,String pin)throws Exception {
+  CountDownLatch release=new CountDownLatch(1);
+  ExecutorService worker=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r);t.setDaemon(true);return t;});
+  OkHttpClient client=null;
+  try(SSLServerSocket listener=(SSLServerSocket)server.getServerSocketFactory().createServerSocket(0,1,InetAddress.getLoopbackAddress())){
+   Future<Boolean> served=worker.submit(()->{
+    try(SSLSocket outer=(SSLSocket)listener.accept()){
+     outer.setSoTimeout(5000);headers(outer.getInputStream());
+     outer.getOutputStream().write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes(StandardCharsets.US_ASCII));outer.getOutputStream().flush();
+     try(SSLSocket inner=(SSLSocket)server.getSocketFactory().createSocket(outer,"generativelanguage.googleapis.com",443,true)){
+      inner.setUseClientMode(false);inner.setSoTimeout(5000);inner.startHandshake();headers(inner.getInputStream());
+      inner.getOutputStream().write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{".getBytes(StandardCharsets.US_ASCII));inner.getOutputStream().flush();
+      check(release.await(7,TimeUnit.SECONDS));return true;
+     }
+    }catch(IOException cancelled){if(release.getCount()==0)return true;throw cancelled;}
+   });
+   GeminiProxyTransport.Attempt attempt=new GeminiProxyTransport.Attempt();
+   client=GeminiProxyTransport.client("fixture-password",new InetSocketAddress(InetAddress.getLoopbackAddress(),listener.getLocalPort()),pin,()->true,attempt)
+    .newBuilder().sslSocketFactory(originTrust.getSocketFactory(),trust).readTimeout(1500,TimeUnit.MILLISECONDS).build();
+   try(Response response=client.newCall(new Request.Builder().url("https://generativelanguage.googleapis.com/stall").build()).execute()){
+    check(response.code()==200);response.body().string();throw new AssertionError("Incomplete response unexpectedly finished");
+   }catch(SocketTimeoutException timeout){
+    check(attempt.googleStatus==200&&attempt.googleTlsStarted);
+    check(GeminiDigest.safeFailure(attempt.describe(timeout)).contains("[G02]"));
+   }finally{release.countDown();}
+   check(served.get(7,TimeUnit.SECONDS));
+  }finally{release.countDown();if(client!=null){client.connectionPool().evictAll();client.dispatcher().executorService().shutdown();}worker.shutdownNow();}
+ }
  public static void main(String[] args)throws Exception {
   KeyStore keys=KeyStore.getInstance("PKCS12");
   try(InputStream in=new FileInputStream(args[0])){keys.load(in,"changeit".toCharArray());}
@@ -61,6 +89,7 @@ public final class GeminiProxyEndToEndTest {
    try(Response response=client.newCall(request).execute()){check(response.code()==200);check(response.body().string().equals("{\"ok\":true}"));}
    check(received.get(7,TimeUnit.SECONDS));
   }finally{if(client!=null){client.connectionPool().evictAll();client.dispatcher().executorService().shutdown();}worker.shutdownNow();}
-  System.out.println("PASS: local TLS proxy, authenticated CONNECT, verified origin TLS, isolated POST headers/body and JSON response.");
+  responseBodyTimeout(server,originTrust,trust,pin.toString());
+  System.out.println("PASS: local TLS proxy, authenticated CONNECT, verified origin TLS, isolated POST and response-body timeout after HTTP 200 classified as G02.");
  }
 }

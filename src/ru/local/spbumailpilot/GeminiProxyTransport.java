@@ -56,6 +56,12 @@ final class GeminiProxyTransport implements GeminiDigest.Transport {
  static final class Attempt {
   volatile boolean googleTlsStarted,authRejected;
   volatile int googleStatus;
+  IOException describe(IOException error){
+   if(GeminiDigest.RESPONSE_TOO_LARGE.equals(error.getMessage()))return error;
+   if(googleStatus==0||googleStatus==200||error instanceof InterruptedIOException||error instanceof SSLException||error instanceof SocketException||error instanceof EOFException)return failure(error);
+   // Preserve a deliberate HTTP/API rejection after its response was received.
+   return error;
+  }
   GeminiDigest.ConnectionFailure failure(IOException error){
    GeminiDigest.ConnectionStep step;
    String message=error.getMessage()==null?"":error.getMessage();
@@ -69,7 +75,7 @@ final class GeminiProxyTransport implements GeminiDigest.Transport {
    return new GeminiDigest.ConnectionFailure(step,error);
   }
  }
- private static OkHttpClient client(String password,InetSocketAddress address,String fingerprint,BooleanSupplier current,Attempt attempt)throws GeneralSecurityException {
+ static OkHttpClient client(String password,InetSocketAddress address,String fingerprint,BooleanSupplier current,Attempt attempt)throws GeneralSecurityException {
   return new OkHttpClient.Builder()
    .proxy(new Proxy(Proxy.Type.HTTP,address))
    .socketFactory(proxySockets(fingerprint))
@@ -118,13 +124,13 @@ final class GeminiProxyTransport implements GeminiDigest.Transport {
     ByteArrayOutputStream out=new ByteArrayOutputStream();
     try(InputStream input=response.body().byteStream()){
      byte[] bytes=new byte[4096];int n;
-     while((n=input.read(bytes))!=-1){if(!current.getAsBoolean())throw new IOException("Отменено");if(out.size()+n>262144)throw new IOException("Слишком длинный ответ Gemini.");out.write(bytes,0,n);}
+     while((n=input.read(bytes))!=-1){if(!current.getAsBoolean())throw new IOException("Отменено");if(out.size()+n>262144)throw new IOException(GeminiDigest.RESPONSE_TOO_LARGE);out.write(bytes,0,n);}
     }
     return new String(out.toByteArray(),java.nio.charset.StandardCharsets.UTF_8);
    }
   }catch(IOException failure){
-   if(!current.getAsBoolean()||attempt.googleStatus!=0)throw failure;
-   throw attempt.failure(failure);
+   if(!current.getAsBoolean())throw failure;
+   throw attempt.describe(failure);
   }finally{call.cancel();client.connectionPool().evictAll();client.dispatcher().executorService().shutdown();}
  }
 }
