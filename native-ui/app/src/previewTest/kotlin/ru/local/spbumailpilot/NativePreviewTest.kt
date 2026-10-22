@@ -69,7 +69,7 @@ class NativePreviewTest {
         val model=NativeCalendarModel(PreviewApplication(paparazzi.context))
         val field=model.javaClass.getDeclaredField("state\$delegate").apply {isAccessible=true}
         val entries=listOf(
-            JSONObject().put("id","meeting").put("title","Материалы к защите Шахматовой").put("date","2026-10-15").put("time","15:00").put("endDate","2026-10-15").put("endTime","16:00").put("kind","remote").put("calendarTitle","Календарь подразделения"),
+            JSONObject().put("id","meeting").put("title","Материалы к защите Шахматовой").put("date","2026-10-15").put("time","15:00").put("endDate","2026-10-15").put("endTime","16:00").put("kind","remote").put("calendarTitle","Публичные мероприятия").put("location","Санкт-Петербург, Галерная улица, 58–60, аудитории 138–155").put("description","Повестка заседания комиссии и порядок подключения участников."),
             JSONObject().put("id","task").put("title","Проверить спецификацию по 191 аудитории").put("date","2026-10-15").put("time","17:00").put("kind","task"),
             JSONObject().put("id","monday").put("title","Проверить расписание недели").put("date","2026-10-12").put("time","09:00").put("kind","event"),
             JSONObject().put("id","after-week").put("title","Планирование следующей недели").put("date","2026-10-24").put("time","11:00").put("kind","event"))
@@ -80,7 +80,7 @@ class NativePreviewTest {
     @Test fun calendarDayPopupLight(){renderCalendarPopup("light")}
     @Test fun calendarDayPopupDark(){renderCalendarPopup("dark")}
     private fun renderCalendarPopup(mode:String){
-        val entries=(1..16).map {n->CalendarEntry("day-$n",JSONObject().put("id","day-$n").put("title","Заседание комиссии · вопрос $n").put("date","2026-10-15").put("time","15:00").put("kind","event"))}
+        val entries=(1..16).map {n->CalendarEntry("day-$n",JSONObject().put("id","day-$n").put("title",if(n==1)"отд. 2 РК № 11329/1 VIII Международная научно-практическая конференция «Синергия языков и культур: междисциплинарные исследования»" else "Заседание комиссии · вопрос $n").put("date","2026-10-15").put("time","10:30").put("endTime","13:00").put("kind","remote").put("calendarTitle","Публичные мероприятия").put("location","Санкт-Петербург, Галерная улица, 58–60, аудитории 138–155").put("description","Программа конференции и материалы участников."))}
         val state=CalendarState(open=true,owner=owner,day="2026-10-15",entries=entries)
         // Layoutlib does not capture the separate modal window: render the exact shared content.
         paparazzi.snapshot(name="day-popup") {InboxTheme(mode=mode){

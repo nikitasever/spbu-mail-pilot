@@ -475,7 +475,7 @@ final class MailReader implements AutoCloseable {
         JSONObject cached=downloadedFiles.get(cacheKey);if(cached!=null&&new java.io.File(cached.getString("file")).isFile())return new JSONObject(cached.toString());
         if(message instanceof IMAPMessage)((IMAPMessage)message).setPeek(true);
         Part part=AttachmentParts.resolve(message,path);
-        String raw=part.getFileName();String name=AttachmentFiles.safeName(raw==null?"Вложение":AttachmentNames.decode(raw));
+        String name=MailAttachments.name(part);
         // MIME size is transfer-encoded (e.g. base64), not the saved file size.
         // AttachmentTransfer bounds both encoded bytes and the decoded 100 MiB file.
         String mime=AttachmentFiles.mime(name,new javax.mail.internet.ContentType(part.getContentType()).getBaseType());

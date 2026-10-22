@@ -393,7 +393,7 @@ internal fun NativeCalendarScreen(
                     Column(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=6.dp)) {
                         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick=model::today,enabled=!state.busy){Text("Сегодня")}
-                            OutlinedButton(onClick={newTask(state.day)},enabled=!state.busy&&tasksEnabled){Text("Новая задача")}
+                            Button(onClick={newTask(state.day)},enabled=!state.busy&&tasksEnabled){Text("Новая задача")}
                         }
                         val first=NativeAgenda.first(state.day,state.mode)
                         val last=NativeAgenda.end(state.day,state.mode).minusDays(1)
@@ -775,13 +775,13 @@ internal fun NativeMailEventPickerDialog(model: NativeCalendarModel) {
                     NativeCalendarCard(entry=entry,enabled=!state.busy,links=remember(entry.key,state.links) {
                         val all=JSONArray();state.links.forEach {all.put(it)}
                         runCatching {NativeMailLinks.forEvent(entry.data,all)}.getOrDefault(JSONArray())
-                    },edit={editEvent(entry.data.optString("date"),entry.data.optString("id"))},openMail=openMail,unlinkMail=unlinkMail,createTask={createTask(entry.data)})
+                    },edit={editEvent(entry.data.optString("date"),entry.data.optString("id"))},openMail=openMail,unlinkMail=unlinkMail,createTask={createTask(entry.data)},sheet=true)
                 }
             }
             HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
             Row(Modifier.fillMaxWidth().padding(16.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick={newTask(state.day)},enabled=!state.busy&&tasksEnabled,modifier=Modifier.weight(1f)){Text("Задача")}
-                Button(onClick={editEvent(state.day,null)},enabled=!state.busy,modifier=Modifier.weight(1f)){Text("Событие")}
+                Button(onClick={newTask(state.day)},enabled=!state.busy&&tasksEnabled,modifier=Modifier.weight(1f)){Text("Задача")}
+                OutlinedButton(onClick={editEvent(state.day,null)},enabled=!state.busy,modifier=Modifier.weight(1f)){Text("Событие")}
             }
         }
 }
@@ -793,188 +793,7 @@ private fun calendarColor(kind: String): Color = when (kind) {
     else -> MaterialTheme.colorScheme.primary
 }
 
-@Composable
-private fun NativeCalendarCard(
-    entry: CalendarEntry,
-    enabled: Boolean,
-    links: JSONArray,
-    edit: () -> Unit,
-    openMail: (String) -> Unit,
-    unlinkMail: (String) -> Unit,
-    createTask: () -> Unit
-) {
-    val data = entry.data
-    val kind = data.optString("kind")
-    val accentColor = calendarColor(kind)
-    val rawRange = NativeAgenda.timeRange(data)
-    val rangeParts = rawRange.split("–", "-").map { it.trim() }.filter { it.isNotEmpty() }
-    val startTime = data.optString("time").ifBlank {
-        val first = rangeParts.firstOrNull().orEmpty()
-        if (first.isBlank() || first.equals("Весь день", ignoreCase = true)) "Весь" else first
-    }
-    val endTime = data.optString("endTime").ifBlank {
-        when {
-            rangeParts.size > 1 -> rangeParts[1]
-            startTime == "Весь" -> "день"
-            else -> ""
-        }
-    }
-    val sourceLabel = data.optString("calendarTitle").ifBlank {
-        when (kind) {
-            "remote" -> "Расписание СПбГУ"
-            "task" -> "Задача"
-            else -> "Личный календарь"
-        }
-    }
-    val location = data.optString("location")
-    var expanded by remember(entry.key) { mutableStateOf(false) }
-    Surface(
-        onClick = { expanded = !expanded },
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(0.7.dp, MaterialTheme.colorScheme.outlineVariant),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp)
-    ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Colored vertical indicator bar on the left (type of calendar: server, personal, tasks)
-                Surface(
-                    shape = RoundedCornerShape(3.dp),
-                    color = accentColor,
-                    modifier = Modifier.width(4.dp).height(42.dp)
-                ) {}
-                Spacer(Modifier.width(10.dp))
-                Column(
-                    Modifier.width(50.dp),
-                    horizontalAlignment = Alignment.Start
-                ) {
-                    Text(
-                        startTime,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1
-                    )
-                    if (endTime.isNotBlank()) {
-                        Text(
-                            endTime,
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1
-                        )
-                    }
-                }
-                Column(
-                    Modifier.weight(1f).padding(start = 6.dp, end = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Text(
-                        data.optString("title", "Без названия"),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = if (expanded) 4 else 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        if (location.isNotBlank()) "$sourceLabel · $location" else sourceLabel,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                if (kind == "event" || kind == "remote") {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (kind == "event") {
-                            GlassIconButton(
-                                icon = NativeIcons.ComposePen,
-                                contentDescription = "Изменить своё событие",
-                                onClick = { if (enabled) edit() },
-                                enabled = enabled,
-                                size = 32.dp
-                            )
-                        }
-                        GlassIconButton(
-                            icon = NativeIcons.Tasks,
-                            contentDescription = "Создать задачу",
-                            onClick = { if (enabled) createTask() },
-                            enabled = enabled,
-                            size = 32.dp
-                        )
-                    }
-                }
-            }
-            if (expanded) {
-                listOf("description", "notes").forEach { field ->
-                    if (data.optString(field).isNotBlank()) {
-                        Text(
-                            data.optString(field),
-                            Modifier.padding(start = 64.dp, top = 6.dp),
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-            if (links.length() > 0) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                ) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
-                        for (index in 0 until links.length()) {
-                            val link = links.getJSONObject(index)
-                            val mail = link.optJSONObject("mail")
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    Modifier
-                                        .weight(1f)
-                                        .clickable(enabled = enabled) { openMail(link.toString()) }
-                                        .padding(vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        NativeIcons.Mail,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                    Text(
-                                        mail?.optString("subject")?.ifBlank { "Открыть письмо" } ?: "Письмо",
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        fontSize = 12.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                IconButton(
-                                    onClick = { unlinkMail(link.optString("id")) },
-                                    enabled = enabled,
-                                    modifier = Modifier.size(26.dp)
-                                ) {
-                                    Icon(NativeIcons.Close, contentDescription = "Отвязать", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+
 
 @Composable private fun CalendarVisibilityChoice(title:String,checked:Boolean,toggle:()->Unit){
     Row(Modifier.fillMaxWidth().heightIn(min=48.dp).clickable(onClick=toggle),verticalAlignment=Alignment.CenterVertically){
