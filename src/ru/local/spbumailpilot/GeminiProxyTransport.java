@@ -11,7 +11,7 @@ import java.util.function.*;
 
 /** Private TLS CONNECT hop; Google TLS remains independently platform-verified. */
 final class GeminiProxyTransport implements GeminiDigest.Transport {
- static final String HOST="79.137.206.221";
+ static final String HOST="185.221.196.212";
  static final int PORT=2053;
  static final String CERT_SHA256="318b2e48ba51b8c936e8ff22ebe3bf1b3241d46579f88a1f0150a26ffc17d3f4";
  static boolean validPassword(String value){
