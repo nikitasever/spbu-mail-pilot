@@ -42,7 +42,7 @@ http_access deny all
 cache deny all
 access_log none
 cache_store_log none
-cache_log /dev/stderr
+cache_log /var/log/spbu-gemini-proxy/cache.log
 logfile_rotate 0
 forwarded_for delete
 via off
@@ -72,6 +72,8 @@ After=network.target
 Type=simple
 User=proxy
 Group=proxy
+LogsDirectory=spbu-gemini-proxy
+LogsDirectoryMode=0750
 ExecStart=/usr/sbin/squid -N -f /etc/spbu-gemini-proxy/squid.conf
 Restart=on-failure
 RestartSec=5

@@ -34,3 +34,11 @@ Installer fix (2026-10-21): squid.conf must be root:proxy 0640, because the
 dedicated Squid systemd service runs as proxy. Config parsing now runs as that
 same user instead of root. TLS private key remains root-only. For an existing
 installation use repair-permissions.sh; it does not rotate credentials/certificates.
+
+Logging repair (2026-10-22): some systemd environments cannot reopen
+/dev/stderr or /dev/stdout from an unprivileged Squid worker. New installs
+use a private LogsDirectory for cache.log. For an existing installation,
+run repair-logging.sh as root. It grants write access only to the dedicated
+log directory and enables standard CONNECT metadata logs for diagnosis;
+passwords, API keys and tunneled request bodies are not logged. Set
+access_log none after diagnosis; retain cache.log for service errors.
