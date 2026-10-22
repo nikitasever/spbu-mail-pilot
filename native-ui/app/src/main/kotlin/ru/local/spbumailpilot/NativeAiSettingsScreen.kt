@@ -37,7 +37,7 @@ import androidx.compose.ui.unit.dp
             OutlinedButton(onClick={model.confirmRemove(true)},enabled=s.ready&&!s.busy&&s.configured,modifier=Modifier.fillMaxWidth()){Text("Удалить общий ключ",color=MaterialTheme.colorScheme.error)}
             HorizontalDivider()
             Text("Прокси только для Gemini",style=MaterialTheme.typography.titleMedium)
-            Text(if(s.proxyConfigured)"Включён · Финляндия · 79.137.206.221:19443" else "Выключен · прямое подключение к Google")
+            Text(if(s.proxyConfigured)"Включён · Финляндия · ${GeminiProxyTransport.HOST}:${GeminiProxyTransport.PORT}" else "Выключен · прямое подключение к Google")
             Text("Почта и календарь идут напрямую. Прокси защищён TLS с закреплённым сертификатом. Логин: gemini. Пароль хранится зашифрованным на телефоне и не отображается после сохранения. При ошибке прокси прямого повтора нет.",style=MaterialTheme.typography.bodySmall)
             OutlinedTextField(s.proxyPassword,model::proxyPassword,label={Text("Пароль прокси")},singleLine=true,visualTransformation=PasswordVisualTransformation(),keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(keyboardType=androidx.compose.ui.text.input.KeyboardType.Password),enabled=s.ready&&!s.busy,modifier=Modifier.fillMaxWidth())
             Text("Введите текущий пароль пользователя gemini на сервере. Допускаются буквы, цифры и специальные символы; формат из 48 символов больше не требуется.",style=MaterialTheme.typography.bodySmall)
