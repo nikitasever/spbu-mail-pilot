@@ -57,14 +57,56 @@ class NativePreviewTest {
             }
         }
     }
-    @Test fun calendar() {
+    @Test fun calendar() { renderCalendar("dark") }
+    @Test fun calendarLight() { renderCalendar("light") }
+    @Test fun calendarMonthLight(){renderCalendar("light","month")}
+    @Test fun calendarAgendaLight(){renderCalendar("light","agenda")}
+    @Test fun calendarDayLight(){renderCalendar("light","day")}
+    @Test fun calendarWeekSearchLight(){renderCalendar("light","week","защита")}
+    private fun renderCalendar(mode:String,view:String="week",query:String="",hidden:Set<String> = emptySet()) {
         val model=NativeCalendarModel(PreviewApplication(paparazzi.context))
         val field=model.javaClass.getDeclaredField("state\$delegate").apply {isAccessible=true}
         val entries=listOf(
-            JSONObject().put("id","meeting").put("title","Материалы к защите Шахматовой").put("date","2026-10-15").put("time","15:00").put("endDate","2026-10-15").put("endTime","16:00").put("kind","remote").put("calendarTitle","Календарь подразделения"),
-            JSONObject().put("id","task").put("title","Проверить спецификацию по 191 аудитории").put("date","2026-10-15").put("time","17:00").put("kind","task"))
-        @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<CalendarState>).value=CalendarState(open=true,owner=owner,day="2026-10-15",entries=entries.map {CalendarEntry(it.getString("id"),it)},notice="Сохранённые события календарей.")
-        paparazzi.snapshot(name="calendar"){InboxTheme{NativeCalendarScreen(model,{})}}
+            JSONObject().put("id","meeting").put("title","Материалы к защите Шахматовой").put("date","2026-10-15").put("time","15:00").put("endDate","2026-10-15").put("endTime","16:00").put("kind","remote").put("calendarTitle","Публичные мероприятия").put("location","Санкт-Петербург, Галерная улица, 58–60, аудитории 138–155").put("description","Повестка заседания комиссии и порядок подключения участников."),
+            JSONObject().put("id","task").put("title","Проверить спецификацию по 191 аудитории").put("date","2026-10-15").put("time","17:00").put("kind","task"),
+            JSONObject().put("id","monday").put("title","Проверить расписание недели").put("date","2026-10-12").put("time","09:00").put("kind","event"),
+            JSONObject().put("id","after-week").put("title","Планирование следующей недели").put("date","2026-10-24").put("time","11:00").put("kind","event"))
+        @Suppress("UNCHECKED_CAST") (field.get(model) as MutableState<CalendarState>).value=CalendarState(open=true,owner=owner,day="2026-10-15",mode=view,searchQuery=query,hiddenCalendars=hidden,entries=entries.map {CalendarEntry(it.getString("id"),it)},notice="Сохранённые события календарей.")
+        paparazzi.snapshot(name="calendar"){InboxTheme(mode=mode){NativeCalendarScreen(model,{})}}
+    }
+    @Test fun calendarFilteredDayLight(){renderCalendar("light","day","",setOf("tasks"))}
+    @Test fun calendarDayPopupLight(){renderCalendarPopup("light")}
+    @Test fun calendarDayPopupDark(){renderCalendarPopup("dark")}
+    private fun renderCalendarPopup(mode:String){
+        val entries=(1..16).map {n->CalendarEntry("day-$n",JSONObject().put("id","day-$n").put("title",if(n==1)"отд. 2 РК № 11329/1 VIII Международная научно-практическая конференция «Синергия языков и культур: междисциплинарные исследования»" else "Заседание комиссии · вопрос $n").put("date","2026-10-15").put("time","10:30").put("endTime","13:00").put("kind","remote").put("calendarTitle","Публичные мероприятия").put("location","Санкт-Петербург, Галерная улица, 58–60, аудитории 138–155").put("description","Программа конференции и материалы участников."))}
+        val state=CalendarState(open=true,owner=owner,day="2026-10-15",entries=entries)
+        // Layoutlib does not capture the separate modal window: render the exact shared content.
+        paparazzi.snapshot(name="day-popup") {InboxTheme(mode=mode){
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize(),contentAlignment=androidx.compose.ui.Alignment.BottomCenter) {
+                androidx.compose.material3.Surface {NativeCalendarDaySheetContent(state,entries,true,{}, {_,_->},{},{},{},{},{})}
+            }
+        }}
+    }
+    @Test fun calendarTaskDraftUsesSelectedDateAndReturnsWithoutSaving(){
+        val application=PilotApplication()
+        val context=object:android.content.ContextWrapper(paparazzi.context){override fun getApplicationContext():Context=application}
+        android.content.ContextWrapper::class.java.getDeclaredMethod("attachBaseContext",Context::class.java).apply {isAccessible=true}.invoke(application,context)
+        application.locks=AppLock(context)
+        val model=NativeWorkspaceModel(application)
+        model.javaClass.getDeclaredField("foreground").apply {isAccessible=true}.setBoolean(model,true)
+        val field=model.javaClass.getDeclaredField("state\$delegate").apply {isAccessible=true}
+        @Suppress("UNCHECKED_CAST")
+        val holder=field.get(model) as MutableState<WorkspaceState>
+        holder.value=WorkspaceState(open=true,owner=owner,kind="tasks",eventRoute=true,eventDay="2026-12-31")
+        model.edit(initialDay="2026-12-31")
+        org.junit.Assert.assertEquals("2026-12-31",model.state.editor?.getString("date"))
+        org.junit.Assert.assertFalse(model.state.editor!!.has("calendarSource"))
+        org.junit.Assert.assertTrue(model.state.rows.isEmpty())
+        model.leave(true)
+        org.junit.Assert.assertFalse(model.state.open)
+        org.junit.Assert.assertNull(model.state.editor)
+        org.junit.Assert.assertEquals("2026-12-31",model.takeEventReturn()?.first)
+        org.junit.Assert.assertNull(model.takeEventReturn())
     }
     @Test fun workspaceTasks() {
         val model=NativeWorkspaceModel(PreviewApplication(paparazzi.context))

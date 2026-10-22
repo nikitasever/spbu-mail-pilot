@@ -11,6 +11,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
@@ -33,7 +35,9 @@ internal fun NativeCalendarScreen(
     fullClient: () -> Unit,
     editEvent: (String, String?) -> Unit = { _, _ -> },
     openMail: (String) -> Unit = {},
-    createTask: (JSONObject) -> Unit = {}
+    createTask: (JSONObject) -> Unit = {},
+    newTask: (String) -> Unit = {},
+    tasksEnabled: Boolean = true
 ) {
     val state = model.state
     val visibleEntries=state.entries.filter {NativeCalendarVisibility.visible(it.data,state.hiddenCalendars)}
@@ -41,6 +45,7 @@ internal fun NativeCalendarScreen(
     val month = YearMonth.from(date)
     val label = DateTimeFormatter.ofPattern("d MMMM, EEEE", Locale.forLanguageTag("ru"))
     var searchOpen by remember { mutableStateOf(false) }
+    var daySheetOpen by rememberSaveable { mutableStateOf(false) }
     val needle = state.searchQuery.trim().lowercase(Locale.ROOT)
     val matchesSearch: (CalendarEntry) -> Boolean = remember(needle) {
         { entry ->
@@ -49,19 +54,19 @@ internal fun NativeCalendarScreen(
                 .any { entry.data.optString(it).lowercase(Locale.ROOT).contains(needle) }
         }
     }
-    BackHandler(onBack = model::close)
+    BackHandler(enabled = daySheetOpen) { daySheetOpen = false }
+    BackHandler(enabled = !daySheetOpen, onBack = model::close)
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Календарь") },
+                title = { Text("Календарь",maxLines=1,overflow=TextOverflow.Ellipsis) },
                 navigationIcon = { TextButton(onClick = model::close) { Text("Назад") } },
                 actions = {
-                    TextButton(onClick = model::openSources, enabled = true) { Text("Источники") }
                     TextButton(onClick = {
                         if (searchOpen && state.searchQuery.isNotEmpty()) model.clearSearch()
                         searchOpen = !searchOpen
                     }) { Text("Поиск") }
-                    TextButton(onClick = { model.load(true) }, enabled = !state.busy) { Text("Обновить") }
+                    IconButton(onClick = { model.load(true) }, enabled = !state.busy) { Text("↻",fontSize=26.sp,modifier=Modifier.semantics {contentDescription="Обновить календарь"}) }
                 }
             )
         },
@@ -151,7 +156,7 @@ internal fun NativeCalendarScreen(
                                 val selected = day == date
                                 val background = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.background
                                 Surface(
-                                    onClick = { model.select(day.toString()) },
+                                    onClick = { model.select(day.toString()); daySheetOpen = true },
                                     modifier = Modifier.weight(1f).height(64.dp).semantics {
                                         contentDescription = day.format(label) + ", событий и задач: " + entries.size
                                     },
@@ -194,12 +199,15 @@ internal fun NativeCalendarScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            if (state.mode in listOf("week", "month") && needle.isEmpty()) item {
+                Text("Нажмите на день, чтобы открыть события и задачи.", Modifier.padding(horizontal=16.dp,vertical=12.dp),color=MaterialTheme.colorScheme.onSurfaceVariant,fontSize=13.sp)
+            }
             val days = if (state.mode == "agenda" || needle.isNotEmpty()) {
                 generateSequence(month.atDay(1)) { it.plusDays(1) }.takeWhile { YearMonth.from(it) == month }.toList()
             } else {
                 listOf(date)
             }
-            days.forEach { day ->
+            if (state.mode == "day" || state.mode == "agenda" || needle.isNotEmpty()) days.forEach { day ->
                 val entries = visibleEntries.filter { NativeAgenda.onDay(it.data, day.toString()) && matchesSearch(it) }
                 if ((day == date && needle.isEmpty()) || entries.isNotEmpty()) {
                     item(key = "day:$day") {
@@ -238,6 +246,16 @@ internal fun NativeCalendarScreen(
             }
             item { Spacer(Modifier.height(16.dp)) }
         }
+    }
+
+    if (daySheetOpen && (state.mode == "week" || state.mode == "month")) {
+        val dayEntries=visibleEntries.filter { NativeAgenda.onDay(it.data,state.day)&&matchesSearch(it) }
+        NativeCalendarDaySheet(state,dayEntries,tasksEnabled,{daySheetOpen=false},
+            editEvent={day,id->daySheetOpen=false;editEvent(day,id)},
+            newTask={day->daySheetOpen=false;newTask(day)},
+            openMail={id->daySheetOpen=false;openMail(id)},
+            createTask={event->daySheetOpen=false;createTask(event)},
+            unlinkMail=model::requestUnlink,retry={model.load(true)})
     }
 
     if (state.sourcesOpen) {
@@ -486,73 +504,58 @@ private fun calendarColor(kind: String): Color {
     }
 }
 
-@Composable
-private fun NativeCalendarCard(
-    entry: CalendarEntry,
-    enabled: Boolean,
-    links: JSONArray,
-    edit: () -> Unit,
-    openMail: (String) -> Unit,
-    unlinkMail: (String) -> Unit,
-    createTask: () -> Unit
-) {
-    val data = entry.data
-    val kind = data.optString("kind")
-    var expanded by remember(entry.key) { mutableStateOf(false) }
-    Card(
-        onClick = { expanded = !expanded },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-    ) {
-        Column(Modifier.padding(12.dp)) {
-            Text(NativeAgenda.timeRange(data), fontSize = 12.sp, color = calendarColor(kind))
-            Text(data.optString("title", "Без названия"), style = MaterialTheme.typography.titleSmall)
-            if (data.optString("calendarTitle").isNotBlank()) {
-                Text(data.optString("calendarTitle"), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (expanded) {
-                listOf("location", "description", "notes").forEach { field ->
-                    if (data.optString(field).isNotBlank()) Text(data.optString(field), Modifier.padding(top = 8.dp), fontSize = 14.sp)
-                }
-            }
-            if (kind == "event" || kind == "remote") {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (kind == "event") {
-                        TextButton(onClick = edit, enabled = enabled) { Text("Изменить своё событие") }
-                    }
-                    TextButton(onClick = createTask, enabled = enabled) { Text("Создать задачу") }
-                }
-            }
-            if (links.length() > 0) {
-                Text("Связанные письма · ${links.length()}", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                for (index in 0 until links.length()) {
-                    val link = links.getJSONObject(index)
-                    val mail = link.optJSONObject("mail")
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                    ) {
-                        TextButton(onClick = { openMail(link.toString()) }, enabled = enabled, modifier = Modifier.weight(1f)) {
-                            Text(
-                                mail?.optString("subject")?.ifBlank { "Открыть письмо" } ?: "Повреждённая ссылка",
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        TextButton(onClick = { unlinkMail(link.optString("id")) }, enabled = enabled) {
-                            Text("Отвязать", color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 @Composable private fun CalendarVisibilityChoice(title:String,checked:Boolean,toggle:()->Unit){
     Row(Modifier.fillMaxWidth().heightIn(min=48.dp).clickable(onClick=toggle),verticalAlignment=Alignment.CenterVertically){
         Checkbox(checked=checked,onCheckedChange=null)
         Text(title,modifier=Modifier.weight(1f).padding(start=8.dp),style=MaterialTheme.typography.bodyMedium)
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable internal fun NativeCalendarDaySheet(
+    state:CalendarState,entries:List<CalendarEntry>,tasksEnabled:Boolean,
+    dismiss:()->Unit,editEvent:(String,String?)->Unit,newTask:(String)->Unit,
+    openMail:(String)->Unit,createTask:(JSONObject)->Unit,unlinkMail:(String)->Unit,retry:()->Unit
+) {
+    ModalBottomSheet(onDismissRequest=dismiss,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true),containerColor=MaterialTheme.colorScheme.surface,contentColor=MaterialTheme.colorScheme.onSurface) {
+        NativeCalendarDaySheetContent(state,entries,tasksEnabled,dismiss,editEvent,newTask,openMail,createTask,unlinkMail,retry)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable internal fun NativeCalendarDaySheetContent(
+    state:CalendarState,entries:List<CalendarEntry>,tasksEnabled:Boolean,
+    dismiss:()->Unit,editEvent:(String,String?)->Unit,newTask:(String)->Unit,
+    openMail:(String)->Unit,createTask:(JSONObject)->Unit,unlinkMail:(String)->Unit,retry:()->Unit
+) {
+    val date=LocalDate.parse(state.day)
+    val label=date.format(DateTimeFormatter.ofPattern("d MMMM, EEEE",Locale.forLanguageTag("ru")))
+        Column(Modifier.fillMaxWidth().heightIn(max=androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp*.82f).navigationBarsPadding()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal=16.dp),verticalAlignment=Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(label,fontSize=18.sp,fontWeight=FontWeight.SemiBold)
+                    Text(if(state.busy)"Загрузка…" else "Событий и задач: ${entries.size} · Время Москвы",fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick=dismiss){Text("×",fontSize=26.sp,modifier=Modifier.semantics {contentDescription="Закрыть расписание дня"})}
+            }
+            HorizontalDivider(Modifier.padding(top=12.dp),color=MaterialTheme.colorScheme.outlineVariant)
+            if(state.busy)LinearProgressIndicator(Modifier.fillMaxWidth())
+            LazyColumn(Modifier.fillMaxWidth().weight(1f,fill=false),contentPadding=PaddingValues(vertical=12.dp)) {
+                state.error?.let {error->item {Text(error,Modifier.padding(horizontal=16.dp),color=MaterialTheme.colorScheme.error);TextButton(onClick=retry,enabled=!state.busy){Text("Повторить загрузку")}}}
+                if(entries.isEmpty())item {
+                    Text(if(state.busy)"Загружаем события…" else if(state.error!=null)"События недоступны. Повторите загрузку." else if(state.searchQuery.isNotBlank())"На этот день совпадений нет." else "На этот день ничего не запланировано.",Modifier.fillMaxWidth().padding(24.dp),color=MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                items(entries,key={it.key}) {entry->
+                    NativeCalendarCard(entry=entry,enabled=!state.busy,links=remember(entry.key,state.links) {
+                        val all=JSONArray();state.links.forEach {all.put(it)}
+                        runCatching {NativeMailLinks.forEvent(entry.data,all)}.getOrDefault(JSONArray())
+                    },edit={editEvent(entry.data.optString("date"),entry.data.optString("id"))},openMail=openMail,unlinkMail=unlinkMail,createTask={createTask(entry.data)},sheet=true)
+                }
+            }
+            HorizontalDivider(color=MaterialTheme.colorScheme.outlineVariant)
+            Row(Modifier.fillMaxWidth().padding(16.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                Button(onClick={newTask(state.day)},enabled=!state.busy&&tasksEnabled,modifier=Modifier.weight(1f)){Text("Задача")}
+                OutlinedButton(onClick={editEvent(state.day,null)},enabled=!state.busy,modifier=Modifier.weight(1f)){Text("Событие")}
+            }
+        }
 }

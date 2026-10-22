@@ -222,7 +222,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
                     val owner=calendar.state.owner
                     calendar.close()
                     workspace.openCalendarTask(owner,event)
-                })
+                },newTask={day->workspace.openCalendarNewTask(calendar.state.owner,day)},tasksEnabled=settings.state.ready&&settings.state.owner==calendar.state.owner&&settings.state.options.optBoolean("showTasks",true))
             }
             else if(contacts.state.open) NativeContactsScreen(contacts,{email->
                 contacts.person(email)?.let {composer.open(contacts.state.owner,recipient=it.email)}
@@ -339,14 +339,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
         require(file.parentFile == File(cacheDir, "attachments").canonicalFile && file.isFile)
         val name = value.getString("name"); val mime = value.getString("mime")
         if(value.optBoolean("_share")){ShareActions.file(this,file,mime,name);return}
-        val uri = Uri.Builder().scheme("content").authority(AttachmentProvider.AUTHORITY).appendPath(file.name).build()
-        val intent = when {
-            PdfPreviewPolicy.pdf(name, mime) -> Intent(this, PdfPreviewActivity::class.java).setData(uri)
-            DocxReader.docx(name, mime) -> Intent(this, DocxPreviewActivity::class.java).setData(uri)
-            else -> Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION).apply { clipData = ClipData.newRawUri(name, uri) }
-        }
-        startActivity(intent.putExtra("name", name).putExtra("appearance", settings.state.options.optString("theme","system")))
+        AttachmentOpen.open(this,file,name,mime,settings.state.options.optString("theme","system"))
     }
 
 }
