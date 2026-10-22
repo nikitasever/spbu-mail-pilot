@@ -28,6 +28,7 @@ cat > "$DIR/squid.conf" <<'CONF'
 http_port 127.0.0.1:31290
 visible_hostname spbu-gemini-proxy
 pid_filename none
+pinger_enable off
 cache_effective_user proxy
 cache_effective_group proxy
 auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/spbu-gemini-proxy/passwords
