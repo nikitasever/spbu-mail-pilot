@@ -10,7 +10,8 @@ import java.util.concurrent.Executors
 
 internal data class NativeAiState(val owner:String="",val open:Boolean=false,val ready:Boolean=false,val busy:Boolean=false,
     val enabled:Boolean=true,val configured:Boolean=false,val model:String=AiConfiguration.DEFAULT_MODEL,val initialModel:String=AiConfiguration.DEFAULT_MODEL,
-    val proxyConfigured:Boolean=false,val proxyPassword:String="",val key:String="",val removeConfirm:Boolean=false,val discard:Boolean=false,val error:String?=null,val notice:String?=null) {
+    val proxyConfigured:Boolean=false,val proxyPassword:String="",val key:String="",val removeConfirm:Boolean=false,val discard:Boolean=false,val error:String?=null,val notice:String?=null,
+    val checkingProxy:Boolean=false,val proxyCheckResult:String?=null,val proxyCheckError:String?=null) {
     override fun toString()="NativeAiState(open=$open,ready=$ready,busy=$busy)"
 }
 
@@ -19,9 +20,11 @@ internal class NativeAiSettingsModel(app:Application):AndroidViewModel(app) {
     private val context=app.applicationContext
     private val main=Handler(Looper.getMainLooper())
     private val worker=Executors.newSingleThreadExecutor()
+    private val closer=Executors.newSingleThreadExecutor()
     @Volatile private var foreground=false
     @Volatile private var closed=false
-    private var generation=0L
+    @Volatile private var generation=0L
+    @Volatile private var proxyCheck:java.util.concurrent.atomic.AtomicReference<Runnable?>?=null
     private var mutating=false
     private var options=JSONObject()
     private var modelBaseline=JSONObject()
@@ -34,14 +37,14 @@ internal class NativeAiSettingsModel(app:Application):AndroidViewModel(app) {
     }
     private fun interactive()=foreground&&!closed&&!AppLock.locked(context)&&state.open&&state.ready&&!state.busy&&!state.discard&&!state.removeConfirm
     fun resume(){foreground=true;if(state.open&&!mutating)load()}
-    fun pause(){foreground=false;generation++;state=state.copy(key="",proxyPassword="",removeConfirm=false,discard=false)}
+    fun pause(){foreground=false;generation++;stopProxyCheck();state=state.copy(key="",proxyPassword="",removeConfirm=false,discard=false,busy=if(state.checkingProxy)false else state.busy,checkingProxy=false,proxyCheckResult=null,proxyCheckError=null)}
     fun open(owner:String){if(!foreground||closed||state.busy||AppLock.locked(context)||!NativeOpenTarget.account(owner))return
         if(state.owner!=owner){state=NativeAiState(owner=owner);options=JSONObject();modelBaseline=JSONObject();keyVersion=-1}
         state=state.copy(open=true);load()
     }
     fun load(){
-        if(!foreground||closed||!state.open||mutating||AppLock.locked(context))return
-        val snapshot=state;val ticket=++generation;state=state.copy(busy=true,error=null)
+        if(!foreground||closed||!state.open||mutating||state.checkingProxy||AppLock.locked(context))return
+        val snapshot=state;val ticket=++generation;state=state.copy(busy=true,error=null,proxyCheckResult=null,proxyCheckError=null)
         worker.execute {try {
             val login=allowed(snapshot.owner)
             val data=synchronized(ReplyReminderCenter::class.java){JSONObject(NoticeCenter.state(context,login).getString("state","{}")!!)}
@@ -100,11 +103,36 @@ internal class NativeAiSettingsModel(app:Application):AndroidViewModel(app) {
             main.post {mutating=false;if(!closed&&state.owner==owner){keyVersion=next.second;state=state.copy(busy=false,key="",removeConfirm=false,configured=next.first,notice=if(value==null)"Общий ключ удалён для всех ящиков." else "Общий ключ зашифрован и сохранён. Сетевой запрос не выполнялся.")}}
         }catch(_:Exception){GeminiDigest.cancelAll();main.post {mutating=false;if(!closed)state=state.copy(busy=false,removeConfirm=false,error="Ключ не сохранён или удаление не подтверждено. Возможно, его изменили в другом окне. Перечитайте статус перед повтором.")}}}
     }
-    fun proxyPassword(value:String){if(interactive()&&value.length<=256)state=state.copy(proxyPassword=value,error=null,notice=null)}
+    fun proxyPassword(value:String){if(interactive()&&value.length<=256)state=state.copy(proxyPassword=value,error=null,notice=null,proxyCheckResult=null,proxyCheckError=null)}
+    private fun stopProxyCheck(){val captured=proxyCheck;proxyCheck=null;if(captured!=null)closer.execute {captured.get()?.run()}}
+    fun cancelProxyCheck(){if(!state.checkingProxy)return;generation++;stopProxyCheck();state=state.copy(busy=false,checkingProxy=false,proxyCheckResult="Проверка отменена.",proxyCheckError=null)}
+    fun checkProxy(){
+        if(!interactive()||!state.proxyConfigured||state.proxyPassword.isNotEmpty())return
+        val owner=state.owner;val ticket=++generation
+        val cancellation=java.util.concurrent.atomic.AtomicReference<Runnable?>();proxyCheck=cancellation
+        state=state.copy(busy=true,checkingProxy=true,proxyCheckResult=null,proxyCheckError=null)
+        worker.execute {
+            var started=false
+            try{
+                allowed(owner);val secret=GeminiProxyVault(context).snapshot();check(secret.value.isNotEmpty())
+                val current=java.util.function.BooleanSupplier {foreground&&!closed&&generation==ticket&&state.open&&state.owner==owner&&!AppLock.locked(context)&&secret.current()}
+                check(current.asBoolean);started=true
+                val code=GeminiProxyTransport(secret.value).checkConnection(current){cancel->cancellation.set(cancel);if(!current.asBoolean)cancel.run()}
+                allowed(owner)
+                main.post {if(!closed&&foreground&&generation==ticket&&state.open&&state.owner==owner&&!AppLock.locked(context)){
+                    state=if(secret.current())state.copy(busy=false,checkingProxy=false,proxyCheckResult="Google ответил через прокси: HTTP $code. Маршрут и TLS проверены; ключ Gemini и модель не проверялись.")
+                    else state.copy(busy=false,checkingProxy=false,proxyCheckError="Настройки прокси изменились. Перечитайте статус перед новой проверкой.")
+                }}
+            }catch(error:Exception){
+                val message=if(started)GeminiDigest.safeFailure(error) else "Не удалось прочитать сохранённый пароль прокси. Перечитайте статус и сохраните пароль заново."
+                main.post {if(!closed&&foreground&&generation==ticket&&state.open&&state.owner==owner&&!AppLock.locked(context))state=state.copy(busy=false,checkingProxy=false,proxyCheckError=message)}
+            }finally{if(proxyCheck===cancellation)proxyCheck=null}
+        }
+    }
     fun saveProxy(){if(interactive()&&GeminiProxyTransport.validPassword(state.proxyPassword))proxySecret(state.proxyPassword)}
     fun disableProxy(){if(interactive()&&state.proxyConfigured)proxySecret(null)}
     private fun proxySecret(value:String?){
-        val owner=state.owner;val expected=proxyVersion;mutating=true;generation++;state=state.copy(busy=true,error=null,notice=null)
+        val owner=state.owner;val expected=proxyVersion;mutating=true;generation++;state=state.copy(busy=true,error=null,notice=null,proxyCheckResult=null,proxyCheckError=null)
         worker.execute {try{
             allowed(owner)
             val status=synchronized(GeminiProxyVault::class.java){allowed(owner);val vault=GeminiProxyVault(context);if(value==null)vault.remove(expected) else vault.save(value,expected);vault.configured() to vault.version()}
@@ -113,10 +141,10 @@ internal class NativeAiSettingsModel(app:Application):AndroidViewModel(app) {
         }catch(_:Exception){GeminiDigest.cancelAll();main.post{mutating=false;if(!closed)state=state.copy(busy=false,error="Не удалось сохранить прокси. Перечитайте статус и повторите.")}}}
     }
     private fun dirty()=state.proxyPassword.isNotEmpty()||state.key.isNotEmpty()||state.model!=state.initialModel
-    fun back(){if(!foreground||closed||state.busy)return
+    fun back(){if(!foreground||closed)return;if(state.checkingProxy){cancelProxyCheck();return};if(state.busy)return
         if(state.removeConfirm){state=state.copy(removeConfirm=false);return}
         if(dirty())state=state.copy(discard=true) else {generation++;state=state.copy(open=false,key="",proxyPassword="")}
     }
     fun discard(value:Boolean){if(!state.busy){state=if(value)state.copy(open=false,key="",proxyPassword="",model=state.initialModel,discard=false) else state.copy(discard=false);if(value)generation++}}
-    override fun onCleared(){closed=true;foreground=false;generation++;state=NativeAiState();worker.shutdown()}
+    override fun onCleared(){closed=true;foreground=false;generation++;stopProxyCheck();state=NativeAiState();worker.shutdown();closer.shutdown()}
 }

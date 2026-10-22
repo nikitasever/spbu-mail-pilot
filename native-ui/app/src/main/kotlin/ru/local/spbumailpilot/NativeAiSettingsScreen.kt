@@ -8,13 +8,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
 @Composable internal fun NativeAiSettingsScreen(model:NativeAiSettingsModel) {
     val s=model.state
     BackHandler {model.back()}
-    Scaffold(topBar={TopAppBar(title={Text("ИИ · Gemini")},navigationIcon={TextButton(onClick=model::back,enabled=!s.busy){Text("Назад")}})}){padding->
+    Scaffold(topBar={TopAppBar(title={Text("ИИ · Gemini")},navigationIcon={TextButton(onClick=model::back,enabled=!s.busy||s.checkingProxy){Text("Назад")}})}){padding->
         Column(Modifier.fillMaxSize().padding(padding).imePadding().verticalScroll(rememberScrollState()).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
             if(s.busy)LinearProgressIndicator(Modifier.fillMaxWidth())
             s.error?.let {Text(it,color=MaterialTheme.colorScheme.error)}
@@ -43,6 +46,17 @@ import androidx.compose.ui.unit.dp
             Text("Введите текущий пароль пользователя gemini на сервере. Допускаются буквы, цифры и специальные символы; формат из 48 символов больше не требуется.",style=MaterialTheme.typography.bodySmall)
             Button(onClick=model::saveProxy,enabled=s.ready&&!s.busy&&GeminiProxyTransport.validPassword(s.proxyPassword),modifier=Modifier.fillMaxWidth()){Text("Сохранить и включить прокси")}
             OutlinedButton(onClick=model::disableProxy,enabled=s.ready&&!s.busy&&s.proxyConfigured,modifier=Modifier.fillMaxWidth()){Text("Отключить прокси")}
+            OutlinedButton(onClick=model::checkProxy,enabled=s.ready&&!s.busy&&s.proxyConfigured&&s.proxyPassword.isEmpty(),modifier=Modifier.fillMaxWidth()){Text("Проверить соединение")}
+            Text("Проверка использует сохранённый пароль прокси. Ключ Gemini, письма и вложения не отправляются. Код HTTP 404 на тестовом адресе допустим.",style=MaterialTheme.typography.bodySmall)
+            if(s.proxyPassword.isNotEmpty())Text("Сначала сохраните введённый пароль прокси.",style=MaterialTheme.typography.bodySmall)
+            Column(Modifier.fillMaxWidth().heightIn(min=48.dp).semantics {liveRegion=LiveRegionMode.Polite}){
+                if(s.checkingProxy){
+                    Text("Проверяем соединение · до 20 секунд",style=MaterialTheme.typography.bodySmall)
+                    TextButton(onClick=model::cancelProxyCheck){Text("Отменить проверку")}
+                }
+                s.proxyCheckResult?.let {Text(it,style=MaterialTheme.typography.bodySmall)}
+                s.proxyCheckError?.let {Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)}
+            }
             TextButton(onClick=model::load,enabled=!s.busy){Text("Перечитать статус")}
         }
     }

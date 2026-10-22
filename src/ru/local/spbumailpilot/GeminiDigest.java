@@ -12,6 +12,23 @@ final class GeminiDigest {
  GeminiDigest(){synchronized(instances){instances.add(this);}}
  static void cancelAll(){java.util.List<GeminiDigest> copy;synchronized(instances){copy=new java.util.ArrayList<>(instances);}for(GeminiDigest digest:copy)digest.cancel();}
  interface Transport { String post(String endpoint,String key,String body,BooleanSupplier current,java.util.function.Consumer<Runnable> cancellation)throws Exception; }
+ enum ConnectionStep {PROXY_CONNECT,PROXY_TIMEOUT,PROXY_TLS,PROXY_AUTH,PROXY_DENIED,PROXY_UPSTREAM,PROXY_TUNNEL,GOOGLE_TLS,GOOGLE_TIMEOUT,GOOGLE_IO}
+ static final class ConnectionFailure extends IOException {
+  final ConnectionStep step;
+  ConnectionFailure(ConnectionStep step,Throwable cause){super(connectionMessage(step),cause);this.step=step;}
+ }
+ private static String connectionMessage(ConnectionStep step){switch(step){
+  case PROXY_CONNECT:return "Не удалось подключиться к прокси Gemini. Проверьте доступность сервера с телефона. [P01]";
+  case PROXY_TIMEOUT:return "Соединение с прокси Gemini не завершилось вовремя. Проверьте доступность порта с телефона. [P02]";
+  case PROXY_TLS:return "Не прошла проверка защищённого соединения с прокси. Проверьте время телефона и сертификат сервера. [P03]";
+  case PROXY_AUTH:return "Прокси отклонил сохранённый пароль. Введите текущий пароль пользователя gemini и сохраните его заново. [P04]";
+  case PROXY_DENIED:return "Прокси запретил туннель к Gemini. Проверьте правила доступа Squid. [P05]";
+  case PROXY_UPSTREAM:return "Прокси не смог подключиться к Google. Проверьте соединение и DNS на сервере. [P06]";
+  case PROXY_TUNNEL:return "Прокси не подтвердил создание туннеля. Проверьте журналы Squid и TLS-сервиса. [P07]";
+  case GOOGLE_TLS:return "Туннель через прокси создан, но защищённое соединение с Google не установлено. [G01]";
+  case GOOGLE_TIMEOUT:return "Туннель через прокси создан, но Google не ответил вовремя. [G02]";
+  default:return "Соединение с Google через прокси прервано. Автоматического прямого повтора нет. [G03]";
+ }}
  private volatile Runnable activeTransport;
  private volatile HttpsURLConnection active;
  Runnable cancellation(){generation.incrementAndGet();HttpsURLConnection current=active;Runnable transport=activeTransport;return ()->{if(transport!=null)transport.run();if(current!=null)try{current.disconnect();}catch(RuntimeException unavailable){}};}
@@ -47,6 +64,7 @@ final class GeminiDigest {
   return status(code);
  }
  static String safeFailure(Throwable error){
+  if(error instanceof ConnectionFailure)return connectionMessage(((ConnectionFailure)error).step);
   String message=error.getMessage();if(REGION_ERROR.equals(message))return REGION_ERROR;
   for(int code:new int[]{400,403,404,429,500})if(status(code).equals(message))return status(code);
   if(error instanceof java.net.UnknownHostException)return "Не удалось найти сервер Gemini. Проверьте подключение и DNS. Приложение использует прямой доступ к Google.";

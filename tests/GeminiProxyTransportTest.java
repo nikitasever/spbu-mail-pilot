@@ -18,6 +18,25 @@ public final class GeminiProxyTransportTest {
   check(!new GeminiProxyTransport(new String(new char[48]).replace('\0','a')).toString().contains("aaaa"));
   for(String value:new String[]{"fixture-Short9!","Fixture-Пароль:9!",new String(new char[48]).replace('\0','a')}){check(GeminiProxyTransport.validPassword(value));new GeminiProxyTransport(value);}
   for(String value:new String[]{"","   ","bad\r\nheader","bad\u0000value",new String(new char[257]).replace('\0','a')})check(!GeminiProxyTransport.validPassword(value));
+  GeminiProxyTransport.Attempt attempt=new GeminiProxyTransport.Attempt();
+  check(attempt.failure(new ConnectException()).step==GeminiDigest.ConnectionStep.PROXY_CONNECT);
+  check(attempt.failure(new SocketTimeoutException()).step==GeminiDigest.ConnectionStep.PROXY_TIMEOUT);
+  check(attempt.failure(new SSLHandshakeException("fixture-private-value")).step==GeminiDigest.ConnectionStep.PROXY_TLS);
+  check(attempt.failure(new IOException("Unexpected response code for CONNECT: 403")).step==GeminiDigest.ConnectionStep.PROXY_DENIED);
+  check(attempt.failure(new IOException("Unexpected response code for CONNECT: 502")).step==GeminiDigest.ConnectionStep.PROXY_UPSTREAM);
+  attempt.authRejected=true;
+  check(attempt.failure(new IOException()).step==GeminiDigest.ConnectionStep.PROXY_AUTH);
+  attempt.authRejected=false;attempt.googleTlsStarted=true;
+  check(attempt.failure(new SSLHandshakeException("fixture-private-value")).step==GeminiDigest.ConnectionStep.GOOGLE_TLS);
+  check(attempt.failure(new SocketTimeoutException()).step==GeminiDigest.ConnectionStep.GOOGLE_TIMEOUT);
+  for(GeminiDigest.ConnectionStep step:GeminiDigest.ConnectionStep.values()){
+   String visible=GeminiDigest.safeFailure(new GeminiDigest.ConnectionFailure(step,new IOException("fixture-private-value")));
+   check(!visible.contains("fixture-private-value"));check(visible.contains("[P")||visible.contains("[G"));
+  }
+  okhttp3.Request probe=GeminiProxyTransport.connectionCheckRequest();
+  check(probe.method().equals("GET")&&probe.body()==null&&probe.url().query()==null);
+  check(probe.url().toString().equals("https://generativelanguage.googleapis.com/"));
+  check(probe.header("x-goog-api-key")==null&&probe.header("Authorization")==null&&probe.header("Proxy-Authorization")==null);
   KeyManagerFactory km=KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());km.init(keys,"changeit".toCharArray());
   SSLContext server=SSLContext.getInstance("TLS");server.init(km.getKeyManagers(),null,null);
   for(boolean valid:new boolean[]{true,false}){
