@@ -51,30 +51,65 @@ final class GeminiProxyTransport implements GeminiDigest.Transport {
   };
  }
  static OkHttpClient client(String password,InetSocketAddress address,String fingerprint,BooleanSupplier current)throws GeneralSecurityException {
+  return client(password,address,fingerprint,current,new Attempt());
+ }
+ static final class Attempt {
+  volatile boolean googleTlsStarted,authRejected;
+  volatile int googleStatus;
+  GeminiDigest.ConnectionFailure failure(IOException error){
+   GeminiDigest.ConnectionStep step;
+   String message=error.getMessage()==null?"":error.getMessage();
+   if(authRejected||message.startsWith("Unexpected response code for CONNECT: 407"))step=GeminiDigest.ConnectionStep.PROXY_AUTH;
+   else if(!googleTlsStarted&&message.startsWith("Unexpected response code for CONNECT: 403"))step=GeminiDigest.ConnectionStep.PROXY_DENIED;
+   else if(!googleTlsStarted&&(message.startsWith("Unexpected response code for CONNECT: 502")||message.startsWith("Unexpected response code for CONNECT: 503")))step=GeminiDigest.ConnectionStep.PROXY_UPSTREAM;
+   else if(error instanceof SSLException)step=googleTlsStarted?GeminiDigest.ConnectionStep.GOOGLE_TLS:GeminiDigest.ConnectionStep.PROXY_TLS;
+   else if(error instanceof InterruptedIOException)step=googleTlsStarted?GeminiDigest.ConnectionStep.GOOGLE_TIMEOUT:GeminiDigest.ConnectionStep.PROXY_TIMEOUT;
+   else if(!googleTlsStarted&&(error instanceof ConnectException||error instanceof UnknownHostException||error instanceof NoRouteToHostException))step=GeminiDigest.ConnectionStep.PROXY_CONNECT;
+   else step=googleTlsStarted?GeminiDigest.ConnectionStep.GOOGLE_IO:GeminiDigest.ConnectionStep.PROXY_TUNNEL;
+   return new GeminiDigest.ConnectionFailure(step,error);
+  }
+ }
+ private static OkHttpClient client(String password,InetSocketAddress address,String fingerprint,BooleanSupplier current,Attempt attempt)throws GeneralSecurityException {
   return new OkHttpClient.Builder()
    .proxy(new Proxy(Proxy.Type.HTTP,address))
    .socketFactory(proxySockets(fingerprint))
    .proxyAuthenticator((route,response)->{
     if(!"CONNECT".equals(response.request().method()))return null;
-    if(response.request().header("Proxy-Authorization")!=null)return null;
+    if(response.request().header("Proxy-Authorization")!=null){attempt.authRejected=true;return null;}
     if(!current.getAsBoolean())return null;
     return response.request().newBuilder().header("Proxy-Authorization",Credentials.basic("gemini",password,java.nio.charset.StandardCharsets.UTF_8)).build();
+   })
+   .eventListener(new EventListener(){
+    @Override public void secureConnectStart(Call call){attempt.googleTlsStarted=true;}
+    @Override public void responseHeadersEnd(Call call,Response response){attempt.googleStatus=response.code();}
    })
    .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false)
    .connectTimeout(10,TimeUnit.SECONDS).readTimeout(60,TimeUnit.SECONDS).callTimeout(90,TimeUnit.SECONDS).build();
  }
  @Override public String post(String endpoint,String key,String body,BooleanSupplier current,Consumer<Runnable> cancellation)throws Exception {
+  return exchange(endpoint,key,body,current,cancellation,false);
+ }
+ /** Explicit route test: no API key, email text or attachment leaves the phone. */
+ int checkConnection(BooleanSupplier current,Consumer<Runnable> cancellation)throws Exception {
+  return Integer.parseInt(exchange("https://generativelanguage.googleapis.com/",null,null,current,cancellation,true));
+ }
+ static Request connectionCheckRequest(){return new Request.Builder().url("https://generativelanguage.googleapis.com/").get().build();}
+ private String exchange(String endpoint,String key,String body,BooleanSupplier current,Consumer<Runnable> cancellation,boolean probe)throws Exception {
   URI uri=URI.create(endpoint);
   if(!"https".equals(uri.getScheme())||!"generativelanguage.googleapis.com".equals(uri.getHost())||uri.getPort()!=-1)throw new IOException("Invalid Gemini destination");
   // socketFactory is used for the raw proxy hop only. OkHttp layers Google's normal TLS over CONNECT.
-  OkHttpClient client=client(password,new InetSocketAddress(HOST,PORT),CERT_SHA256,current);
-  Call call=client.newCall(new Request.Builder().url(endpoint).header("x-goog-api-key",key)
-   .post(RequestBody.create(body,MediaType.get("application/json; charset=utf-8"))).build());
+  Attempt attempt=new Attempt();
+  OkHttpClient client=client(password,new InetSocketAddress(HOST,PORT),CERT_SHA256,current,attempt);
+  if(probe)client=client.newBuilder().readTimeout(10,TimeUnit.SECONDS).callTimeout(20,TimeUnit.SECONDS).build();
+  Request request=probe?connectionCheckRequest():new Request.Builder().url(endpoint).header("x-goog-api-key",key)
+   .post(RequestBody.create(body,MediaType.get("application/json; charset=utf-8"))).build();
+  Call call=client.newCall(request);
   cancellation.accept(call::cancel);
   try{
    if(!current.getAsBoolean())throw new IOException("Отменено");
    try(Response response=call.execute()){
     if(!current.getAsBoolean())throw new IOException("Отменено");
+    if(probe)return Integer.toString(response.code());
     if(response.code()!=200){
      String message=GeminiDigest.status(response.code());
      if(response.code()==400||response.code()==403)try(InputStream input=response.body().byteStream()){message=GeminiDigest.remoteError(response.code(),input,current);}
@@ -87,6 +122,9 @@ final class GeminiProxyTransport implements GeminiDigest.Transport {
     }
     return new String(out.toByteArray(),java.nio.charset.StandardCharsets.UTF_8);
    }
+  }catch(IOException failure){
+   if(!current.getAsBoolean()||attempt.googleStatus!=0)throw failure;
+   throw attempt.failure(failure);
   }finally{call.cancel();client.connectionPool().evictAll();client.dispatcher().executorService().shutdown();}
  }
 }

@@ -427,3 +427,11 @@ during a read, while destructive actions remain disabled until it finishes.
 Reader order: subject, sender, attachment count/save-all and existing file cards, then mail
 body. Long mail histories must not push the attachment block below the fold. Preserve file
 open/save handlers, reply semantics, purple theme and scroll restoration.
+
+## Проверка Gemini-прокси
+
+В существующем разделе прокси — явная кнопка «Проверить соединение» и
+результат рядом с ней. Сохранённый пароль используется только после нажатия;
+ключ Gemini и тексты писем не читаются и не отправляются. Проверка маршрута
+не обозначается как проверка API-ключа или модели. Прежние Material3, тема,
+прокрутка, кнопки и текстовый прогресс с отменой сохраняются.
