@@ -84,6 +84,13 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
     private val categories by lazy { ViewModelProvider(this)[NativeCategoriesModel::class.java] }
     private val workspace by lazy { ViewModelProvider(this)[NativeWorkspaceModel::class.java] }
 
+    private var notificationPermissionEpoch by mutableStateOf(0)
+    private var pendingTestNotification=false
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        notificationPermissionEpoch++
+        if(!granted)pendingTestNotification=false
+        if(!granted)android.widget.Toast.makeText(this,"Уведомления не разрешены. Их можно включить в настройках Android.",android.widget.Toast.LENGTH_LONG).show()
+    }
     private var nativeAppearanceMode="system"
     private var resumed by mutableStateOf(false)
     private var unlockEpoch by mutableStateOf(0)
@@ -119,7 +126,23 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
                 val dark=darkAppearance
                 val style=if(dark)androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else androidx.activity.SystemBarStyle.light(android.graphics.Color.TRANSPARENT,android.graphics.Color.TRANSPARENT)
                 enableEdgeToEdge(statusBarStyle=style,navigationBarStyle=style)
-                if(resumed&&!AppLock.locked(this@ComposeInboxActivity))BackgroundMailService.reconcile(this@ComposeInboxActivity,true)
+            }
+            // Retry after asynchronous account loading, unlock and permission results, not just a theme change.
+            LaunchedEffect(settings.state.ready,settings.state.owner,settings.state.options,resumed,unlockEpoch,notificationPermissionEpoch){
+                if(resumed&&!AppLock.locked(this@ComposeInboxActivity)&&settings.state.ready&&settings.state.owner.isNotBlank()){
+                    BackgroundMailService.reconcile(this@ComposeInboxActivity,true)
+                    if(pendingTestNotification&&NoticeCenter.allowed(this@ComposeInboxActivity)){
+                        pendingTestNotification=false
+                        NoticeCenter.test(this@ComposeInboxActivity)
+                    }
+                    val options=settings.state.options
+                    val prompt=getSharedPreferences("native-notification-permission",MODE_PRIVATE)
+                    if(android.os.Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED&&
+                        (options.optBoolean("mailNotifications",true)||options.optBoolean("taskNotifications",true))&&!prompt.getBoolean("asked",false)){
+                        prompt.edit().putBoolean("asked",true).apply()
+                        notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
             }
             LaunchedEffect(settings.state.owner,settings.state.options,inbox.state.owner){
                 if(settings.state.ready&&settings.state.owner==inbox.state.owner)inbox.threadPreference(settings.state.owner,settings.state.options.optBoolean("mailThreads",true))
@@ -418,6 +441,15 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             NativeMailExtrasDialogs(extras)
             NativeExportDialog(exports)
         } }
+    }
+    internal fun testNotifications(){
+        if(!resumed||AppLock.locked(this))return
+        if(android.os.Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+            pendingTestNotification=true
+            getSharedPreferences("native-notification-permission",MODE_PRIVATE).edit().putBoolean("asked",true).apply()
+            notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }else if(NoticeCenter.allowed(this))NoticeCenter.test(this)
+        else android.widget.Toast.makeText(this,"Разрешите уведомления в настройках Android.",android.widget.Toast.LENGTH_LONG).show()
     }
     override fun getNativeAppearanceMode():String = nativeAppearanceMode
     private fun applyFlagSecure() {

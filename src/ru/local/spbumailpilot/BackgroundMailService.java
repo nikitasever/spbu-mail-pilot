@@ -13,7 +13,8 @@ public final class BackgroundMailService extends Service {
     private static volatile boolean running;
     private BackgroundMailLoop loop;
     static boolean wanted(Context context)throws Exception{
-        return NoticeCenter.allowed(context)&&NoticeCenter.anyMail(context,true);
+        NoticeCenter.channels(context);
+        return NoticeCenter.channelAllowed(context,"mail-arrivals")&&NoticeCenter.anyMail(context,true);
     }
     static void reconcile(Context context,boolean visible){
         try{if(!wanted(context)){context.stopService(new Intent(context,BackgroundMailService.class));return;}
@@ -21,7 +22,7 @@ public final class BackgroundMailService extends Service {
         }catch(Exception unavailable){context.getSharedPreferences("background-mail-status",MODE_PRIVATE).edit().putBoolean("startFailed",true).apply();}
     }
     private Notification notice(){
-        PendingIntent open=PendingIntent.getActivity(this,ID,new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent open=PendingIntent.getActivity(this,ID,UiEntry.open(this).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this,CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle("Фоновая проверка почты")
             .setContentText("Сохранённые ящики · проверка раз в минуту").setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_SECRET).build();
     }
@@ -46,7 +47,15 @@ public final class BackgroundMailService extends Service {
     }
     static String status(Context context){
         PowerManager power=context.getSystemService(PowerManager.class);
-        return (running?"Фоновая служба работает.":"Фоновая служба остановлена.")+(power.isIgnoringBatteryOptimizations(context.getPackageName())?" Работа без ограничений батареи разрешена.":" Разрешите работу без ограничений батареи: во время сна Android может задерживать сеть.");
+        android.content.SharedPreferences record=context.getSharedPreferences("background-mail-status",MODE_PRIVATE);
+        String status=running?"Фоновая служба работает.":"Фоновая служба остановлена.";
+        if(!NoticeCenter.allowed(context))status+=" Уведомления запрещены в Android.";
+        else if(!NoticeCenter.channelAllowed(context,"mail-arrivals"))status+=" Канал «Новые письма» выключен в Android.";
+        if(record.getBoolean("startFailed",false))status+=" Android не разрешил запуск фоновой службы. Откройте приложение повторно.";
+        if(record.getBoolean("checkFailed",false))status+=" Последняя фоновая проверка не удалась."+(running?" Служба повторит попытку.":"");
+        long checked=record.getLong("checkedAt",0);
+        if(checked>0)status+=" Успешная проверка: "+java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.MEDIUM,new java.util.Locale("ru")).format(new java.util.Date(checked))+".";
+        return status+(power.isIgnoringBatteryOptimizations(context.getPackageName())?" Работа без ограничений батареи разрешена.":" Разрешите работу без ограничений батареи: во время сна Android может задерживать сеть.");
     }
     @Override public void onDestroy(){running=false;if(loop!=null)loop.close();loop=null;stopForeground(STOP_FOREGROUND_REMOVE);super.onDestroy();}
     @Override public IBinder onBind(Intent intent){return null;}

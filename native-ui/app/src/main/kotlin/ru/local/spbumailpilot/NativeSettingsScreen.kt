@@ -1,6 +1,7 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package ru.local.spbumailpilot
 
+import androidx.lifecycle.repeatOnLifecycle
 import android.provider.Settings
 import android.content.Intent
 import androidx.activity.compose.BackHandler
@@ -23,6 +24,8 @@ import androidx.compose.ui.unit.dp
     bottomBar: @Composable () -> Unit = {}
 ) {
     val s = model.state
+    var backgroundStatus by remember {mutableStateOf(BackgroundMailService.status(activity))}
+    LaunchedEffect(activity){activity.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED){while(true){backgroundStatus=BackgroundMailService.status(activity);kotlinx.coroutines.delay(5000)}}}
     BackHandler { model.back() }
     Scaffold(
         bottomBar = bottomBar,
@@ -88,7 +91,8 @@ import androidx.compose.ui.unit.dp
             Text("Фоновая проверка использует постоянное уведомление. Частота зависит от ограничений Android; настройка не гарантирует доставку в реальном времени.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             Text(if(NoticeCenter.allowed(activity))"Android разрешает уведомления" else "Уведомления ограничены в Android",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary)
             OutlinedButton(onClick={model.action {activity.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,activity.packageName))}},enabled=!s.busy,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().heightIn(min=42.dp)){Text("Уведомления в Android")}
-            OutlinedButton(onClick={model.action {NoticeCenter.test(activity)}},enabled=!s.busy,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().heightIn(min=42.dp)){Text("Проверить уведомление")}
+            Text(backgroundStatus,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick={model.action {activity.testNotifications()}},enabled=!s.busy,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().heightIn(min=42.dp)){Text("Проверить уведомление")}
             OutlinedButton(onClick={model.action {activity.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))}},enabled=!s.busy,shape=RoundedCornerShape(12.dp),modifier=Modifier.fillMaxWidth().heightIn(min=42.dp)){Text("Ограничения фоновой работы")}
             HorizontalDivider(thickness=0.5.dp,color=MaterialTheme.colorScheme.outlineVariant)
             Text("Безопасность и приложение",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
