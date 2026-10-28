@@ -21,7 +21,7 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: desktop-windows-readonly-prototype
-          run-id: 40760245789
+          run-id: 40761473511
           github-token: ${{ github.token }}
           path: candidate
       - name: Verify immutable installer checksum
@@ -65,7 +65,7 @@ jobs:
             if (-not $app.WaitForExit(10000)) { throw 'App did not exit after window close' }
             Start-Sleep -Seconds 2
             if (Get-Process -Id $engine.ProcessId -ErrorAction SilentlyContinue) { throw 'JVM remained after app exit' }
-            '{"installed":true,"windowOpened":true,"jvmStoppedOnExit":true,"buildRun":40760245789}' | Set-Content -Encoding utf8 verified/install-proof.json
+            '{"installed":true,"windowOpened":true,"jvmStoppedOnExit":true,"buildRun":40761473511}' | Set-Content -Encoding utf8 verified/install-proof.json
           } finally {
             if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue }
             if ($engine) { Stop-Process -Id $engine.ProcessId -Force -ErrorAction SilentlyContinue }
