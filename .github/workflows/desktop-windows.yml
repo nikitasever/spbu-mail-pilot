@@ -1,0 +1,67 @@
+name: Desktop Windows read-only prototype
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Locked protocol dependencies
+        run: python -c 'import build; build.dependencies()'
+      - name: Install frontend tools
+        working-directory: desktop
+        run: npm ci
+      - name: Protocol and UI state tests
+        working-directory: desktop
+        run: npm test
+      - name: Build and test JVM engine
+        run: python desktop/tools/test-engine.py
+      - name: Bundle runtime
+        run: python desktop/tools/build-runtime.py
+      - name: Verify engine on bundled JVM
+        shell: pwsh
+        run: |
+          $env:JAVA_BIN = (Resolve-Path 'desktop/build/runtime/bin/java.exe').Path
+          python desktop/tools/test-engine.py
+      - name: Rust toolchain
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+      - name: Build Windows installer
+        working-directory: desktop
+        run: npm run tauri -- build
+      - name: Verify packaged resources and parent-child protocol
+        shell: pwsh
+        run: |
+          $probe = Start-Process -FilePath (Resolve-Path 'desktop/src-tauri/target/release/spbu-mail-desktop.exe').Path -ArgumentList '--verify-engine' -Wait -PassThru
+          if ($probe.ExitCode -ne 0) { throw 'Bundled engine probe failed' }
+          Get-ChildItem desktop/src-tauri/target/release/bundle/nsis/*.exe | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)"
+          } | Set-Content -Encoding utf8 desktop/build/SHA256SUMS-windows.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: desktop-windows-readonly-prototype
+          path: |
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            desktop/build/SHA256SUMS-windows.txt
+            desktop/src-tauri/Cargo.lock
+          if-no-files-found: error
+          retention-days: 14
