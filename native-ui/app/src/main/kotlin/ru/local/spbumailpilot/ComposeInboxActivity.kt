@@ -1859,6 +1859,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
             }
         }
         HorizontalDivider(thickness=0.5.dp,color=MaterialTheme.colorScheme.outlineVariant)
+        Text(if(state.foldersBusy)"Загружаем полный список с сервера…" else if(state.foldersOnline)"Папки с сервера" else "Сохранённый список. Письма в этих папках могут быть не скачаны.",Modifier.padding(horizontal=16.dp,vertical=4.dp),fontSize=12.sp,color=MaterialTheme.colorScheme.onSurfaceVariant)
         if(state.foldersBusy)LinearProgressIndicator(Modifier.fillMaxWidth())
         state.foldersError?.let {Text(it,Modifier.padding(16.dp),color=MaterialTheme.colorScheme.error,fontSize=13.sp)}
         LazyColumn(Modifier.weight(1f,fill=false).padding(vertical=6.dp)) {
