@@ -103,8 +103,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh run download 40384575745 --repo nikitasever/spbu-mail-pilot --name compose-original-proxy-signed --dir candidate
-          gh run view 40384575745 --repo nikitasever/spbu-mail-pilot --json headSha --jq .headSha > candidate/source-commit.txt
+          gh run download 40633972377 --repo nikitasever/spbu-mail-pilot --name compose-original-proxy-signed --dir candidate
+          gh run view 40633972377 --repo nikitasever/spbu-mail-pilot --json headSha --jq .headSha > candidate/source-commit.txt
           cd candidate
           sha256sum -c SHA256SUMS.txt
       - name: Verify identity and stage in isolated updates branch
@@ -135,7 +135,7 @@ jobs:
           target=pathlib.Path('updates/candidates/0.74-native.9')
           assert (target/'release-notes.md').is_file()
           shutil.copyfile(apk,target/apk.name)
-          info=dict(packageId='ru.local.spbumailpilot',versionName='0.74-native.9-original',versionCode=98,certificateSha256=cert,sha256=hashlib.sha256(apk.read_bytes()).hexdigest(),sourceCommit=pathlib.Path('candidate/source-commit.txt').read_text().strip(),buildRun=40384575745,sizeBytes=apk.stat().st_size)
+          info=dict(packageId='ru.local.spbumailpilot',versionName='0.74-native.9-original',versionCode=98,certificateSha256=cert,sha256=hashlib.sha256(apk.read_bytes()).hexdigest(),sourceCommit=pathlib.Path('candidate/source-commit.txt').read_text().strip(),buildRun=40633972377,sizeBytes=apk.stat().st_size)
           (target/'build-info-original.json').write_text(json.dumps(info,indent=2)+'\n')
           files=[apk.name,'spbu-mail-pilot-0.74-native.9-original-source.zip']
           (target/'SHA256SUMS-original.txt').write_text(''.join(hashlib.sha256((target/n).read_bytes()).hexdigest()+'  '+n+'\n' for n in files))
