@@ -16,7 +16,8 @@ import java.io.File
 import java.util.concurrent.Executors
 
 internal data class ComposeAttachment(val token: String, val name: String, val size: Long)
-internal data class ComposerState(val open: Boolean = false, val owner: String = "", val from: String = "",
+internal data class ComposerState(val minimized:Boolean=false,val sending:Boolean=false,val sendStage:String="preparing",val sendBytes:Long=0,val sendTotal:Long=-1,val transferTotal:Long=-1,val transferStopping:Boolean=false,
+    val open: Boolean = false, val owner: String = "", val from: String = "",
     val to: String = "", val cc: String = "", val bcc: String = "", val subject: String = "", val body: String = "",
     val accountValid: Boolean = false, val picking: Boolean = false, val importing: Boolean = false, val transferName: String = "", val transferBytes: Long = 0,
     val files: List<ComposeAttachment> = emptyList(), val draftId: String = "", val busy: Boolean = false, val saved: Boolean = false, val status: String = NativeDraft.EDITING,
@@ -43,6 +44,8 @@ internal class NativeComposerModel(app: Application) : AndroidViewModel(app) {
     private data class Pick(val owner: String, val id: String)
     private var pick: Pick? = null
     private val importCancelled = AtomicBoolean()
+    private val importCloser=Executors.newCachedThreadPool()
+    @Volatile private var importResources:NativeTransferCancellation?=null
     private var aiReplyContext=""
     private val aiSerial=AtomicLong()
     private val resumeSerial=AtomicLong()
@@ -71,7 +74,7 @@ internal class NativeComposerModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
-    fun pause() { serverGate.next();resumeSerial.incrementAndGet();aiSerial.incrementAndGet();state=state.copy(serverDelete=false,scheduleOpen=false,aiBusy=false,aiDiscard=false,bodyComposing=false,discardOpen=false);closeWritingTools(); recipients.clear(session=true); if (state.importing) importCancelled.set(true); foreground = false; cancelSend(); flush() }
+    fun pause() { serverGate.next();resumeSerial.incrementAndGet();aiSerial.incrementAndGet();state=state.copy(serverDelete=false,scheduleOpen=false,aiBusy=false,aiDiscard=false,bodyComposing=false,discardOpen=false);closeWritingTools(); recipients.clear(session=true); if (state.importing) cancelImport(); foreground = false; cancelSend(); flush() }
     private fun allowed(owner: String): SavedAccounts.Login {
         check(foreground && !AppLock.locked(context))
         val login = CredentialVault(context).load() ?: error("Account unavailable")
@@ -80,7 +83,7 @@ internal class NativeComposerModel(app: Application) : AndroidViewModel(app) {
     }
     private fun publish(action: () -> Unit) { main.post { if (!closed) action() } }
     fun open(owner: String, source: JSONObject? = null, replyAll: Boolean = false, forwardText: String? = null, restoreOnly: Boolean = false, recipient: String? = null,replyText:String?=null,expectedId:String?=null,forwardSource:JSONObject?=null,forwardOriginal:Boolean=false) {
-        if (state.open || owner.isEmpty() || expectedId!=null&&!restoreOnly) return
+        if (state.open || state.busy || owner.isEmpty() || expectedId!=null&&!restoreOnly) return
         if(replyAll&&forwardText!=null||forwardOriginal&&(source==null||forwardSource==null||forwardText!=null||replyAll||restoreOnly||recipient!=null))return
         if(recipient!=null&&(!NativeRecipients.email(recipient)||source!=null||forwardText!=null||replyAll||restoreOnly))return
         recipients.clear()
@@ -294,7 +297,9 @@ internal class NativeComposerModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
-    fun close() { if(state.serverDelete){cancelServerDelete();return};if(state.scheduleOpen){closeSchedule();return};if(state.aiOpen){closeAi();return};if(state.discardOpen){cancelDiscard();return};if(state.writingOpen){closeWritingTools();return}; recipients.clear(); if (state.picking) return; if (state.from.isBlank() && !state.busy) { state=ComposerState(); return }; if (state.remaining > 0) cancelSend(); if (!state.busy) flush(true) }
+    fun minimize(){if(state.open&&(state.importing||state.sending||state.serverWorking))state=state.copy(minimized=true)}
+    fun restoreTransfer(){if(state.open)state=state.copy(minimized=false)}
+    fun close() { if(state.busy&&(state.importing||state.sending||state.serverWorking)){minimize();return}; if(state.serverDelete){cancelServerDelete();return};if(state.scheduleOpen){closeSchedule();return};if(state.aiOpen){closeAi();return};if(state.discardOpen){cancelDiscard();return};if(state.writingOpen){closeWritingTools();return}; recipients.clear(); if (state.picking) return; if (state.from.isBlank() && !state.busy) { state=ComposerState(); return }; if (state.remaining > 0) cancelSend(); if (!state.busy) flush(true) }
     fun requestServerDelete(){if(canWrite()&&!state.writingOpen&&state.serverReference)state=state.copy(serverDelete=true)}
     fun cancelServerDelete(){if(!state.busy)state=state.copy(serverDelete=false)}
     fun cancelServerTransfer(){if(state.serverWorking){serverGate.next();state=state.copy(notice="Останавливаем соединение. Уже загруженная копия может остаться на сервере.")}}
@@ -403,7 +408,7 @@ internal class NativeComposerModel(app: Application) : AndroidViewModel(app) {
         closeWritingTools()
         recipients.clear()
         val snapshot = state; val version = editVersion
-        state = state.copy(busy=true, error=null)
+        state = state.copy(busy=true,sendStage="preparing", error=null)
         saveTask?.let(main::removeCallbacks); saveTask = null
         worker.execute {
             try {
@@ -425,7 +430,7 @@ internal class NativeComposerModel(app: Application) : AndroidViewModel(app) {
     private fun tick() {
         if (!foreground || AppLock.locked(context)) { cancelSend(); return }
         val left = ((deadline-SystemClock.elapsedRealtime()+999)/1000).toInt().coerceAtLeast(0)
-        if (left == 0) { state = state.copy(remaining=0,busy=true); deliver(state.owner); return }
+        if (left == 0) { state = state.copy(remaining=0,busy=true,sending=true,sendStage="preparing",sendBytes=0,sendTotal=-1); deliver(state.owner); return }
         state = state.copy(remaining=left)
         delayTask = Runnable { tick() }.also { main.postDelayed(it, 200) }
     }
@@ -439,15 +444,19 @@ internal class NativeComposerModel(app: Application) : AndroidViewModel(app) {
             try {
                 val login = allowed(owner)
                 var message: javax.mail.internet.MimeMessage? = null
-                val result = synchronized(NativeDraftStore.gate) {
+                val result = NativeDraftFlight.claim(owner).use {
                     val store = NativeDraftStore(context, owner)
-                    NativeSendTransaction.run(record ?: error("Draft unavailable"), { store.write(it) }, {
-                        message = MailSender.send(login, record!!.mail, attachmentDirectory(record!!), null) { allowed(owner) }
+                    NativeSendTransaction.run(record ?: error("Draft unavailable"), { next->synchronized(NativeDraftStore.gate){store.write(next)} }, {
+                        val id=record!!.mail.getString("id")
+                        message = MailSender.send(login, record!!.mail, attachmentDirectory(record!!), {stage,bytes,total->
+                            publish {if(state.owner==owner&&state.draftId==id&&state.sending)state=state.copy(sendStage=stage,sendBytes=bytes,sendTotal=total)}
+                        }) { allowed(owner) }
                     })
                 }
                 record = result
                 // A failed Sent copy must never turn SMTP success into a retryable failure.
                 if (result.status == NativeDraft.SENT) try {
+                    publish {if(state.sending)state=state.copy(sendStage="sent-copy")}
                     MailReader().use { reader -> reader.connect(login.host,login.port,login.user,login.password); reader.saveSent(message!!)
                         result.mail.optJSONObject("serverDraft")?.let {ref->
                             NativeServerDraftPlan.validate(ref,result.mail.getString("id"))
@@ -456,13 +465,13 @@ internal class NativeComposerModel(app: Application) : AndroidViewModel(app) {
                         check(!result.mail.optBoolean("serverDraftUnconfirmed"))
                     }
                 } catch (_: Exception) { warning="Письмо отправлено, но сохранение копии или удаление серверного черновика не подтверждено. Не отправляйте повторно." }
-                publish { state=state.copy(busy=false,saved=true,status=result.status,notice=warning) }
+                publish { state=state.copy(busy=false,sending=false,saved=true,status=result.status,notice=warning ?: if(state.minimized)if(result.status==NativeDraft.SENT)"Письмо отправлено." else "Результат отправки требует проверки. Откройте письмо; не отправляйте его повторно." else null) }
             } catch (_: Exception) {
                 // Reload the durable marker: even failure to persist SMTP success must block repeats.
                 val recovered = runCatching { synchronized(NativeDraftStore.gate) { NativeDraftStore(context,owner).read() } }.getOrNull()
                 val conflict=!NativeDraftRecovery.sameContent(record,recovered)
                 if(!conflict)record = recovered
-                publish { state=state.copy(busy=false,conflicted=conflict,status=if(conflict)NativeDraft.UNCERTAIN else recovered!!.status,
+                publish { state=state.copy(busy=false,sending=false,conflicted=conflict,status=if(conflict)NativeDraft.UNCERTAIN else recovered!!.status,
                     error=if(conflict)"Активный черновик изменился или не читается. Не повторяйте отправку из этого окна; откройте нужный черновик через список и проверьте результат." else if(recovered?.status == NativeDraft.EDITING) "Письмо не отправлено. Проверьте подключение и повторите." else "Результат отправки не подтверждён. Проверьте «Отправленные» перед любыми повторными действиями.") }
             }
         }
@@ -505,7 +514,8 @@ internal class NativeComposerModel(app: Application) : AndroidViewModel(app) {
         }
         val snapshot=state
         importCancelled.set(false)
-        state=state.copy(busy=true,importing=true,transferBytes=0,transferName="",error=null)
+        state=state.copy(busy=true,importing=true,transferStopping=false,transferTotal=-1,transferBytes=0,transferName="Подготовка файлов…",error=null)
+        val resources=NativeTransferCancellation(importCloser);importResources=resources
         worker.execute {
             val created=mutableListOf<File>()
             var directory: File? = null
@@ -517,22 +527,35 @@ internal class NativeComposerModel(app: Application) : AndroidViewModel(app) {
                 check(current.owner==request.owner && current.mail.getString("id")==request.id && current.status==NativeDraft.EDITING)
                 val target=attachmentDirectory(current);directory=target
                 val added=JSONArray()
-                for (uri in uris) {
-                    check(!importCancelled.get())
+                for ((index,uri) in uris.withIndex()) {
+                    check(!importCancelled.get()&&!resources.cancelled())
+                    publish {if(state.draftId==request.id&&state.importing)state=state.copy(transferName="Файл ${index+1} из ${uris.size}",transferBytes=0,transferTotal=-1)}
                     var name="Вложение";var size=-1L
-                    runCatching { context.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME,OpenableColumns.SIZE),null,null,null)?.use { cursor ->
+                    val metadataSignal=android.os.CancellationSignal()
+                    val stopMetadata=AutoCloseable {metadataSignal.cancel()};resources.attach(stopMetadata)
+                    try{runCatching { context.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME,OpenableColumns.SIZE),null,null,null,metadataSignal)?.use { cursor ->
                         if(cursor.moveToFirst()) { name=cursor.getString(0) ?: "Вложение";if(!cursor.isNull(1))size=cursor.getLong(1) }
-                    } }
+                    } }}finally{resources.detach(stopMetadata)}
+                    check(!importCancelled.get()&&!resources.cancelled())
                     check(size<=AttachmentFiles.MAX_BYTES)
                     val display=AttachmentFiles.safeName(name)
                     var last=0L
-                    val file=context.contentResolver.openInputStream(uri)?.use { input ->
-                        AttachmentFiles.copy(input,target,display,AttachmentFiles.MAX_BYTES) { bytes ->
-                            check(!importCancelled.get())
-                            val now=SystemClock.elapsedRealtime()
-                            if(now-last>=100 || bytes==size) { last=now;publish { state=state.copy(transferName=display,transferBytes=bytes) } }
-                        }
-                    } ?: error("File unavailable")
+                    publish {if(state.draftId==request.id&&state.importing&&!resources.cancelled())state=state.copy(transferName=display,transferBytes=0,transferTotal=size)}
+                    val signal=android.os.CancellationSignal()
+                    val stopProvider=AutoCloseable {signal.cancel()};resources.attach(stopProvider)
+                    val file=try {
+                        context.contentResolver.openAssetFileDescriptor(uri,"r",signal)?.use { descriptor ->
+                            resources.attach(descriptor)
+                            try{descriptor.createInputStream().use {input->
+                                resources.attach(input)
+                                try{AttachmentFiles.copy(input,target,display,AttachmentFiles.MAX_BYTES) { bytes ->
+                                    check(!importCancelled.get()&&!resources.cancelled())
+                                    val now=SystemClock.elapsedRealtime()
+                                    if(now-last>=120 || bytes==size) { last=now;publish {if(state.draftId==request.id&&state.importing&&!resources.cancelled())state=state.copy(transferName=display,transferBytes=bytes,transferTotal=size)} }
+                                }}finally{resources.detach(input)}
+                            }}finally{resources.detach(descriptor)}
+                        } ?: error("File unavailable")
+                    }finally{resources.detach(stopProvider)}
                     created.add(file)
                     added.put(JSONObject().put("token",file.name).put("name",display).put("size",file.length()))
                 }
@@ -554,7 +577,7 @@ internal class NativeComposerModel(app: Application) : AndroidViewModel(app) {
                     }
                 } }
                 publish { state=state.copy(busy=false,importing=false,error=if(importCancelled.get()) "Добавление отменено. Черновик сохранён." else "Не удалось добавить файлы. Максимум — 10 файлов по 100 МБ; проверьте свободное место и повторите выбор.") }
-            }
+            }finally{if(importResources===resources)importResources=null}
         }
     }
     /** Copies all selected original files, then atomically adds them to the same draft. */
@@ -564,7 +587,7 @@ internal class NativeComposerModel(app: Application) : AndroidViewModel(app) {
         if(state.files.size+state.originalFiles>10){state=state.copy(error="В черновике может быть не больше 10 файлов. Уберите лишние файлы перед добавлением исходных.");return}
         saveTask?.let(main::removeCallbacks);saveTask=null;recipients.clear()
         importCancelled.set(false);val ticket=serverGate.next()
-        state=state.copy(busy=true,importing=true,transferName="",transferBytes=0,error=null,notice=null)
+        state=state.copy(busy=true,importing=true,transferStopping=false,transferTotal=-1,transferName="Подключение к исходному письму…",transferBytes=0,error=null,notice=null)
         worker.execute {
             val created=mutableListOf<File>();var directory:File?=null;var connection:MailReader?=null
             fun alive(){check(!closed&&foreground&&!importCancelled.get()&&serverGate.current(ticket));allowed(snapshot.owner)}
@@ -622,7 +645,7 @@ internal class NativeComposerModel(app: Application) : AndroidViewModel(app) {
             }finally{connection?.let {serverGate.detach(ticket,it);runCatching {it.close()}}}
         }
     }
-    fun cancelImport() { importCancelled.set(true); if(state.importing)serverGate.next() }
+    fun cancelImport() { importCancelled.set(true);importResources?.cancel(); if(state.importing){serverGate.next();state=state.copy(transferStopping=true)} }
     fun removeFile(token: String) {
         if (!canWrite()||state.writingOpen) return
         recipients.clear()
@@ -663,6 +686,7 @@ internal class NativeComposerModel(app: Application) : AndroidViewModel(app) {
         }
     }
     override fun onCleared() {
+        importResources?.cancel();importCloser.shutdown()
         serverGate.next();serverCloser.shutdown()
         aiSerial.incrementAndGet();aiReplyContext=""
         writingSerial.incrementAndGet()

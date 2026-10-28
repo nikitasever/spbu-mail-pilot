@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 internal data class FileLibraryState(val open:Boolean=false,val owner:String="",val folder:String="",val query:String="",
     val rows:List<JSONObject> = emptyList(),val next:Int=0,val total:Int=0,val more:Boolean=false,val expired:Boolean=true,
+    val downloadName:String="",val downloadStage:String="connecting",val downloadTotal:Long=-1,val notice:String?=null,
     val busy:Boolean=false,val downloading:Boolean=false,val bytes:Long=0,val openedFile:JSONObject?=null,val error:String?=null,
     val selected:Set<String> = emptySet(),val foldersOpen:Boolean=false,val foldersBusy:Boolean=false,
     val foldersOnline:Boolean=false,val folders:List<NativeFolders.Entry> = emptyList(),val foldersError:String?=null){
@@ -21,7 +22,8 @@ internal class NativeFilesModel(app:Application):AndroidViewModel(app){
     private val context=app.applicationContext
     private val main=Handler(Looper.getMainLooper())
     private val worker=Executors.newSingleThreadExecutor()
-    private val closer=Executors.newSingleThreadExecutor()
+    private val closer=Executors.newCachedThreadPool()
+    private val downloadWorker=Executors.newFixedThreadPool(2)
     private val pages=NativeReadGate(closer)
     private val transfers=NativeReadGate(closer)
     private val folderGate=NativeReadGate(closer)
@@ -41,6 +43,11 @@ internal class NativeFilesModel(app:Application):AndroidViewModel(app){
         state=FileLibraryState(open=true,owner=owner,folder=folder);load()
     }
     fun back(){closeFolders();cancel();state=FileLibraryState()}
+    fun cancelDownload(){
+        if(!state.downloading)return
+        serial.incrementAndGet();transfers.next()
+        state=state.copy(downloading=false,notice="Загрузка отменена.")
+    }
     fun cancel(){serial.incrementAndGet();pages.next();transfers.next();discardFile();state=state.copy(busy=false,downloading=false,expired=true)}
     fun clearSelection(){state=state.copy(selected=emptySet())}
     fun showFolders(){
@@ -103,9 +110,9 @@ internal class NativeFilesModel(app:Application):AndroidViewModel(app){
     }
     fun load(more:Boolean=false){
         if(!foreground||!state.open||state.busy||AppLock.locked(context)||more&&(!state.more||state.expired))return
-        val owner=state.owner;val folder=state.folder;val query=state.query;val operation=serial.incrementAndGet()
+        discardFile();val owner=state.owner;val folder=state.folder;val query=state.query;val operation=serial.incrementAndGet()
         val ticket=if(more)pageTicket else pages.next().also {pageTicket=it}
-        discardFile();state=state.copy(busy=true,downloading=false,error=null,selected=if(more)state.selected else emptySet())
+        discardFile();transfers.next();state=state.copy(busy=true,downloading=false,error=null,notice=null,selected=if(more)state.selected else emptySet())
         worker.execute {try{
             val login=allowed(owner);check(pages.current(ticket))
             if(!more){reader=null;cursor=null;val connection=MailReader();reader=connection;pages.attach(ticket,connection);check(pages.current(ticket));connection.connect(login.host,login.port,login.user,login.password)}
@@ -130,23 +137,24 @@ internal class NativeFilesModel(app:Application):AndroidViewModel(app){
     }
     fun download(key:String,share:Boolean=false){
         val entry=file(key) ?: return
-        val owner=state.owner;val operation=serial.incrementAndGet();val ticket=transfers.next()
-        discardFile();state=state.copy(busy=true,downloading=true,bytes=0,error=null)
-        worker.execute {
+        discardFile();val owner=state.owner;val operation=serial.incrementAndGet();val ticket=transfers.next()
+        state=state.copy(downloading=true,downloadName=entry.second.name,downloadStage="connecting",downloadTotal=-1,bytes=0,error=null,notice=null)
+        downloadWorker.execute {
             var connection:MailReader?=null;var saved:File?=null
             try{
                 val login=allowed(owner);check(transfers.current(ticket))
                 val active=MailReader();connection=active;transfers.attach(ticket,active);check(transfers.current(ticket));active.connect(login.host,login.port,login.user,login.password)
+                main.post {if(valid(owner,operation)&&transfers.current(ticket))state=state.copy(downloadStage="receiving")}
                 var last=0L;val ref=entry.first
-                val result=active.attachment(ref.folder,ref.uid,ref.validity,entry.second.path,File(context.cacheDir,"attachments"),
-                    {!foreground||closed||!transfers.current(ticket)||AppLock.locked(context)}){bytes->
-                    val now=android.os.SystemClock.elapsedRealtime();if(now-last>=120){last=now;main.post {if(valid(owner,operation)&&transfers.current(ticket))state=state.copy(bytes=bytes)}}
+                val result=active.attachmentMeasured(ref.folder,ref.uid,ref.validity,entry.second.path,File(context.cacheDir,"attachments"),
+                    {!foreground||closed||!transfers.current(ticket)||AppLock.locked(context)}){bytes,total->
+                    val now=android.os.SystemClock.elapsedRealtime();if(now-last>=120){last=now;main.post {if(valid(owner,operation)&&transfers.current(ticket))state=state.copy(bytes=bytes,downloadTotal=total,downloadStage=if(bytes>0)"downloading" else "receiving")}}
                 }
                 val local=File(result.getString("file"));saved=local
                 check(local.canonicalFile.parentFile==File(context.cacheDir,"attachments").canonicalFile&&local.isFile&&local.length()<=AttachmentFiles.MAX_BYTES)
                 allowed(owner);check(transfers.current(ticket));val ready=result.put("_share",share)
-                main.post {if(valid(owner,operation)&&transfers.current(ticket))state=state.copy(busy=false,downloading=false,openedFile=ready) else local.delete()}
-            }catch(_:Exception){saved?.delete();main.post {if(valid(owner,operation))state=state.copy(busy=false,downloading=false,error="Не удалось скачать файл. Проверьте сеть, место и наличие исходного письма; лимит файла — 100 МБ.")}}
+                main.post {if(valid(owner,operation)&&transfers.current(ticket))state=state.copy(downloading=false,openedFile=ready) else local.delete()}
+            }catch(failure:Exception){saved?.delete();main.post {if(valid(owner,operation))state=state.copy(downloading=false,error=NativeTransferFailure.describe(failure))}}
             finally{connection?.let {transfers.detach(ticket,it);runCatching {it.close()}}}
         }
     }
@@ -157,6 +165,6 @@ internal class NativeFilesModel(app:Application):AndroidViewModel(app){
     }
     fun fileError(){state=state.copy(error="Не удалось открыть файл. Установите просмотрщик этого формата или сохраните файл.")}
     fun linkError(){state=state.copy(error="Не удалось перейти к письму. Вернитесь в почту и повторите.")}
-    private fun discardFile(){state.openedFile?.let {runCatching {File(it.getString("file")).delete()}};state=state.copy(openedFile=null)}
-    override fun onCleared(){foreground=false;closed=true;serial.incrementAndGet();pages.next();transfers.next();folderGate.next();discardFile();worker.shutdown();closer.shutdown()}
+    private fun discardFile(){cancelDownload();state.openedFile?.let {runCatching {File(it.getString("file")).delete()}};state=state.copy(openedFile=null)}
+    override fun onCleared(){foreground=false;closed=true;serial.incrementAndGet();pages.next();transfers.next();folderGate.next();discardFile();worker.shutdown();downloadWorker.shutdown();closer.shutdown()}
 }

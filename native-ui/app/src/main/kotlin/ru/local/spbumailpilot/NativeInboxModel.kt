@@ -19,6 +19,7 @@ internal data class SelectionScope(val owner: String = "", val folder: String = 
 internal data class InboxState(val account: String = "", val owner: String = "", val rows: List<NativeMail> = emptyList(), val selected: NativeMail? = null,
     val selectedRefs: Set<MailRef> = emptySet(), val selectionScope: SelectionScope = SelectionScope(),
     val body: MailBody? = null, val busy: Boolean = false, val cached: Boolean = true, val error: String? = null,
+    val fileTransfer:String="",val fileStage:String="connecting",val fileBytes:Long=0,val fileTotal:Long=-1,
     val openedFile: OpenedFile? = null, val hasMore: Boolean = false, val total: Int = 0, val pageOffline: Boolean = true, val pageExpired: Boolean = false,
     val moveOpen: Boolean=false,val movePicker: Boolean=false,val moveKind: String="",val moveDestination: String="",val moveNeedsRefresh: Boolean=false,val linked: Boolean=false,val flagNotice: String? = null, val folder: String = "INBOX",
     val foldersOpen: Boolean = false, val foldersBusy: Boolean = false, val foldersOnline: Boolean = false,
@@ -47,6 +48,11 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
     private val context=app.applicationContext
     private val main=Handler(Looper.getMainLooper())
     private val worker=Executors.newFixedThreadPool(2)
+    private val transferWorker=Executors.newFixedThreadPool(2)
+    private val transferCloser=Executors.newCachedThreadPool()
+    private val fileGate=NativeReadGate(transferCloser)
+    private var fileWatchdog:Runnable?=null
+    private var fileLastProgress=0L
     private val prefetchWorker=Executors.newSingleThreadExecutor()
     private val closer=Executors.newSingleThreadExecutor()
     private val gate=NativeReadGate(closer)
@@ -264,6 +270,7 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
     }
     fun pause(recreating: Boolean) {
         foreground=false
+        cancelFileDownload()
         watchGeneration++
         closeWatch()
         closeFolders()
@@ -773,24 +780,52 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
         if(state.body?.files?.contains(file)!=true||file.path.isBlank())return
         readerAction(owner,ref){openFile(file,share)}
     }
+    fun cancelFileDownload(){
+        fileGate.next();fileWatchdog?.let(main::removeCallbacks);fileWatchdog=null
+        state=state.copy(fileTransfer="",fileBytes=0,fileTotal=-1)
+    }
     private fun openFile(file: NativeFile,share: Boolean) {
         if(!foreground||AppLock.locked(context)||state.busy)return
         val owner=state.owner;val ref=state.selected?.ref ?: return
-        val ticket=gate.next();discardFile();state=state.copy(busy=true,error=null)
-        worker.execute {
-            var result: JSONObject?=null
+        discardFile();val ticket=fileGate.next()
+        state=state.copy(fileTransfer=file.name.ifBlank {"Вложение"},fileStage="connecting",fileBytes=0,fileTotal=-1,error=null)
+        fileLastProgress=android.os.SystemClock.elapsedRealtime()
+        fun current()=fileGate.current(ticket)&&!closed&&foreground&&!AppLock.locked(context)&&state.owner==owner&&state.selected?.ref==ref
+        val watchdog=object:Runnable {
+            override fun run(){
+                if(!current())return
+                if(android.os.SystemClock.elapsedRealtime()-fileLastProgress>=90000){
+                    cancelFileDownload();state=state.copy(error="Сервер долго не передаёт вложение. Загрузка остановлена; проверьте сеть и повторите.")
+                }else main.postDelayed(this,5000)
+            }
+        }
+        fileWatchdog=watchdog;main.postDelayed(watchdog,5000)
+        transferWorker.execute {
+            var result: JSONObject?=null;var reader:MailReader?=null
             try {
-                result=fetchOnline(ticket,owner){it.attachment(ref.folder,ref.uid,ref.validity,file.path,File(context.cacheDir,"attachments"),{!gate.current(ticket)},{_ ->})}
+                val login=login(owner);check(fileGate.current(ticket))
+                val active=MailReader();reader=active;fileGate.attach(ticket,active);check(fileGate.current(ticket))
+                active.connect(login.host,login.port,login.user,login.password)
+                main.post {if(current()){fileLastProgress=android.os.SystemClock.elapsedRealtime();state=state.copy(fileStage="receiving")}}
+                var last=0L
+                result=active.attachmentMeasured(ref.folder,ref.uid,ref.validity,file.path,File(context.cacheDir,"attachments"),
+                    {!fileGate.current(ticket)||!foreground||closed||AppLock.locked(context)}){bytes,total->
+                    val now=android.os.SystemClock.elapsedRealtime()
+                    if(now-last>=120||bytes==total){last=now;main.post {if(current()){
+                        fileLastProgress=android.os.SystemClock.elapsedRealtime()
+                        state=state.copy(fileStage=if(bytes>0)"downloading" else "receiving",fileBytes=bytes,fileTotal=total)
+                    }}}
+                }
                 check(currentOwner()==owner)
                 val downloaded=result.put("_share",share)
                 main.post {
-                    if(closed||!gate.current(ticket)){File(downloaded.getString("file")).delete()}
-                    else state=state.copy(busy=false,openedFile=OpenedFile(ref,owner,downloaded))
+                    if(!current())File(downloaded.getString("file")).delete()
+                    else {fileWatchdog?.let(main::removeCallbacks);fileWatchdog=null;state=state.copy(fileTransfer="",openedFile=OpenedFile(ref,owner,downloaded))}
                 }
-            } catch (_: Exception) {
+            } catch (failure: Exception) {
                 result?.let { File(it.getString("file")).delete() }
-                publish(ticket){state=state.copy(busy=false,error="Не удалось загрузить вложение. Проверьте подключение и повторите.")}
-            }
+                main.post {if(current()){cancelFileDownload();state=state.copy(error=NativeTransferFailure.describe(failure))}}
+            }finally{reader?.let {fileGate.detach(ticket,it);runCatching {it.close()}}}
         }
     }
     fun takeFile(): JSONObject? {
@@ -800,8 +835,8 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
         state=state.copy(openedFile=null);return pending.value
     }
     fun fileError(){state=state.copy(error="Не удалось открыть файл. Возможно, нужен просмотрщик этого формата.")}
-    private fun discardFile(){state.openedFile?.let { File(it.value.getString("file")).delete() };state=state.copy(openedFile=null)}
-    override fun onCleared(){closed=true;foreground=false;closeWatch();watchLogin=null;gate.next();folderGate.next();prefetchGate.next();closePager();discardFile();worker.shutdown();prefetchWorker.shutdown();closer.shutdown()}
+    private fun discardFile(){cancelFileDownload();state.openedFile?.let { File(it.value.getString("file")).delete() };state=state.copy(openedFile=null)}
+    override fun onCleared(){closed=true;foreground=false;closeWatch();watchLogin=null;gate.next();folderGate.next();prefetchGate.next();closePager();discardFile();worker.shutdown();prefetchWorker.shutdown();closer.shutdown();transferWorker.shutdown();transferCloser.shutdown()}
     private fun parseMail(value: JSONObject,ref: MailRef?=null,owner: String=state.owner,folder: String=state.folder): NativeMail? {
         val key=ref ?: MailRef(value.optString("folder",folder),value.optString("uid"),value.optString("validity"))
         if(!key.uid.matches(Regex("[1-9][0-9]{0,19}"))||!key.validity.matches(Regex("[1-9][0-9]{0,19}")))return null
