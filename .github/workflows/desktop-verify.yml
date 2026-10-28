@@ -2,7 +2,7 @@ name: Verify and stage desktop Windows preview
 on:
   push:
     branches: [codex/desktop-web-start-20261028]
-    paths: [.github/workflows/desktop-verify.yml, .github/scripts/verify-desktop-artifact.py]
+    paths: [.github/workflows/desktop-verify.yml, .github/scripts/verify-desktop-artifact.py, .github/scripts/probe-installed-engine.py]
   workflow_dispatch:
 permissions:
   contents: read
@@ -31,8 +31,8 @@ jobs:
           if ($install.ExitCode -ne 0) { throw 'Silent installation failed' }
           $binary = Get-ChildItem -Path $env:LOCALAPPDATA -Filter 'spbu-mail-desktop.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $binary) { throw 'Installed executable missing' }
-          $probe = Start-Process -FilePath $binary.FullName -ArgumentList '--verify-engine' -Wait -PassThru
-          if ($probe.ExitCode -ne 0) { throw 'Installed JVM/IPC probe failed' }
+          python .github/scripts/probe-installed-engine.py $binary.FullName
+          if ($LASTEXITCODE -ne 0) { throw 'Installed JVM/IPC probe failed' }
           $app = Start-Process -FilePath $binary.FullName -PassThru
           $engine = $null
           try {
