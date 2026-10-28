@@ -901,7 +901,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                 Text(title,Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)
                 TextButton(onClick=close){Text("Закрыть")}
             }
-            Text(if(online)"Список с сервера" else "Папки сохранённых писем",Modifier.padding(horizontal=16.dp,vertical=4.dp),fontSize=12.sp)
+            Text(if(busy)"Загружаем полный список с сервера…" else if(online)"Список с сервера" else "Сохранённый список. Письма могут быть не скачаны.",Modifier.padding(horizontal=16.dp,vertical=4.dp),fontSize=12.sp)
             if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
             error?.let {Text(it,Modifier.padding(16.dp),color=MaterialTheme.colorScheme.error,fontSize=13.sp)}
             LazyColumn(Modifier.weight(1f,fill=false)) {

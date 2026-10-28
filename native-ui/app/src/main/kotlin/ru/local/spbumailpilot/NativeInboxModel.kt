@@ -393,7 +393,7 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
     fun showFolders(){
         if(!foreground||AppLock.locked(context)||state.owner.isBlank()||state.busy||state.selected!=null)return
         state=state.copy(foldersOpen=true,foldersError=null)
-        if(state.folders.isEmpty())loadFolders(false)
+        loadFolders(true)
     }
     fun closeFolders(){folderGate.next();state=state.copy(foldersOpen=false,movePicker=false,foldersBusy=false,foldersError=null)}
     fun loadFolders(online: Boolean){
@@ -403,11 +403,15 @@ internal class NativeInboxModel(app: Application, private val saved: SavedStateH
         worker.execute {
             try {
                 val login=login(owner);check(folderGate.current(ticket))
+                val savedNames=runCatching {if(offlineEnabled(login))OfflineMailStore(context,login).folders().getJSONArray("folders") else null}.getOrNull()
+                if(state.folders.isEmpty()&&savedNames!=null){val cached=NativeFolders.list(savedNames,current);main.post {if(!closed&&folderGate.current(ticket)&&state.owner==owner&&state.foldersOpen&&state.folders.isEmpty())state=state.copy(folders=cached,foldersOnline=false)}}
                 val names=if(online){
                     val reader=MailReader();folderGate.attach(ticket,reader)
                     try {
                         check(folderGate.current(ticket));reader.connect(login.host,login.port,login.user,login.password)
-                        check(folderGate.current(ticket));reader.folders()
+                        check(folderGate.current(ticket));val listed=reader.folders();check(folderGate.current(ticket));check(currentOwner()==owner)
+                        if(offlineEnabled(login))runCatching {OfflineMailStore(context,login).saveFolders(listed)}
+                        listed
                     }finally{folderGate.detach(ticket,reader);reader.close()}
                 }else {check(offlineEnabled(login)){"Offline access disabled"};OfflineMailStore(context,login).folders().getJSONArray("folders")}
                 val entries=NativeFolders.list(names,current)
