@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 
 def enable_utf8(executable: Path):
     kernel = ctypes.WinDLL('kernel32', use_last_error=True)
-    language_callback = ctypes.WINFUNCTYPE(w.BOOL, w.HMODULE, w.LPCWSTR, w.LPCWSTR, w.WORD, ctypes.c_ssize_t)
+    language_callback = ctypes.WINFUNCTYPE(w.BOOL, w.HMODULE, ctypes.c_void_p, ctypes.c_void_p, w.WORD, ctypes.c_ssize_t)
     signatures = {
         'LoadLibraryExW': ([w.LPCWSTR, w.HANDLE, w.DWORD], w.HMODULE),
         'FindResourceW': ([w.HMODULE, w.LPCWSTR, w.LPCWSTR], w.HANDLE),
