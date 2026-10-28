@@ -43,6 +43,16 @@ jobs:
         run: |
           $env:JAVA_BIN = (Resolve-Path 'desktop/build/runtime/bin/java.exe').Path
           python desktop/tools/test-engine.py
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/src-tauri/target/release/deps
+            desktop/src-tauri/target/release/build
+            desktop/src-tauri/target/release/.fingerprint
+          key: desktop-windows-rust-${{ hashFiles('desktop/src-tauri/Cargo.toml', 'desktop/src-tauri/Cargo.lock') }}
+          restore-keys: desktop-windows-rust-
       - name: Rust toolchain
         run: |
           rustup update stable --no-self-update

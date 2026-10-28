@@ -14,7 +14,7 @@ export class Client {
       if(reply.id!==id)throw new MailFault('BAD_RESPONSE');
       if(reply.error)throw new MailFault(typeof reply.error.code==='string'?reply.error.code:'UNAVAILABLE');
       return reply.result as T;
-    },()=>{throw new MailFault('ENGINE_UNAVAILABLE')});
+    },error=>{throw new MailFault(typeof error==='string'&&['BAD_REQUEST','BUSY','ENGINE_UNAVAILABLE'].includes(error)?error:'ENGINE_UNAVAILABLE')});
     return {id,promise};
   }
   cancel(id:string){void this.start('cancel',{requestId:id}).promise.catch(()=>{})}

@@ -10,13 +10,32 @@ struct Request { id: String, method: String, args: Value }
 type Reply = Result<Value, String>;
 type Pending = Arc<Mutex<HashMap<String, mpsc::Sender<Reply>>>>;
 struct Engine { child: Mutex<Option<Child>>, stdin: Mutex<ChildStdin>, pending: Pending }
+// Older Windows Java launchers may resolve their DLLs through the active ANSI code page.
+// Use an existing filesystem short alias when available; never change system locale or 8.3 policy.
+#[cfg(windows)]
+fn java_root(root: &Path) -> PathBuf {
+    use std::{ffi::OsString, os::windows::ffi::{OsStrExt, OsStringExt}};
+    #[link(name = "kernel32")]
+    extern "system" { fn GetShortPathNameW(long: *const u16, short: *mut u16, count: u32) -> u32; }
+    let wide: Vec<u16> = root.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let needed = unsafe { GetShortPathNameW(wide.as_ptr(), std::ptr::null_mut(), 0) };
+    if needed == 0 || needed > 32768 { return root.to_path_buf(); }
+    let mut buffer = vec![0u16; needed as usize + 1];
+    let used = unsafe { GetShortPathNameW(wide.as_ptr(), buffer.as_mut_ptr(), buffer.len() as u32) };
+    if used == 0 || used as usize >= buffer.len() { return root.to_path_buf(); }
+    PathBuf::from(OsString::from_wide(&buffer[..used as usize]))
+}
+#[cfg(not(windows))]
+fn java_root(root: &Path) -> PathBuf { root.to_path_buf() }
+
 impl Engine {
     fn start(root: &Path) -> Result<Arc<Self>, String> {
+        let root = java_root(root);
         let java = root.join("runtime/bin").join(if cfg!(windows) { "java.exe" } else { "java" });
         let separator = if cfg!(windows) { ";" } else { ":" };
         let cp = format!("{}{}{}", root.join("engine/classes").display(), separator, root.join("engine/lib/*").display());
         let mut command = Command::new(java);
-        command.args(["-Djava.awt.headless=true", "-cp", &cp, "ru.local.spbumailpilot.DesktopEngine"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+        command.args(["-Djava.awt.headless=true", "-Dfile.encoding=UTF-8", "-cp", &cp, "ru.local.spbumailpilot.DesktopEngine"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
         #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x08000000); }
         let mut child = command.spawn().map_err(|_| "ENGINE_UNAVAILABLE")?;
         let stdin = child.stdin.take().ok_or("ENGINE_UNAVAILABLE")?;

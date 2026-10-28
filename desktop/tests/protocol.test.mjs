@@ -13,3 +13,7 @@ test('page snapshots reject inconsistent pagination and retain exact UID validit
  const raw={folder:'INBOX',messages:[{uid:'42',validity:'7',subject:'<script>literal</script>'}],snapshot:'one',nextOffset:1,total:2,hasMore:true};
  const page=parsePage(raw,'INBOX',0);assert.equal(page.messages[0].validity,'7');assert.equal(page.messages[0].subject,'<script>literal</script>');assert.throws(()=>parsePage(raw,'Sent',0));assert.throws(()=>parsePage({...raw,nextOffset:0},'INBOX',0));
 });
+test('native busy code remains actionable without echoing arbitrary native errors',async()=>{
+ const client=new Client(async()=>{throw 'BUSY'});await assert.rejects(client.start('folders').promise,error=>error instanceof MailFault&&error.code==='BUSY');
+ const unknown=new Client(async()=>{throw 'password=not-public'});await assert.rejects(unknown.start('folders').promise,error=>error instanceof MailFault&&error.code==='ENGINE_UNAVAILABLE');
+});

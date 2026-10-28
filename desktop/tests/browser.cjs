@@ -17,8 +17,9 @@ const path=require('node:path'),fs=require('node:fs');const output=path.join(__d
   }};
  });
  await page.goto('http://127.0.0.1:1420');await page.screenshot({path:path.join(output,'login.png')});
+ await page.locator('#toggle-password').click();assert.equal(await page.locator('#password').getAttribute('type'),'text');
  await page.locator('#user').fill('fixture@example.invalid');await page.locator('#password').fill('fixture-password');await page.locator('#connect').click();
- await page.locator('.letter').first().waitFor();assert.equal(await page.locator('#password').inputValue(),'');
+ await page.locator('.letter').first().waitFor();assert.equal(await page.locator('#password').inputValue(),'');assert.equal(await page.locator('#password').getAttribute('type'),'password');
  assert.equal(await page.locator('#folders button').count(),4);assert.equal(await page.locator('#letters img').count(),0);
  await page.locator('.letter').nth(0).click();await page.locator('.letter').nth(1).click();await page.waitForTimeout(400);
  assert((await page.locator('#body').textContent()).includes('Текущий текст'));assert.equal(await page.evaluate(()=>window.pwned),undefined);

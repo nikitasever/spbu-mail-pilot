@@ -55,6 +55,7 @@ async function openMail(row:Mail){
   }catch(error){if(!(error instanceof StaleReply)&&ticket===epoch&&selected===row&&run===bodyGeneration){text('body-error',failure(error));show('body-error',true);text('reader-status','Не удалось загрузить письмо')}}
   finally{if(ticket===epoch&&selected===row&&run===bodyGeneration){bodyBusy=false;show('cancel-body',false)}}
 }
+function hidePassword(){password.type='password';text('toggle-password','Показать');$('toggle-password').setAttribute('aria-pressed','false')}
 function loginBusy(busy:boolean){for(const input of [user,password,host,port])input.disabled=busy;$<HTMLButtonElement>('connect').disabled=busy;show('cancel-connect',busy)}
 form.addEventListener('submit',event=>{event.preventDefault();void connect()});
 async function connect(){
@@ -66,13 +67,13 @@ async function connect(){
   else if(!/^\d{1,5}$/.test(port.value)||+port.value<1||+port.value>65535){invalid=port;message='Порт должен быть числом от 1 до 65535.'}
   if(invalid){text('login-error',message);show('login-error',true);invalid.setAttribute('aria-invalid','true');if(invalid===host||invalid===port)form.querySelector('details')!.open=true;invalid.focus();return}
   const ticket=++epoch;loginBusy(true);text('login-status','Подключаемся к почтовому серверу…');
-  const args={host:host.value.trim(),port:Number(port.value),user:user.value.trim(),password:password.value};password.value='';
+  const args={host:host.value.trim(),port:Number(port.value),user:user.value.trim(),password:password.value};password.value='';hidePassword();
   try{
     await connectLane.run('connect',args);args.password='';if(ticket!==epoch)return;connected=true;account=args.user;show('login-screen',false);show('workspace',true);text('account-name',account);text('account-avatar',avatar(account));folder='INBOX';query='';rows=[];page=null;renderFolders(['INBOX']);text('folder-title','Входящие');await loadFolders();if(ticket===epoch)await loadPage(false);
   }catch(error){if(!(error instanceof StaleReply)&&ticket===epoch){text('login-error',failure(error));show('login-error',true);password.focus()}}
   finally{args.password='';if(ticket===epoch){loginBusy(false);text('login-status','')}}
 }
-$('cancel-connect').addEventListener('click',()=>{epoch++;connectLane.cancel();loginBusy(false);text('login-status','Подключение остановлено.');password.value=''});
+$('cancel-connect').addEventListener('click',()=>{epoch++;connectLane.cancel();loginBusy(false);text('login-status','Подключение остановлено.');password.value='';hidePassword()});
 $('toggle-password').addEventListener('click',()=>{const reveal=password.type==='password';password.type=reveal?'text':'password';text('toggle-password',reveal?'Скрыть':'Показать');$('toggle-password').setAttribute('aria-pressed',String(reveal))});
 $('refresh-folders').addEventListener('click',()=>void loadFolders());$('refresh').addEventListener('click',()=>void loadPage(false));$('more').addEventListener('click',()=>void loadPage(true));
 $('cancel-list').addEventListener('click',()=>{listGeneration++;listLane.cancel();listBusy=false;listState();text('list-status','Загрузка остановлена. Обновите папку перед продолжением.');show('more',false)});
@@ -81,5 +82,5 @@ $('close-reader').addEventListener('click',resetReader);
 search.addEventListener('input',()=>show('clear-search',search.value.length>0));
 $('search-form').addEventListener('submit',event=>{event.preventDefault();query=search.value.trim();void loadPage(false)});
 $('clear-search').addEventListener('click',()=>{search.value='';query='';show('clear-search',false);search.focus();void loadPage(false)});
-$('logout').addEventListener('click',()=>{epoch++;connectLane.cancel();folderLane.cancel();listLane.cancel();bodyLane.cancel();connected=false;account='';rows=[];page=null;resetReader();folders.replaceChildren();text('account-name','');password.value='';search.value='';query='';show('clear-search',false);text('account-avatar','');text('folder-title','');show('workspace',false);show('login-screen',true);void client.start('disconnect').promise.catch(()=>{});user.focus()});
+$('logout').addEventListener('click',()=>{epoch++;connectLane.cancel();folderLane.cancel();listLane.cancel();bodyLane.cancel();connected=false;account='';rows=[];page=null;resetReader();folders.replaceChildren();text('account-name','');password.value='';hidePassword();search.value='';query='';show('clear-search',false);text('account-avatar','');text('folder-title','');show('workspace',false);show('login-screen',true);void client.start('disconnect').promise.catch(()=>{});user.focus()});
 if(!('__TAURI_INTERNALS__' in window)){text('login-error','Это предпросмотр интерфейса. Для подключения почты откройте установленное приложение Windows.');show('login-error',true);$<HTMLButtonElement>('connect').disabled=true}
