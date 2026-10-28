@@ -27,12 +27,13 @@ import androidx.compose.ui.unit.dp
                 keyboardOptions=KeyboardOptions(imeAction=ImeAction.Search),keyboardActions=KeyboardActions(onSearch={if(input.composition==null)model.search(input.text)}))
             Row(Modifier.fillMaxWidth()){
                 TextButton(onClick={if(input.composition==null)model.search(input.text)},enabled=!s.busy){Text("Найти")}
-                if(s.busy)TextButton(onClick=model::cancel){Text("Остановить")}
+                if(s.busy||s.downloading)TextButton(onClick={if(s.downloading)model.cancelDownload() else model.cancel()}){Text("Остановить")}
             }
             Text("Найдено файлов: ${s.rows.size} · Проверено писем: ${s.next} из ${s.total}",style=MaterialTheme.typography.bodySmall)
             if(s.query.isNotEmpty())Text("Поиск: ${s.query}",style=MaterialTheme.typography.bodySmall)
             if(s.busy)LinearProgressIndicator(Modifier.fillMaxWidth())
-            if(s.downloading)Text("Скачано: ${android.text.format.Formatter.formatShortFileSize(context,s.bytes)}",style=MaterialTheme.typography.bodySmall)
+            if(s.downloading)NativeTransferCard(s.downloadName,s.downloadStage,s.bytes,s.downloadTotal,cancel=model::cancelDownload)
+            s.notice?.let {Text(it,style=MaterialTheme.typography.bodySmall)}
             s.error?.let {Text(it,color=MaterialTheme.colorScheme.error)}
             if(s.expired&&!s.busy)Text("Для продолжения проверки папки обновите список.",style=MaterialTheme.typography.bodySmall)
             LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)){

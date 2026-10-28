@@ -28,9 +28,10 @@ internal class NativeDraftStore(context: Context, private val owner: String) {
     fun read(): NativeDraft? = book().active()
     fun list(): List<NativeDraft> = book().list()
     fun find(id:String): NativeDraft? = book().find(id)
-    fun create(record:NativeDraft) { commit(book().create(record)) }
-    fun select(expectedActive:NativeDraft?,target:NativeDraft) {commit(book().select(expectedActive,target))}
+    fun create(record:NativeDraft) { NativeDraftFlight.checkWrite(owner);commit(book().create(record)) }
+    fun select(expectedActive:NativeDraft?,target:NativeDraft) {NativeDraftFlight.checkWrite(owner);commit(book().select(expectedActive,target))}
     fun write(record: NativeDraft) {
+        NativeDraftFlight.checkWrite(owner)
         require(record.owner == owner)
         val current=book()
         // Preserve the initial-write contract for existing callers restoring an empty account.
@@ -56,6 +57,7 @@ internal class NativeDraftStore(context: Context, private val owner: String) {
         remove(expected,NativeDraft.EDITING)
     }
     private fun remove(expected: NativeDraft,status: String) {
+        NativeDraftFlight.checkWrite(owner)
         require(expected.owner==owner)
         val next=book().remove(expected,status)
         if(next.active()!=null)commit(next) else {

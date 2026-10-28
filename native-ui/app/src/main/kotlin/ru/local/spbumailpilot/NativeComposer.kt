@@ -59,7 +59,7 @@ import androidx.compose.ui.unit.sp
                         titleContentColor = MaterialTheme.colorScheme.onSurface
                     ),
                     navigationIcon = {
-                        IconButton(onClick = model::close, enabled = !state.busy) {
+                        IconButton(onClick = model::close, enabled = !state.busy||state.importing||state.sending||state.serverWorking) {
                             Icon(NativeIcons.ArrowBack, contentDescription = "Назад", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp))
                         }
                     },
@@ -116,12 +116,13 @@ import androidx.compose.ui.unit.sp
         bottomBar = {
             Surface(color = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                 Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
+                NativeComposerTransfer(model)
                     HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
                     when {
                         state.conflicted -> {
                             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
                                 Text("Черновик изменён в другом окне.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
-                                Button(onClick = model::close, enabled = !state.busy, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) { Text("Закрыть") }
+                                Button(onClick = model::close, enabled = !state.busy||state.importing||state.sending||state.serverWorking, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) { Text("Закрыть") }
                             }
                         }
                         state.remaining > 0 -> {
@@ -145,7 +146,7 @@ import androidx.compose.ui.unit.sp
                         }
                         state.status == NativeDraft.SCHEDULING -> {
                             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
-                                Button(onClick = model::close, enabled = !state.busy, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) { Text("Закрыть для сверки") }
+                                Button(onClick = model::close, enabled = !state.busy||state.importing||state.sending||state.serverWorking, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) { Text("Закрыть для сверки") }
                             }
                         }
                         state.status == NativeDraft.SCHEDULED -> {
@@ -155,7 +156,7 @@ import androidx.compose.ui.unit.sp
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text("Запланировано к отправке", fontSize = 13.sp, color = nativeSuccessColor())
-                                Button(onClick = model::close, enabled = !state.busy, shape = RoundedCornerShape(10.dp)) { Text("Готово") }
+                                Button(onClick = model::close, enabled = !state.busy||state.importing||state.sending||state.serverWorking, shape = RoundedCornerShape(10.dp)) { Text("Готово") }
                             }
                         }
                         state.status == NativeDraft.SENT -> {
@@ -165,7 +166,7 @@ import androidx.compose.ui.unit.sp
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text("Письмо отправлено", color = nativeSuccessColor(), fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                Button(onClick = model::close, enabled = !state.busy, shape = RoundedCornerShape(10.dp)) { Text("Готово") }
+                                Button(onClick = model::close, enabled = !state.busy||state.importing||state.sending||state.serverWorking, shape = RoundedCornerShape(10.dp)) { Text("Готово") }
                             }
                         }
                         else -> {
@@ -331,18 +332,7 @@ import androidx.compose.ui.unit.sp
             ComposeField("Тема", state.subject, editable, { model.edit("subject", it) }, focus = { model.recipients.clear() })
             HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
 
-            if (state.importing) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("${state.transferName} (${Formatter.formatShortFileSize(context, state.transferBytes)})", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    IconButton(onClick = model::cancelImport, modifier = Modifier.size(28.dp)) {
-                        Icon(NativeIcons.Close, contentDescription = "Отменить добавление", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
-                    }
-                }
-            }
+
 
             if (state.files.isNotEmpty()) {
                 Row(

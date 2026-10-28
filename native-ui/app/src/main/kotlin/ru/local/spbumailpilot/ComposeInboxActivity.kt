@@ -156,8 +156,10 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
                     try{exportPicker.launch(null)}catch(_:Exception){exports.pickerFailed()}
                 }
             }
-            LaunchedEffect(inbox.state.openedFile,composer.state.open) {
-                if (!composer.state.open && inbox.state.openedFile != null) {
+            val mailScreenVisible=!exports.state.open&&extras.state.target==null&&!accounts.state.open&&(!composer.state.open||composer.state.minimized)&&!contacts.state.open&&!calendar.state.open&&!workspace.state.open&&!settings.state.open&&!files.state.open&&!drafts.state.open&&!serverDrafts.state.open&&!scheduled.state.open&&!digest.state.open&&!aiSettings.state.open&&!writingSettings.state.open&&!categories.state.open
+            LaunchedEffect(mailScreenVisible){if(!mailScreenVisible)inbox.cancelFileDownload()}
+            LaunchedEffect(inbox.state.openedFile,mailScreenVisible) {
+                if (mailScreenVisible && inbox.state.openedFile != null) {
                     while (inbox.state.openedFile != null) {
                         if (resumed && !AppLock.locked(this@ComposeInboxActivity)) {
                             inbox.takeFile()?.let { try { showFile(it) } catch (_: Exception) { inbox.fileError() } }
@@ -187,7 +189,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             val fullClient = { startActivity(Intent(this, MainActivity::class.java)); Unit }
             var accountSwitcherOpen by remember { mutableStateOf(false) }
             val pending=navigation.pending
-            val navigationAllowed=!files.state.open&&!serverDrafts.state.open&&!serverDrafts.state.busy&&!drafts.state.open&&!drafts.state.busy&&!scheduled.state.open&&!scheduled.state.busy&&!digest.state.open&&!aiSettings.state.open&&!aiSettings.state.busy&&!accounts.state.open&&!accounts.state.busy&&!settings.state.open&&!settings.state.busy&&!exports.state.open&&!composer.state.open&&!inbox.state.busy&&!inbox.state.foldersOpen&&!inbox.state.moveOpen&&
+            val navigationAllowed=!files.state.open&&!serverDrafts.state.open&&!serverDrafts.state.busy&&!drafts.state.open&&!drafts.state.busy&&!scheduled.state.open&&!scheduled.state.busy&&!digest.state.open&&!aiSettings.state.open&&!aiSettings.state.busy&&!accounts.state.open&&!accounts.state.busy&&!settings.state.open&&!settings.state.busy&&!exports.state.open&&(!composer.state.open||composer.state.minimized)&&!inbox.state.busy&&!inbox.state.foldersOpen&&!inbox.state.moveOpen&&
                 !workspace.state.busy&&workspace.state.editor==null&&!workspace.state.leaveOpen&&!workspace.state.deleteOpen&&
                 !categories.state.busy&&categories.state.editor==null&&!categories.state.leaveOpen&&
                 !extras.state.busy&&extras.state.target==null&&contacts.canExternalNavigation()&&writingSettings.canExternalNavigation()
@@ -263,6 +265,16 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             }
             val unreadCount = remember(inbox.state.rows) { inbox.state.rows.count { it.unread } }
             Column(Modifier.fillMaxSize()) {
+                if(composer.state.open&&composer.state.minimized&&!AppLock.locked(this@ComposeInboxActivity)){
+                    if(composer.state.owner==inbox.state.owner)NativeComposerTransfer(composer)
+                    else Text("Операция в другом ящике. Вернитесь в него, чтобы увидеть состояние письма.",Modifier.padding(12.dp),fontSize=12.sp)
+                }
+                if(!exports.state.open&&exports.state.notice.isNotBlank())Surface(tonalElevation=2.dp){
+                    Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically){
+                        Text(exports.state.notice+if(exports.state.phase=="result")" Сохранено: ${exports.state.saved} из ${exports.state.total}; ошибок: ${exports.state.failures}." else "",Modifier.weight(1f),fontSize=12.sp)
+                        if(exports.state.phase=="result")TextButton(onClick=exports::cancel){Text("Убрать")}
+                    }
+                }
                 if(pending!=null&&!AppLock.locked(this@ComposeInboxActivity))Surface(tonalElevation=3.dp) {
                     Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
                         Text("Переход из уведомления ждёт завершения текущего действия.",Modifier.weight(1f),fontSize=12.sp)
@@ -273,7 +285,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
 
             if(accounts.state.restart) Box(Modifier.fillMaxSize(),contentAlignment=androidx.compose.ui.Alignment.Center){CircularProgressIndicator()}
             else if(accounts.state.open) NativeAccountsScreen(accounts, onExit = { finish() })
-            else if (composer.state.open) NativeComposer(composer, fullClient) {
+            else if (composer.state.open&&!composer.state.minimized) NativeComposer(composer, fullClient) {
                 composer.beginPick {
                     if (!isDestroyed && resumed) try { attachmentPicker.launch(arrayOf("*/*")) } catch (_: Exception) { composer.pickerFailed() }
                     else composer.pickerFailed()
@@ -1095,6 +1107,7 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                         }
                     }
                 }
+                if(state.fileTransfer.isNotBlank())NativeTransferCard(state.fileTransfer,state.fileStage,state.fileBytes,state.fileTotal,cancel=model::cancelFileDownload)
                 if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
                 state.error?.let {
                     Surface(

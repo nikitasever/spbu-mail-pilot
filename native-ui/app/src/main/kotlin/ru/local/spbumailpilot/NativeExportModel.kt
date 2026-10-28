@@ -11,7 +11,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal data class ExportState(val open:Boolean=false,val phase:String="confirm",val original:Boolean=false,val total:Int=0,
-    val done:Int=0,val saved:Int=0,val failures:Int=0,val name:String="",val bytes:Long=0,val size:Long=-1,val notice:String="",val pickerRequested:Boolean=false,
+    val stage:String="connecting",val done:Int=0,val saved:Int=0,val failures:Int=0,val name:String="",val bytes:Long=0,val size:Long=-1,val notice:String="",val pickerRequested:Boolean=false,
     val failureNames:List<String> = emptyList())
 
 /** Shared bulk engine owns .part/rename/collision handling; lifecycle owns only a transient plan. */
@@ -71,7 +71,7 @@ internal class NativeExportModel(app:Application):AndroidViewModel(app) {
     }
     fun pause(recreating:Boolean){foreground=false;if(!recreating&&state.phase=="transfer")cancel()}
     fun cancel(){
-        if(state.phase=="transfer"){cancelFlag.set(true);gate.next();state=state.copy(notice="Отмена сохранения…");return}
+        if(state.phase=="transfer"){cancelFlag.set(true);gate.next();state=state.copy(open=false,notice="Останавливаем сохранение. Остальные действия доступны.");return}
         plan=null;destination=null;state=ExportState() // Keep launched identity until its result is consumed.
     }
     private fun startIfReady(){
@@ -93,7 +93,7 @@ internal class NativeExportModel(app:Application):AndroidViewModel(app) {
                     check(owner()==request.owner)
                     BulkAttachments.check(stop)
                     val folder=File(context.cacheDir,"attachments")
-                    val value=if(request.original)active.exportMessage(ref.folder,ref.uid,ref.validity,folder)
+                    val value=if(request.original)active.exportMessage(ref.folder,ref.uid,ref.validity,folder,false,stop,progress)
                         else active.attachment(ref.folder,ref.uid,ref.validity,ref.path,folder,stop,progress)
                     val file=NativeExportPlan.checkedFile(folder,value.getString("file"))
                     try {
@@ -104,7 +104,7 @@ internal class NativeExportModel(app:Application):AndroidViewModel(app) {
                 },SafAttachmentDestination(context.contentResolver,tree),{closed||cancelled.get()||!gate.current(ticket)},
                 {done,total,name,stage,bytes,size->
                     val now=android.os.SystemClock.elapsedRealtime()
-                    if(stage=="finished"||bytes==size||now-last>=100){last=now;main.post {if(!closed&&plan===request)state=state.copy(done=done,total=total,name=name,bytes=bytes,size=size)}}
+                    if(stage=="finished"||bytes==size||now-last>=100){last=now;main.post {if(!closed&&plan===request)state=state.copy(stage=if(stage=="download")"downloading" else if(stage=="save")"copying" else "receiving",done=done,total=total,name=name,bytes=bytes,size=size)}}
                 })
                 main.post {if(!closed&&plan===request){
                     plan=null;destination=null

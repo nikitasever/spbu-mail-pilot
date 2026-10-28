@@ -17,10 +17,12 @@ import androidx.compose.ui.unit.sp
                 Text("При остановке готовые файлы останутся в папке. Временные файлы могут остаться, если провайдер запретит их удаление.",fontSize=12.sp)
             }
             if(state.phase=="transfer"){
-                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text(if(state.stage=="copying")"Сохранение в выбранную папку…" else NativeTransferProgress.label(state.stage),fontSize=12.sp)
+                val fraction=NativeTransferProgress.fraction(state.stage,state.bytes,state.size)
+                if(fraction<0)LinearProgressIndicator(Modifier.fillMaxWidth()) else LinearProgressIndicator(progress={fraction},modifier=Modifier.fillMaxWidth())
                 Text("Обработано: ${state.done} из ${state.total}")
                 if(state.name.isNotBlank())Text(state.name,fontSize=13.sp)
-                if(state.size>0)Text("${state.bytes/1024} / ${state.size/1024} КиБ",fontSize=12.sp)
+                Text(if(state.size>0&&state.size>=state.bytes)"${state.bytes/1024} / ${state.size/1024} КиБ" else "Передано: ${state.bytes/1024} КиБ",fontSize=12.sp)
             }
             if(state.phase=="result")Text("Сохранено: ${state.saved} из ${state.total}. Ошибок: ${state.failures}.")
             if(state.notice.isNotBlank())Text(state.notice)
