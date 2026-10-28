@@ -47,7 +47,14 @@ jobs:
             } while ($app.MainWindowHandle -eq 0 -and (Get-Date) -lt $deadline)
             if ($app.MainWindowHandle -eq 0) { throw 'Desktop window was not created' }
             if (-not $app.Responding) { throw 'Desktop window not responding' }
-            $engine = Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $app.Id -and $_.Name -eq 'java.exe' } | Select-Object -First 1
+            # Tauri may create its window before setup() starts the engine.
+            $engineDeadline = (Get-Date).AddSeconds(20)
+            do {
+              $engine = Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $app.Id -and $_.Name -eq 'java.exe' } | Select-Object -First 1
+              if (-not $engine) { Start-Sleep -Milliseconds 250 }
+              $app.Refresh()
+              if ($app.HasExited) { throw 'App exited while starting its JVM' }
+            } while (-not $engine -and (Get-Date) -lt $engineDeadline)
             if (-not $engine) { throw 'Window did not start its private JVM' }
             Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public static class DesktopWindow{[DllImport("user32.dll")]public static extern bool ShowWindowAsync(IntPtr h,int command);}'
             [DesktopWindow]::ShowWindowAsync($app.MainWindowHandle,3) | Out-Null
