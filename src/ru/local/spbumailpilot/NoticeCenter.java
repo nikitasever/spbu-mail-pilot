@@ -85,8 +85,8 @@ final class NoticeCenter {
     }
     private static boolean post(Context context,String channel,String tag,String title,String text,MailNoticeTarget target,String mailbox){
         if(!channelAllowed(context,channel))return false;
-        Intent open=new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        if(channel.equals(TASKS))open.putExtra("openTasks",true);
+        Intent open=UiEntry.open(context).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        if(channel.equals(TASKS)){open.putExtra("openTasks",true);String owner=tag.split("/",2)[0];if(owner.matches("account-[0-9a-f]{64}"))open.putExtra("openTasksAccount",owner);}
         if(target!=null)try{open.setData(android.net.Uri.parse("mailpilot://mail/"+target.account+"/"+target.validity+"/"+target.uid+"/"+android.net.Uri.encode(target.folder)));open.putExtra("openMail",target.encode());}catch(Exception invalid){return false;}
         PendingIntent click=PendingIntent.getActivity(context,channel.equals(TASKS)?2:1,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         Notification publicVersion=new Notification.Builder(context,channel).setSmallIcon(android.R.drawable.ic_dialog_email).setContentTitle("Почта СПбГУ").setContentText("Новое уведомление").build();

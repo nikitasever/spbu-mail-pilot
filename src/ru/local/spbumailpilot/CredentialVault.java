@@ -64,17 +64,26 @@ final class CredentialVault {
         } finally {Arrays.fill(plain,(byte)0);}
     }
     private static SavedAccounts.Login login(JSONObject json)throws Exception{SavedAccounts.Login defaults=new SavedAccounts.Login(json.getString("host"),json.getInt("port"),json.getString("user"),json.getString("password"));return new SavedAccounts.Login(defaults.host,defaults.port,defaults.user,defaults.password,json.optString("smtpHost",defaults.smtpHost),json.optInt("smtpPort",defaults.smtpPort),json.optBoolean("smtpSsl",defaults.smtpSsl),json.optString("from",defaults.from));}
-    void save(SavedAccounts.Login login)throws Exception{SavedAccounts accounts=read();accounts.save(login);write(accounts);}
-    SavedAccounts.Login load()throws Exception{return read().active();}
-    ArrayList<SavedAccounts.Login> list()throws Exception{return read().list();}
-    void deactivate()throws Exception{SavedAccounts accounts=read();accounts.deactivate();write(accounts);}
-    void remove(SavedAccounts.Login login)throws Exception{ScheduledMail.forget(context,login);OfflineMailStore.delete(context,login);SavedAccounts accounts=read();accounts.remove(login);if(accounts.list().isEmpty())clear();else write(accounts);MailWidget.forget(context,login);}
+    void save(SavedAccounts.Login login)throws Exception{synchronized(CredentialVault.class){SavedAccounts accounts=read();accounts.save(login);write(accounts);}}
+    void updatePassword(SavedAccounts.Login expected,String newPassword)throws Exception{synchronized(CredentialVault.class){SavedAccounts accounts=read();accounts.updatePassword(expected,newPassword);write(accounts);}}
+    SavedAccounts.Login load()throws Exception{synchronized(CredentialVault.class){return read().active();}}
+    ArrayList<SavedAccounts.Login> list()throws Exception{synchronized(CredentialVault.class){return read().list();}}
+    void deactivate()throws Exception{synchronized(CredentialVault.class){SavedAccounts accounts=read();accounts.deactivate();write(accounts);}}
+    void remove(SavedAccounts.Login login)throws Exception{
+        // Queue code also reads this vault: never nest its lock beneath CredentialVault.class.
+        ScheduledMail.forget(context,login);OfflineMailStore.delete(context,login);
+        synchronized(CredentialVault.class){SavedAccounts accounts=read();accounts.remove(login);write(accounts);}
+        MailWidget.forget(context,login);
+    }
     void clear() throws Exception {
-        SavedAccounts removed=read();ScheduledMail.forgetAll(context);OfflineMailStore.deleteAll(context);
-        if(!prefs.edit().clear().commit())throw new IllegalStateException("Cannot remove login");
-        for(SavedAccounts.Login login:removed.list())MailWidget.forget(context,login);MailWidget.request(context);
-        KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
-        if(store.containsAlias(ALIAS))store.deleteEntry(ALIAS);
+        ScheduledMail.forgetAll(context);OfflineMailStore.deleteAll(context);
+        ArrayList<SavedAccounts.Login> removed;
+        synchronized(CredentialVault.class){
+            removed=read().list();
+            if(!prefs.edit().clear().commit())throw new IllegalStateException("Cannot remove login");
+            KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
+            if(store.containsAlias(ALIAS))store.deleteEntry(ALIAS);
+        }
+        for(SavedAccounts.Login login:removed)MailWidget.forget(context,login);MailWidget.request(context);
     }
 }
-

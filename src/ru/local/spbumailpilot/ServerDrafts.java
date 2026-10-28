@@ -13,11 +13,7 @@ final class ServerDrafts {
         StringBuilder content=new StringBuilder();for(String name:new String[]{"to","cc","bcc","subject","body","inReplyTo","references","attachments"}){String value=draft.optString(name);content.append(name).append(':').append(value.length()).append(':').append(value);}
         return AppUpdater.hex(MessageDigest.getInstance("SHA-256").digest(content.toString().getBytes(StandardCharsets.UTF_8)));
     }
-    static Folder folder(Store store)throws Exception{
-        for(Folder candidate:store.getDefaultFolder().list("*"))if((candidate.getType()&Folder.HOLDS_MESSAGES)!=0&&candidate instanceof com.sun.mail.imap.IMAPFolder)for(String attribute:((com.sun.mail.imap.IMAPFolder)candidate).getAttributes())if(attribute.equalsIgnoreCase("\\Drafts"))return candidate;
-        for(String name:new String[]{"Drafts","Черновики"}){Folder candidate=store.getFolder(name);if(candidate.exists()&&(candidate.getType()&Folder.HOLDS_MESSAGES)!=0)return candidate;}
-        throw new MessagingException("Drafts folder not found");
-    }
+    static Folder folder(Store store)throws Exception{return DraftFolder.find(store);}
     static String header(Message message,String name)throws Exception{String[] values=message.getHeader(name);return values==null||values.length==0?null:values[0];}
     static boolean ours(Message message,String key)throws Exception{return message.isSet(Flags.Flag.DRAFT)&&key.equals(header(message,KEY));}
     static JSONObject save(Store store,TransferMessage message,String key,String revision,TransferMessage.Progress progress)throws Exception{

@@ -1,6 +1,7 @@
 package ru.local.spbumailpilot;
 
 import android.text.Html;
+import com.sun.mail.imap.IMAPMessage;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.Properties;
@@ -17,7 +18,7 @@ import com.sun.mail.imap.IMAPFolder;
 import com.sun.mail.iap.Response;
 import java.util.ArrayList;
 
-/** All folders are opened read-only. BODY.PEEK avoids setting the Seen flag. */
+/** Reads use read-only folders and BODY.PEEK. Explicit writes recheck UIDVALIDITY and close without expunge. */
 final class MailReader implements AutoCloseable {
     private Store store;
     private Folder inbox;
@@ -28,7 +29,7 @@ final class MailReader implements AutoCloseable {
     private long generation;
     private UidPages pages,filePages;
     private UidPages smartPages;private String smartFolder="",smartKey="";private long smartValidity,smartGeneration;
-    private String pagingQuery="",fileFolder;private long fileValidity,fileGeneration;
+    private String pagingQuery="",fileQuery="",fileFolder;private long fileValidity,fileGeneration;
     private final java.util.LinkedHashMap<String,JSONObject> downloadedFiles=new java.util.LinkedHashMap<>();
     void connect(String host, int port, String user, String password) throws Exception {
         Properties props = new Properties();
@@ -143,23 +144,28 @@ final class MailReader implements AutoCloseable {
     }
     JSONObject files(String name,int offset,String snapshot,String query)throws Exception{
         openFolder(name);
-        if(offset==0){filePages=new UidPages(uidSnapshot());fileFolder=name;fileValidity=validity;fileGeneration++;}
-        else if(filePages==null||!name.equals(fileFolder)||fileValidity!=validity||!Long.toString(fileGeneration).equals(snapshot))throw new MessagingException("File snapshot changed");
+        if(query==null||query.length()>200||query.matches("(?s).*\\p{Cntrl}.*"))throw new IllegalArgumentException("Invalid filename query");
+        if(offset==0){filePages=new UidPages(uidSnapshot());fileFolder=name;fileQuery=query;fileValidity=validity;fileGeneration++;}
+        else if(filePages==null||!name.equals(fileFolder)||fileValidity!=validity||!fileQuery.equals(query)||!Long.toString(fileGeneration).equals(snapshot))throw new MessagingException("File snapshot changed");
         long[] uids=filePages.page(offset);Message[] found=uids.length==0?new Message[0]:((UIDFolder)inbox).getMessagesByUID(uids);
         FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add(FetchProfile.Item.CONTENT_INFO);profile.add(UIDFolder.FetchProfileItem.UID);MailThreadHeaders.fetch(profile);profile.add("From");if(found.length>0)inbox.fetch(found,profile);
-        JSONArray result=new JSONArray();for(int i=found.length-1;i>=0;i--){Message message=found[i];if(message==null||message.isExpunged())continue;
+        JSONArray result=new JSONArray();for(int i=found.length-1;i>=0;i--){Message message=found[i];if(message==null||message.isExpunged()||message.isSet(Flags.Flag.DELETED))continue;
+            if(message instanceof IMAPMessage)((IMAPMessage)message).setPeek(true);
             JSONArray entries=AttachmentIndex.list(message,query);JSONObject info=header(message);
             for(int j=0;j<entries.length();j++){JSONObject entry=entries.getJSONObject(j);entry.put("message",info);result.put(entry);}
         }
-        int next=filePages.next(offset);return new JSONObject().put("files",result).put("total",filePages.size()).put("nextOffset",next).put("hasMore",next<filePages.size()).put("snapshot",Long.toString(fileGeneration));
+        int next=filePages.next(offset);return new JSONObject().put("folder",name).put("validity",Long.toString(validity)).put("query",query).put("files",result).put("total",filePages.size()).put("nextOffset",next).put("hasMore",next<filePages.size()).put("snapshot",Long.toString(fileGeneration));
     }
     JSONObject exportMessage(String name,String uid,String expectedValidity,java.io.File directory)throws Exception{return exportMessage(name,uid,expectedValidity,directory,false);}
     JSONObject exportMessage(String name,String uid,String expectedValidity,java.io.File directory,boolean forwarding)throws Exception{
-        openFolder(name);if(!Long.toString(validity).equals(expectedValidity))throw new MessagingException("UID validity changed");Message message=((UIDFolder)inbox).getMessageByUID(Long.parseLong(uid));if(message==null||message.isExpunged())throw new MessagingException("Missing message");
-        if(message instanceof com.sun.mail.imap.IMAPMessage)((com.sun.mail.imap.IMAPMessage)message).setPeek(true);
-        directory.mkdirs();java.io.File file=java.io.File.createTempFile("message-",".eml",directory);
-        try(java.io.OutputStream raw=new java.io.FileOutputStream(file);java.io.OutputStream bounded=new java.io.FilterOutputStream(raw){long size;public void write(int b)throws java.io.IOException{if(++size>AttachmentFiles.MAX_BYTES)throw new java.io.IOException("Message too large");out.write(b);}public void write(byte[] b,int off,int len)throws java.io.IOException{if((size+=len)>AttachmentFiles.MAX_BYTES)throw new java.io.IOException("Message too large");out.write(b,off,len);}}){if(forwarding&&message instanceof javax.mail.internet.MimeMessage)((javax.mail.internet.MimeMessage)message).writeTo(bounded,new String[]{"Bcc","Resent-Bcc"});else message.writeTo(bounded);}catch(Exception e){file.delete();throw e;}
-        return new JSONObject().put("file",file.getAbsolutePath()).put("name",AttachmentFiles.safeName(message.getSubject())+".eml").put("mime","message/rfc822");
+        return exportMessage(name,uid,expectedValidity,directory,forwarding,()->false,bytes->{});
+    }
+    JSONObject exportMessage(String name,String uid,String expectedValidity,java.io.File directory,boolean forwarding,java.util.function.BooleanSupplier cancelled,java.util.function.LongConsumer progress)throws Exception{
+        BulkAttachments.check(cancelled);
+        openFolder(name);if(!Long.toString(validity).equals(expectedValidity))throw new MessagingException("UID validity changed");
+        Message message=((UIDFolder)inbox).getMessageByUID(Long.parseLong(uid));
+        if(message instanceof IMAPMessage)((IMAPMessage)message).setPeek(true);
+        return MessageExport.write(message,directory,forwarding,cancelled,progress);
     }
     private String senderPersonal(Message message,InternetAddress envelope){
         try{String[] values=message.getHeader("From");if(values!=null&&values.length>0&&values[0].length()<=8192){InternetAddress[] parsed=InternetAddress.parseHeader(values[0],false);if(parsed.length>0&&envelope.getAddress()!=null&&envelope.getAddress().equalsIgnoreCase(parsed[0].getAddress()))return MimeWords.personal(parsed[0]);}}catch(Exception invalid){}return MimeWords.personal(envelope);
@@ -181,12 +187,14 @@ final class MailReader implements AutoCloseable {
             }
             obj.put("sender", name); obj.put("email", email);MailThreadHeaders.add(m,obj);
             Address[] reply=m.getReplyTo();obj.put("replyTo",reply!=null&&reply.length>0&&reply[0] instanceof InternetAddress?((InternetAddress)reply[0]).getAddress():email);
+            obj.put("replyToRecipients",addressValues(reply));
             obj.put("recipients", recipients(m));obj.put("toRecipients",recipientAddresses(m,Message.RecipientType.TO));obj.put("ccRecipients",recipientAddresses(m,Message.RecipientType.CC));
             Date date = m.getReceivedDate(); if (date == null) date = m.getSentDate();
             SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.ROOT);
             format.setTimeZone(TimeZone.getTimeZone("Europe/Moscow"));
             obj.put("date", date == null ? "" : format.format(date));
             obj.put("seen", m.isSet(Flags.Flag.SEEN));
+            obj.put("draft",m.isSet(Flags.Flag.DRAFT)).put("deleted",m.isSet(Flags.Flag.DELETED));
             Boolean attachments = attachmentPresence(m);
             if (attachments != null) obj.put("hasAttachments", attachments);
             return obj;
@@ -221,7 +229,8 @@ final class MailReader implements AutoCloseable {
         return unknown ? null : false;
     }
 
-    private JSONArray recipientAddresses(Message message,Message.RecipientType type)throws Exception{JSONArray values=new JSONArray();Address[] addresses=message.getRecipients(type);if(addresses!=null)for(Address address:addresses)if(address instanceof InternetAddress)values.put(((InternetAddress)address).getAddress());return values;}
+    private JSONArray recipientAddresses(Message message,Message.RecipientType type)throws Exception{return addressValues(message.getRecipients(type));}
+    private JSONArray addressValues(Address[] addresses){JSONArray values=new JSONArray();if(addresses!=null)for(Address address:addresses)values.put(address instanceof InternetAddress?((InternetAddress)address).getAddress():JSONObject.NULL);return values;}
     private JSONArray recipients(Message message) throws Exception {
         JSONArray result=new JSONArray();
         Message.RecipientType[] types={Message.RecipientType.TO,Message.RecipientType.CC,Message.RecipientType.BCC};
@@ -236,17 +245,31 @@ final class MailReader implements AutoCloseable {
         return result;
     }
     JSONObject moveMail(String folder,String uid,String expectedValidity,String kind)throws Exception{
-        if(!"archive".equals(kind)&&!"trash".equals(kind))throw new java.io.IOException("Некорректное действие.");
+        return moveMail(folder,uid,expectedValidity,kind,null,()->true);
+    }
+    JSONObject moveMail(String folder,String uid,String expectedValidity,String kind,String target,java.util.function.BooleanSupplier allowed)throws Exception{
+        if(!"archive".equals(kind)&&!"trash".equals(kind)&&!"spam".equals(kind)&&!"folder".equals(kind))throw new java.io.IOException("Некорректное действие.");
+        if(folder==null||folder.isEmpty()||folder.length()>1024||folder.matches("(?s).*\\p{Cntrl}.*")||uid==null||expectedValidity==null||!uid.matches("[1-9][0-9]{0,18}")||!expectedValidity.matches("[1-9][0-9]{0,18}"))throw new java.io.IOException("Некорректная ссылка на письмо.");
+        if("folder".equals(kind)&&(target==null||target.isEmpty()||target.length()>1024||target.matches("(?s).*\\p{Cntrl}.*")))throw new java.io.IOException("Некорректная папка назначения.");
+        if(!allowed.getAsBoolean())throw new java.io.IOException("Перемещение отменено до отправки команды.");
         openFolder(folder);if(!Long.toString(validity).equals(expectedValidity))throw new java.io.IOException("Папка изменилась. Обновите список.");
         long id=Long.parseLong(uid);Message message=((UIDFolder)inbox).getMessageByUID(id);if(message==null||message.isExpunged())throw new java.io.IOException("Письмо отсутствует. Обновите список.");
         if(!((com.sun.mail.imap.IMAPStore)store).hasCapability("MOVE"))throw new java.io.IOException("Сервер не поддерживает безопасное перемещение MOVE. Откройте веб-почту.");
-        Folder destination=null;String attribute="trash".equals(kind)?"\\Trash":"\\Archive";String[] names="trash".equals(kind)?new String[]{"Trash","Deleted Items","Корзина"}:new String[]{"Archive","Archives","Архив"};
-        Folder[] candidates=store.getDefaultFolder().list("*");for(Folder candidate:candidates)if(candidate instanceof IMAPFolder)for(String flag:((IMAPFolder)candidate).getAttributes())if(attribute.equalsIgnoreCase(flag))destination=candidate;
-        if(destination==null)for(String name:names){Folder candidate=store.getFolder(name);if(candidate.exists()&&(candidate.getType()&Folder.HOLDS_MESSAGES)!=0){destination=candidate;break;}}
-        if(destination==null||destination.getFullName().equals(folder))throw new java.io.IOException("Папка назначения не найдена или письмо уже в ней. Используйте веб-почту.");
+        Folder destination=null;
+        if("folder".equals(kind))destination=store.getFolder(target);
+        else {
+            String attribute="trash".equals(kind)?"\\Trash":"spam".equals(kind)?"\\Junk":"\\Archive";
+            String[] names="trash".equals(kind)?new String[]{"Trash","Deleted Items","Корзина"}:"spam".equals(kind)?new String[]{"Junk","Spam","Спам"}:new String[]{"Archive","Archives","Архив"};
+            Folder[] candidates=store.getDefaultFolder().list("*");for(Folder candidate:candidates)if(candidate instanceof IMAPFolder&&(candidate.getType()&Folder.HOLDS_MESSAGES)!=0)for(String flag:((IMAPFolder)candidate).getAttributes())if(attribute.equalsIgnoreCase(flag))destination=candidate;
+            if(destination==null)for(String name:names){Folder candidate=store.getFolder(name);if(candidate.exists()&&(candidate.getType()&Folder.HOLDS_MESSAGES)!=0){destination=candidate;break;}}
+        }
+        if(destination==null||!destination.exists()||(destination.getType()&Folder.HOLDS_MESSAGES)==0||destination.getFullName().equals(inbox.getFullName()))throw new java.io.IOException("Папка назначения не найдена или письмо уже в ней.");
         String name=destination.getFullName();inbox.close(false);inbox.open(Folder.READ_WRITE);validity=((UIDFolder)inbox).getUIDValidity();
         if(!Long.toString(validity).equals(expectedValidity)){inbox.close(false);inbox.open(Folder.READ_ONLY);validity=((UIDFolder)inbox).getUIDValidity();throw new java.io.IOException("Папка изменилась. Обновите список.");}
-        try{message=((UIDFolder)inbox).getMessageByUID(id);if(message==null||message.isExpunged())throw new java.io.IOException("Письмо отсутствует.");((IMAPFolder)inbox).moveMessages(new Message[]{message},destination);return new JSONObject().put("moved",true).put("destination",name);}finally{if(inbox!=null&&inbox.isOpen()){inbox.close(false);inbox.open(Folder.READ_ONLY);validity=((UIDFolder)inbox).getUIDValidity();}}
+        try{message=((UIDFolder)inbox).getMessageByUID(id);if(message==null||message.isExpunged())throw new java.io.IOException("Письмо отсутствует.");
+            if(!allowed.getAsBoolean())throw new java.io.IOException("Перемещение отменено до отправки команды.");
+            ((IMAPFolder)inbox).moveMessages(new Message[]{message},destination);return new JSONObject().put("moved",true).put("destination",name);
+        }finally{if(inbox!=null&&inbox.isOpen()){inbox.close(false);inbox.open(Folder.READ_ONLY);validity=((UIDFolder)inbox).getUIDValidity();}}
     }
     JSONObject arrivals(String oldValidity,long oldUid)throws Exception{return arrivals(oldValidity,oldUid,false);}
     JSONObject arrivals(String oldValidity,long oldUid,boolean categoryFiltering)throws Exception{
@@ -287,10 +310,38 @@ final class MailReader implements AutoCloseable {
         FetchProfile profile=new FetchProfile();profile.add(FetchProfile.Item.ENVELOPE);profile.add(FetchProfile.Item.FLAGS);profile.add(FetchProfile.Item.CONTENT_INFO);MailThreadHeaders.fetch(profile);profile.add("From");
         inbox.fetch(new Message[]{m},profile);
         JSONArray files;
+        JSONArray htmlLinks=new JSONArray();
         if(m instanceof com.sun.mail.imap.IMAPMessage)((com.sun.mail.imap.IMAPMessage)m).setPeek(true);
-        files=MailAttachments.list(m);String text = extract(m, new JSONArray(), 0, "root",prefetch?24000:100000,prefetch);
-        JSONObject info=header(m).put("hasAttachments",files.length()>0);String[] rawFrom=m.getHeader("From");if(rawFrom!=null&&rawFrom.length>0)info.put("rawFrom",rawFrom[0]);
-        return new JSONObject().put("uid", uid).put("text", text).put("attachments", files).put("message", info).put("phones",new JSONArray(PhoneNumbers.find(text)));
+        files=MailAttachments.list(m);String text = extract(m, new JSONArray(), htmlLinks, 0, "root",prefetch?24000:100000,prefetch);
+        JSONObject info=header(m).put("hasAttachments",files.length()>0).put("links",htmlLinks);String[] rawFrom=m.getHeader("From");if(rawFrom!=null&&rawFrom.length>0)info.put("rawFrom",rawFrom[0]);
+        if(!prefetch){
+            String[] rawRefs=m.getHeader("References");
+            if(rawRefs!=null&&rawRefs.length>0&&info.optString("references").isEmpty())info.put("references",sanitizeHeaderPart(String.join(" ",rawRefs)));
+            String rawHeaders=extractRawHeaders(m);
+            if(!rawHeaders.isEmpty())info.put("rawHeaders",rawHeaders);
+        }
+        return new JSONObject().put("uid", uid).put("text", text).put("attachments", files).put("message", info).put("phones",new JSONArray(PhoneNumbers.find(text))).put("links",htmlLinks);
+    }
+    /** Explicit editor read, refreshes flags and never marks Seen or rewrites a server draft. */
+    JSONObject serverDraft(String name,String uid,String expectedValidity)throws Exception{
+        if(!name.equals(DraftFolder.find(store).getFullName()))throw new MessagingException("Not the drafts folder");
+        if(uid==null||expectedValidity==null||!uid.matches("[1-9][0-9]{0,18}")||!expectedValidity.matches("[1-9][0-9]{0,18}"))throw new IllegalArgumentException("Draft reference");
+        if(inbox!=null&&inbox.isOpen())inbox.close(false);
+        openFolder(name);if(!Long.toString(validity).equals(expectedValidity))throw new MessagingException("Draft folder changed");
+        Message message=((UIDFolder)inbox).getMessageByUID(Long.parseLong(uid));
+        if(message==null||message.isExpunged())throw new MessagingException("Draft unavailable");
+        if(message instanceof IMAPMessage)((IMAPMessage)message).setPeek(true);
+        return ServerDraftRead.read(message).put("folder",name).put("uid",uid).put("validity",expectedValidity);
+    }
+    /** Fresh, read-only manifest for explicitly copying original attachments. */
+    JSONObject forwardAttachments(String name,String uid,String expectedValidity)throws Exception{
+        if(inbox!=null&&inbox.isOpen())inbox.close(false);
+        openFolder(name);
+        if(!Long.toString(validity).equals(expectedValidity))throw new MessagingException("UID validity changed");
+        Message message=((UIDFolder)inbox).getMessageByUID(Long.parseLong(uid));
+        if(message==null||message.isExpunged()||message.isSet(Flags.Flag.DELETED))throw new MessagingException("Message unavailable");
+        if(message instanceof IMAPMessage)((IMAPMessage)message).setPeek(true);
+        return new JSONObject().put("folder",name).put("uid",uid).put("validity",expectedValidity).put("attachments",MailAttachments.list(message));
     }
     JSONObject seen(String name,String uid,String expectedValidity,boolean seen)throws Exception{
         if(inbox!=null&&inbox.isOpen())inbox.close(false);
@@ -315,7 +366,55 @@ final class MailReader implements AutoCloseable {
         if(chosen==null)throw new MessagingException("Sent folder not found");
         message.setFlag(Flags.Flag.SEEN,true);chosen.appendMessages(new Message[]{message});
     }
-    private String extract(Part part, JSONArray files, int depth, String path,int budget,boolean prefetch) throws Exception {
+    static void extractHtmlLinks(String html,JSONArray outLinks){
+        if(html==null||outLinks==null||outLinks.length()>=NativeReaderTargets.MAX_TARGETS)return;
+        java.util.LinkedHashSet<String> seen=new java.util.LinkedHashSet<>();
+        for(int i=0;i<outLinks.length();i++){String existing=outLinks.optString(i,null);if(existing!=null)seen.add(existing);}
+        for(String link:NativeReaderTargets.extractHrefLinks(html)){
+            if(seen.size()>=NativeReaderTargets.MAX_TARGETS)break;
+            if(seen.add(link))outLinks.put(link);
+        }
+    }
+    private static String sanitizeHeaderPart(String value){
+        if(value==null)return "";
+        StringBuilder sb=new StringBuilder(value.length());
+        for(int i=0;i<value.length();i++){
+            char c=value.charAt(i);
+            if(c=='\t'||(!Character.isISOControl(c)&&Character.getType(c)!=Character.FORMAT))sb.append(c);
+            else if(c=='\r'||c=='\n'){if(sb.length()==0||sb.charAt(sb.length()-1)!=' ')sb.append(' ');}
+        }
+        return sb.toString().trim();
+    }
+    static String extractRawHeaders(Message m){
+        try{
+            java.util.Enumeration<?> headers=m.getAllHeaders();
+            if(headers==null)return "";
+            StringBuilder out=new StringBuilder();
+            int count=0;
+            boolean truncated=false;
+            while(headers.hasMoreElements()){
+                if(count>=80){truncated=true;break;}
+                Object next=headers.nextElement();
+                if(!(next instanceof Header))continue;
+                Header h=(Header)next;
+                String name=sanitizeHeaderPart(h.getName());
+                String value=sanitizeHeaderPart(h.getValue());
+                if(name.isEmpty())continue;
+                String line=value.isEmpty()?name+":":name+": "+value;
+                if(line.length()>2000)line=line.substring(0,2000)+"…";
+                if(out.length()+line.length()+(out.length()>0?1:0)>16000){truncated=true;break;}
+                if(out.length()>0)out.append('\n');
+                out.append(line);
+                count++;
+            }
+            if(truncated){
+                if(out.length()>0)out.append('\n');
+                out.append("[Заголовки сокращены]");
+            }
+            return out.toString();
+        }catch(Exception unavailable){return "";}
+    }
+    private String extract(Part part, JSONArray files, JSONArray htmlLinks, int depth, String path,int budget,boolean prefetch) throws Exception {
         if (depth > 12) return "";
         if(MailAttachments.file(part))return "";
         if(prefetch&&part.isMimeType("message/rfc822")){String forwardName=part.getFileName();files.put(new JSONObject().put("name",forwardName==null?"Пересланное письмо.eml":AttachmentNames.decode(forwardName)).put("size",part.getSize()).put("path",path));return "";}
@@ -328,22 +427,31 @@ final class MailReader implements AutoCloseable {
         if (part.isMimeType("text/html")) {
             String html = MailText.read(part,budget);
             html = html.replaceAll("(?is)<(script|style)\\b[^>]*>.*?</\\1>", "");
+            if(!prefetch&&htmlLinks!=null)extractHtmlLinks(html,htmlLinks);
             return Html.fromHtml(html, Html.FROM_HTML_MODE_COMPACT).toString();
         }
         if (part.isMimeType("multipart/*")) {
             Multipart multi = (Multipart) part.getContent();
             if (part.isMimeType("multipart/alternative")) {
-                for (int i = 0; i < multi.getCount(); i++) if (multi.getBodyPart(i).isMimeType("text/plain")) return extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)),budget,prefetch);
-                for (int i = multi.getCount() - 1; i >= 0; i--) if (multi.getBodyPart(i).isMimeType("text/html")) return extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)),budget,prefetch);
+                for (int i = 0; i < multi.getCount(); i++) if (multi.getBodyPart(i).isMimeType("text/plain")) {
+                    String plain = extract(multi.getBodyPart(i), files, htmlLinks, depth + 1, AttachmentParts.child(path,Integer.toString(i)),budget,prefetch);
+                    if(!prefetch&&htmlLinks!=null&&htmlLinks.length()<NativeReaderTargets.MAX_TARGETS){
+                        for(int j=multi.getCount()-1;j>=0&&htmlLinks.length()<NativeReaderTargets.MAX_TARGETS;j--){
+                            try{BodyPart sibling=multi.getBodyPart(j);if(sibling.isMimeType("text/html"))extractHtmlLinks(MailText.read(sibling,budget),htmlLinks);}catch(Exception ignored){}
+                        }
+                    }
+                    return plain;
+                }
+                for (int i = multi.getCount() - 1; i >= 0; i--) if (multi.getBodyPart(i).isMimeType("text/html")) return extract(multi.getBodyPart(i), files, htmlLinks, depth + 1, AttachmentParts.child(path,Integer.toString(i)),budget,prefetch);
             }
             StringBuilder text = new StringBuilder();
             for (int i = 0; i < multi.getCount() && i < 80; i++) {
-                String value = extract(multi.getBodyPart(i), files, depth + 1, AttachmentParts.child(path,Integer.toString(i)),Math.max(0,budget-text.length()),prefetch);
+                String value = extract(multi.getBodyPart(i), files, htmlLinks, depth + 1, AttachmentParts.child(path,Integer.toString(i)),Math.max(0,budget-text.length()),prefetch);
                 if (!value.isEmpty()) { if (text.length() > 0) text.append("\n\n"); text.append(value); }
             }
             return limit(text.toString());
         }
-        if (part.isMimeType("message/rfc822")) return extract((Part) part.getContent(), files, depth + 1, AttachmentParts.child(path,"m"),budget,prefetch);
+        if (part.isMimeType("message/rfc822")) return extract((Part) part.getContent(), files, htmlLinks, depth + 1, AttachmentParts.child(path,"m"),budget,prefetch);
         return "";
     }
     JSONObject attachment(String folder,String uid,String expectedValidity,String path,java.io.File directory)throws Exception{
@@ -360,6 +468,7 @@ final class MailReader implements AutoCloseable {
         if(message==null||message.isExpunged())throw new MessagingException("Message unavailable");
         String cacheKey=new JSONArray().put(folder).put(uid).put(expectedValidity).put(path).put(directory.getAbsolutePath()).toString();
         JSONObject cached=downloadedFiles.get(cacheKey);if(cached!=null&&new java.io.File(cached.getString("file")).isFile())return new JSONObject(cached.toString());
+        if(message instanceof IMAPMessage)((IMAPMessage)message).setPeek(true);
         Part part=AttachmentParts.resolve(message,path);
         String raw=part.getFileName();String name=AttachmentFiles.safeName(raw==null?"Вложение":AttachmentNames.decode(raw));
         // MIME size is transfer-encoded (e.g. base64), not the saved file size.

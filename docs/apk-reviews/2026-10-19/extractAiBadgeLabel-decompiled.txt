@@ -1,0 +1,20 @@
+Evidence from APK; decompiled excerpt, not original Kotlin source.
+
+    public static final String extractAiBadgeLabel(NativeMail mail) {
+        String extractedTime;
+        Intrinsics.checkNotNullParameter(mail, "mail");
+        if (!mail.getUnread()) {
+            return null;
+        }
+        String combined = mail.getSubject() + ' ' + mail.getPreview();
+        MatchResult matchResultFind$default = Regex.find$default(aiTimeRegex, mail.getSubject(), 0, 2, null);
+        if (matchResultFind$default == null || (extractedTime = matchResultFind$default.getValue()) == null) {
+            MatchResult matchResultFind$default2 = Regex.find$default(aiTimeRegex, mail.getPreview(), 0, 2, null);
+            extractedTime = matchResultFind$default2 != null ? matchResultFind$default2.getValue() : null;
+        }
+        boolean isUrgentCue = StringsKt.contains((CharSequence) mail.getSubject(), (CharSequence) "срочн", true) || StringsKt.contains((CharSequence) mail.getSubject(), (CharSequence) "защит", true) || StringsKt.contains((CharSequence) mail.getSubject(), (CharSequence) "дедлайн", true) || StringsKt.contains((CharSequence) mail.getSubject(), (CharSequence) "согласован", true) || StringsKt.contains((CharSequence) combined, (CharSequence) "срочн", true);
+        if (isUrgentCue || extractedTime != null) {
+            return extractedTime != null ? "AI: Срочно • " + extractedTime : "AI: Срочно";
+        }
+        return null;
+    }

@@ -7,6 +7,19 @@ import java.nio.charset.*;
 
 /** Decode only the displayed prefix; a large text part must not delay attachment metadata. */
 final class MailText {
+    /** Editing requires the complete text and strict decoding, never a display prefix. */
+    static String readComplete(Part part,int maximum)throws Exception{
+        String name=new ContentType(part.getContentType()).getParameter("charset");
+        Charset charset=Charset.forName(MimeUtility.javaCharset(name==null?"US-ASCII":name));
+        CharsetDecoder decoder=charset.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT);
+        try(Reader reader=new InputStreamReader(part.getInputStream(),decoder)){
+            StringBuilder text=new StringBuilder();char[] buffer=new char[4096];int count;
+            while((count=reader.read(buffer,0,Math.min(buffer.length,maximum+1-text.length())))!=-1){
+                text.append(buffer,0,count);if(text.length()>maximum)throw new IOException("Draft body exceeds editor limit");
+            }
+            return text.toString();
+        }
+    }
     static String read(Part part,int maximum)throws Exception{
         if(maximum<=0)return "";
         String name=new ContentType(part.getContentType()).getParameter("charset");

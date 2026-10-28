@@ -1,0 +1,7 @@
+{
+  "offline_mail": "Inbox opened, cached message opened, returned to inbox",
+  "attachments": "Two metadata cards shown in one column; filenames visible; actual download/open not tested",
+  "calendar": "Week view opened on 19 October 2026; Day/Week/Month/List selectors visible; no real calendar connected",
+  "no_account_back": "After clearing only synthetic emulator app data: Accounts Back returned to Android launcher",
+  "login_back": "Add account form opened; Back returned to Accounts without entering credentials"
+}

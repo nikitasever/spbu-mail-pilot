@@ -256,6 +256,53 @@ const {bundleUi, buildUi} = require('./scripts/build_ui.cjs');
   const fileError=doc(renderFilesView(filesContext));
   assert.ok(fileError.querySelector('[data-action="retry-files"]'));
 
+  const {renderLocalForm} = await import('./ui/forms/render.mjs');
+  const {renderWritingDialog} = await import('./ui/compose/writing-dialog.mjs');
+  const {renderDigestResult} = await import('./ui/digest/result.mjs');
+  const {renderDigestView} = await import('./ui/digest/render.mjs');
+  const {renderBatchDialog} = await import('./ui/files/batch-dialog.mjs');
+  const formContext={form:'contact',renderCompose:()=>'<compose>',local:{tasks:[]},
+    draft:{sender:'<b> Name',email:'a@example.invalid',number:'+70000000000'},reminderChoices:[],reminderValue:()=>''};
+  let formDoc=doc(renderLocalForm(formContext));
+  assert.equal(formDoc.querySelector('[name="sender"]').value,'<b> Name');
+  assert.equal(formDoc.querySelector('[name="email"]').getAttribute('type'),'email');
+  assert.ok(formDoc.querySelector('[data-action="save-local"]'));
+  formContext.form='compose';assert.equal(renderLocalForm(formContext),'<compose>');
+  const writingContext={quickDiscard:false,templateDelete:null,signatureEdit:null,templateEdit:null,
+    account:'a@example.invalid',form:'compose',draft:{body:'text'},local:{templates:[{id:'t',title:'<img>',body:'<script> literal'}]}};
+  let writingDoc=doc(renderWritingDialog(writingContext));
+  assert.equal(writingDoc.querySelector('.template-preview').textContent,'<script> literal');
+  assert.ok(writingDoc.querySelector('[data-action="insert-template"]'));
+  writingContext.form=null;writingDoc=doc(renderWritingDialog(writingContext));
+  assert.equal(writingDoc.querySelector('[data-action="insert-template"]'),null);
+  writingContext.quickDiscard=true;writingContext.signatureEdit={text:'unsaved',auto:true};
+  writingDoc=doc(renderWritingDialog(writingContext));
+  assert.ok(writingDoc.querySelector('[data-action="quick-keep-edit"]'));
+  assert.equal(writingDoc.querySelector('[data-action="save-signature"]'),null, 'unsaved confirmation takes precedence');
+  const digestState={picked:new Set([mail.uidKey(reference)]),base:[reference],total:1,folder:'INBOX',scope:'loaded',
+    choices:[{...reference,subject:'<b> subject',sender:'Sender'}],items:null,analysis:null,smart:true,loading:false};
+  const digestContext={digest:digestState,greeting:()=>'Привет',renderSmartResult:()=>renderDigestResult({digest:digestState}),
+    digestExcerpt:()=>({brief:'text'}),labelChip:()=>'',local:{mailLabels:{}}};
+  let digestDoc=doc(renderDigestView(digestContext));
+  assert.equal(digestDoc.querySelector('[data-digest-pick]').hasAttribute('checked'),true);
+  assert.equal(digestDoc.querySelector('[data-action="smart-load"]').disabled,false);
+  digestState.loading=true;digestDoc=doc(renderDigestView(digestContext));
+  assert.equal(digestDoc.querySelector('[data-action="smart-load"]').disabled,true);
+  digestState.loading=false;digestState.items=[{truncated:true}];digestState.analysis={overview:'<script> summary',
+    points:[{kind:'reply',title:'<img>',detail:'<b> detail',sources:[1]}]};
+  digestDoc=doc(renderDigestResult({digest:digestState}));
+  assert.equal(digestDoc.querySelector('.smart-overview p').textContent,'<script> summary');
+  assert.equal(digestDoc.querySelector('[data-action="digest-source"]').dataset.id,'0');
+  const batchContext={bulkState:{busy:true,stage:'folder'},batchProgressView:()=>({caption:'Choose',name:'<file>',size:''}),
+    batchProgressMarkup:()=>'',fileProgressMarkup:()=>''};
+  let batchDoc=doc(renderBatchDialog(batchContext));
+  assert.ok(batchDoc.querySelector('[data-action="cancel-batch"]'));
+  assert.equal(batchDoc.querySelector('[data-action="close-quick"]'),null);
+  batchContext.bulkState={busy:false,result:{error:'<script> failed'}};batchDoc=doc(renderBatchDialog(batchContext));
+  assert.equal(batchDoc.querySelector('[role="alert"]').textContent,'<script> failed');
+  assert.ok(batchDoc.querySelector('[data-action="retry-batch"]'));
+  assert.ok(batchDoc.querySelector('[data-action="close-quick"]'));
+
   const first = await bundleUi(), second = await bundleUi();
   assert.ok(Buffer.from(first).equals(Buffer.from(second)), 'bundle must be deterministic');
   assert.ok(Buffer.from(first).equals(fs.readFileSync(path.join(__dirname,'assets/app.js'))), 'tracked bundle must match sources');

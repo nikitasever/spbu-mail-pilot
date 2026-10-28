@@ -27,6 +27,24 @@ public class SavedAccountsTest {
         restored.setActive(book.activeId());check(restored.active()==null&&restored.list().size()==2);
         restored.save(server);restored.remove(updated);check(restored.active()==server&&restored.list().size()==1);
         restored.remove(server);check(restored.active()==null&&restored.list().isEmpty());
-        System.out.println("PASS: multiple accounts, logout preserves passwords, switching, credential replacement, server/port isolation, deletion and active-account restore.");
+
+        // Atomic password update on inactive account B while A remains active, preserving B's custom SMTP.
+        SavedAccounts casBook=new SavedAccounts();
+        SavedAccounts.Login activeA=new SavedAccounts.Login("mail.spbu.ru",993,"active-a@spbu.ru","pass-a-1");
+        SavedAccounts.Login inactiveB=new SavedAccounts.Login("mail.spbu.ru",993,"inactive-b@spbu.ru","pass-b-1","smtp.custom.invalid",587,false,"alias-b@spbu.ru");
+        casBook.save(inactiveB);casBook.save(activeA);
+        check(casBook.active()==activeA&&casBook.activeId().equals(activeA.identity()));
+        check(casBook.get(inactiveB.identity())==inactiveB);
+        casBook.updatePassword(inactiveB,"pass-b-2");
+        check(casBook.active()==activeA&&casBook.activeId().equals(activeA.identity()));
+        SavedAccounts.Login updatedB=casBook.get(inactiveB.identity());
+        check(updatedB!=null&&updatedB.password.equals("pass-b-2")&&updatedB.smtpHost.equals("smtp.custom.invalid")&&updatedB.smtpPort==587&&!updatedB.smtpSsl&&updatedB.from.equals("alias-b@spbu.ru"));
+        // Reject stale expected login (old password or modified SMTP) and invalid new passwords.
+        try{casBook.updatePassword(inactiveB,"pass-b-3");throw new AssertionError();}catch(IllegalStateException expected){}
+        SavedAccounts.Login wrongSmtp=new SavedAccounts.Login("mail.spbu.ru",993,"inactive-b@spbu.ru","pass-b-2","other.smtp.invalid",587,false,"alias-b@spbu.ru");
+        try{casBook.updatePassword(wrongSmtp,"pass-b-3");throw new AssertionError();}catch(IllegalStateException expected){}
+        try{casBook.updatePassword(updatedB,"");throw new AssertionError();}catch(IllegalArgumentException expected){}
+        try{casBook.updatePassword(updatedB,"bad\0pass");throw new AssertionError();}catch(IllegalArgumentException expected){}
+        System.out.println("PASS: multiple accounts, logout preserves passwords, switching, credential replacement, atomic password CAS without changing activeId, server/port isolation, deletion and active-account restore.");
     }
 }

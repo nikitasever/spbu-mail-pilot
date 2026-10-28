@@ -8,6 +8,18 @@
   var field = (label, name, value = "", type = "text", max = 180) => `<label>${label}<input name="${name}" type="${type}" maxlength="${max}" value="${esc(value)}"></label>`;
   var area = (label, name, value = "", max = 2e3) => `<label>${label}<textarea name="${name}" maxlength="${max}">${esc(value)}</textarea></label>`;
 
+  // ui/files/batch-dialog.mjs
+  function renderBatchDialog(context) {
+    const { bulkState, batchProgressView, batchProgressMarkup, fileProgressMarkup } = context;
+    const state = bulkState, result = state.result, failures = result?.failures || [], v = batchProgressView();
+    let content = "";
+    if (state.busy) content = batchProgressMarkup() + '<div class="batch-file-status"><p id="batch-caption" role="status">' + esc(v.caption) + '</p><strong id="batch-name">' + esc(state.stage === "folder" ? "" : v.name) + '</strong><div id="batch-file-progress">' + (state.stage === "folder" || state.stage === "finished" ? "" : fileProgressMarkup(state)) + '</div><p id="batch-size" class="note" hidden>' + esc(v.size) + "</p></div>" + btn("Отменить скачивание", "cancel-batch", "", "full");
+    else if (result?.error) content = '<p role="alert">' + esc(result.error) + "</p>" + btn("Повторить", "retry-batch");
+    else if (result?.total === void 0) content = "<p>Выбор папки отменён.</p>";
+    else content = batchProgressMarkup() + "<p>Сохранено: " + (result.saved || 0) + " из " + result.total + "." + (result.cancelled ? " Скачивание остановлено." : "") + "</p>" + (failures.length ? "<p>Не удалось скачать: " + failures.length + ".</p>" + failures.slice(0, 30).map((f) => '<p class="note">' + esc(f.name) + (f.reason === "unsupported_destination" ? " — выберите папку с поддержкой переименования" : "") + "</p>").join("") + btn("Повторить несохранённые", "retry-batch") : "");
+    return '<dialog id="quick-popup" class="batch-popup" aria-labelledby="quick-title"><div class="quick-head"><h3 id="quick-title">Скачивание вложений</h3>' + (!state.busy ? btn(icon("x"), "close-quick") : "") + "</div>" + content + (!state.busy ? btn("Готово", "close-quick", "", "primary") : "") + '<p id="quick-message" role="status"></p></dialog>';
+  }
+
   // ui/mail/identity.mjs
   var uidKey = (m) => JSON.stringify([m.folder || "INBOX", m.validity, m.uid]);
   var threadIds = (value) => typeof value === "string" && value.length <= 32768 ? [...value.matchAll(/<[^<>\s@]+@[^<>\s@]+>/g)].map((m) => m[0]).filter((id) => id.length <= 998 && /^[\x21-\x7e]+$/.test(id)).slice(0, 100) : [];
@@ -25,35 +37,6 @@
     const parts = (name.includes("@") ? name.split("@")[0].split(/[._-]+/) : name.split(/\s+/)).filter(Boolean), initials = (parts.length > 1 ? (Array.from(parts[0])[0] || "") + (Array.from(parts[1])[0] || "") : name.includes("@") ? Array.from(parts[0] || "").slice(0, 2).join("") : Array.from(name)[0] || "").toUpperCase(), tone = [...m.email || name].reduce((n, c) => (n + c.charCodeAt(0)) % 6, 0);
     return `<span class="avatar person" data-tone="${tone}" aria-hidden="true">${esc(initials)}</span>`;
   };
-
-  // ui/files/render.mjs
-  function renderFilesView(context) {
-    const { Pilot: Pilot2, fileEntries, bodyCache, fileQuery, searchClear, folders, fileFolder, fileOffset, fileTotal, fileLoading, local, labelChip, attachmentButton, downloadTransferMarkup, fileDownloadButton, labelOptions, fileMore, fileListError } = context;
-    const entries = typeof Pilot2.filesPage === "function" ? fileEntries : Object.entries(bodyCache).flatMap(([key, b]) => (b.attachments || []).map((f) => ({ message: { folder: JSON.parse(key)[0], validity: JSON.parse(key)[1], uid: JSON.parse(key)[2] }, ...f }))).filter((f) => f.name.toLocaleLowerCase("ru").includes(fileQuery.toLocaleLowerCase("ru")));
-    return page((entries.length && typeof Pilot2.downloadAttachments === "function" ? '<div class="files-batch-actions">' + btn(icon("download") + " Скачать показанные · " + entries.length, "download-shown-files", "", "reader-small") + '<p class="note">Вложения из загруженного списка; другие страницы — по кнопке ниже.</p></div>' : "") + '<form data-file-search class="search-form"><input name="file-query" type="search" maxlength="200" value="' + esc(fileQuery) + '" aria-label="Поиск файлов" placeholder="Поиск файлов по имени"><button type="submit" aria-label="Найти файлы">' + icon("search") + "</button>" + searchClear("file-query", "clear-file-search", "Очистить поиск файлов", fileQuery) + '</form><label>Папка<select id="files-folder">' + folders.map((name) => '<option value="' + esc(name) + '" ' + (name === fileFolder ? "selected" : "") + ">" + esc(name === "INBOX" ? "Входящие" : name) + "</option>").join("") + '</select></label><p class="note">Вложения из писем этой папки. Проверено писем: ' + fileOffset + " из " + fileTotal + ". " + (fileLoading ? "Поиск продолжается…" : "") + "</p>" + entries.map((f) => {
-      const ref = f.message, key = JSON.stringify([ref.folder, ref.uid, ref.validity, f.path]);
-      return '<div class="list-item"><h4>' + esc(f.name) + '</h4><p class="note">' + esc(ref.sender || "") + " · " + esc(ref.subject || "") + "</p>" + labelChip(local.fileLabels[key]) + attachmentButton(ref, f) + downloadTransferMarkup(key) + '<div class="inline-actions">' + fileDownloadButton(key) + btn("Сохранить в…", "save-file", key) + btn(icon("share-2") + " Поделиться", "share-file", key) + btn("К письму", "file-source", uidKey(ref)) + '</div><label>Метка файла<select data-file-label="' + esc(key) + '">' + labelOptions(local.fileLabels[key]) + "</select></label></div>";
-    }).join("") + (fileMore && !fileLoading ? btn("Загрузить следующие вложения", "more-files", "", "full") : "") + (!entries.length ? '<p class="note">' + (fileLoading ? "Проверяем имена вложений…" : fileListError ? "Не удалось загрузить файлы. Проверьте подключение." : "Файлы не найдены.") + "</p>" + (fileListError ? btn("Повторить загрузку", "retry-files") : "") : ""));
-  }
-
-  // ui/settings/profile.mjs
-  function renderProfileView(context) {
-    const { account } = context;
-    return page('<div class="profile-avatar">' + esc(account.charAt(0).toUpperCase()) + "</div><h3>" + esc(account) + '</h3><p class="note">Данные входа сохранены на телефоне в зашифрованном виде. «Выйти» закрывает ящик, сохраняя пароль. Удалить сохранённый вход можно в списке аккаунтов.</p><div class="actions">' + btn("Сменить аккаунт", "switch-account", "", "primary") + btn("Выйти из текущего ящика", "logout") + "</div>");
-  }
-
-  // ui/settings/render.mjs
-  function renderSettingsView(context) {
-    const { account, local, Pilot: Pilot2, tasksEnabled, threadsEnabled, undoSendEnabled, aiEnabled } = context;
-    return page(btn(icon("tags") + " Категории и правила", "category-settings") + '<h3>Письма и ответы</h3><p class="note">Подпись и шаблоны для ' + esc(account) + ".</p>" + btn("Настроить подпись", "signature-settings") + btn("Мои шаблоны", "templates") + '<h3>Обновление приложения · 0.73</h3><p class="note">Загрузка новой версии из GitHub. Аккаунты и задачи сохраняются.</p>' + btn("Проверить обновление", "check-update") + "<h3>Начальный экран</h3><label>Открывать при запуске<select data-start-screen>" + [["mail", "Почта"], ["calendar", "Расписание дня"]].map(([value, label]) => '<option value="' + value + '" ' + ((local.settings.startScreen || "mail") === value ? "selected" : "") + ">" + label + "</option>").join("") + '</select></label><h3>Офлайн-почта</h3><label class="settings-row"><span>Сохранять открытые письма</span><input type="checkbox" data-setting="offlineMail" ' + (local.settings.offlineMail !== false ? "checked" : "") + '></label><p class="note">До 200 заголовков на папку и 50 открытых текстов. Зашифрованные копии на этом телефоне, отдельно для каждого ящика. Вложения загружаются при подключении. Ответы сохраняются в черновиках и отправляются только по кнопке.</p>' + btn("Удалить сохранённую почту", "clear-offline-mail") + '<h3>Отображение</h3><div class="icon-previews">' + [["spbu", "С надписью СПбГУ", "spbu"], ["classic", "Без надписи", "plain"]].map(([value, title, asset]) => '<button type="button" data-action="choose-icon" data-id="' + value + '" aria-pressed="' + ((typeof Pilot2.launcherIcon === "function" ? Pilot2.launcherIcon() : "spbu") === value) + '"><img src="icon-' + asset + '.png" alt="' + title + '"><span>' + title + "</span></button>").join("") + '</div><p class="note">Иконка общая для всех ящиков. Лаунчер может обновить её с небольшой задержкой.</p><label>Тема<select data-theme>' + [["system", "Как на телефоне"], ["light", "Светлая"], ["dark", "Тёмная"]].map(([value, title]) => '<option value="' + value + '" ' + ((local.settings.theme || "system") === value ? "selected" : "") + ">" + title + "</option>").join("") + "</select></label>" + [["showTasks", "Задачи и поручения"], ["mailThreads", "Цепочки писем"], ["undoSend", "Отмена отправки (10 секунд)"], ["compact", "Компактный список"], ["large", "Крупный текст"]].map(([key, name]) => `<label class="settings-row"><span>${name}</span><input type="checkbox" data-setting="${key}" ${(key === "showTasks" ? tasksEnabled() : key === "mailThreads" ? threadsEnabled() : key === "undoSend" ? undoSendEnabled() : local.settings[key]) ? "checked" : ""}></label>`).join("") + '<p class="note">Выключите, чтобы скрыть отдельный раздел задач и создание поручений из писем. Задачи и их добавление останутся в календаре. Напоминания настраиваются отдельно. Для текущего ящика.</p><h3>Защита приложения</h3><p class="note">' + (typeof Pilot2.appLockEnabled === "function" && Pilot2.appLockEnabled() ? "Блокировка включена." : "Блокировка выключена.") + " Для всех ящиков: биометрия или PIN устройства при возвращении из фона. Фоновая почта и расписание работают дальше. Виджеты и уведомления защищаются отдельно настройками Android.</p>" + (typeof Pilot2.appLockSettings === "function" ? btn("Настроить блокировку", "app-lock-settings") : "") + '<h3>Уведомления</h3><p class="note">Для ' + esc(account) + ". Проверяются все сохранённые ящики с включёнными уведомлениями; имя ящика указано в уведомлении. Чтобы изменить другой ящик, переключитесь на него.</p>" + [["mailNotifications", "Новые письма"], ["backgroundMail", "Проверять почту при закрытом приложении"], ["taskNotifications", "Сроки задач"]].map(([key, name]) => `<label class="settings-row"><span>${name}</span><input type="checkbox" data-setting="${key}" ${local.settings[key] ? "checked" : ""}></label>`).join("") + '<p class="note">Для текущего аккаунта. При открытом приложении почта обновляется по событиям IMAP IDLE, если сервер поддерживает их, иначе — примерно раз в 30 секунд. При включённой фоновой проверке отдельная служба проверяет текущий ящик примерно раз в минуту и показывает постоянное уведомление. Разрешите работу без ограничений батареи и исключите приложение из спящих, иначе Android может задерживать сеть при выключенном экране. Этот режим расходует дополнительную энергию. При отключении остаётся проверка планировщиком примерно раз в 15 минут, с возможными задержками Android. Напоминания: за час до указанного времени, без времени — в 09:00 по Москве. При выходе уведомления этого ящика останавливаются.</p><p class="note">' + (typeof Pilot2.notificationsAllowed === "function" && Pilot2.notificationsAllowed() ? "Разрешены в Android." : "Разрешите уведомления в Android.") + '</p><div class="actions">' + btn("Проверить уведомление", "test-notification") + btn("Настройки Android", "notification-settings") + btn("Разрешить работу в фоне", "allow-background-mail") + btn("Настройки батареи", "battery-settings") + "</div>" + (typeof Pilot2.backgroundMailStatus === "function" ? '<p class="note">' + esc(Pilot2.backgroundMailStatus()) + "</p>" : "") + '<p class="note">Отложенные письма и «Напомнить ответить»: напоминания для всех сохранённых ящиков, отдельные каналы Android «Отложенные письма» и «Напомнить ответить». Выключатели новых писем и задач на них не влияют.</p><h3>Подключение</h3><p class="note">IMAP с TLS и проверкой сертификата. При открытии письмо помечается прочитанным на сервере. Можно снова отметить его непрочитанным.</p><h3>Умная сводка · Gemini</h3><label class="settings-row"><span>Нейроанализ и приветствие</span><input type="checkbox" data-setting="neuralAnalysis" ' + (aiEnabled() ? "checked" : "") + '></label><p class="note">При отключении скрываются приветствие, умная панель и ИИ-действия. Тексты не передаются для анализа. Для текущего ящика; сохранённый ключ остаётся.</p><p class="note">По открытию панели анализируются выбранные письма. Тексты передаются Google Gemini; вложения не отправляются. API-ключ хранится зашифрованным на телефоне.</p>' + btn("Настроить Gemini", "gemini-settings") + '<p class="note">PDF и текст DOCX открываются прямо в приложении; остальные документы — в просмотрщиках телефона.</p>' + btn("Настройки отправки SMTP", "smtp-settings") + btn("Выйти из ящика", "logout"));
-  }
-
-  // ui/search/render.mjs
-  function renderSearchView(context) {
-    const { smart, folders, searchClear, smartResults } = context;
-    const c = smart.criteria;
-    return page('<form data-smart-search novalidate><div class="search-form"><label class="sr-only" for="smart-query">Поиск по почте, календарю и контактам</label><input id="smart-query" name="smart-query" type="search" maxlength="120" value="' + esc(c.query) + '" placeholder="Письма, события, контакты"><button type="submit" aria-label="Найти">' + icon("search") + "</button>" + searchClear("smart-query", "smart-clear", "Очистить общий поиск", c.query) + '</div><details class="smart-filters"><summary>Фильтры' + ([c.from, c.start, c.end, c.attachments].filter(Boolean).length ? " · " + [c.from, c.start, c.end, c.attachments].filter(Boolean).length : "") + '</summary><label>Папка почты<select name="smart-folder">' + [.../* @__PURE__ */ new Set([...folders, c.folder])].map((folder) => '<option value="' + esc(folder) + '" ' + (folder === c.folder ? "selected" : "") + ">" + esc(folderLabel(folder)) + "</option>").join("") + "</select></label>" + field("Отправитель (почта)", "smart-from", c.from, "text", 200) + '<div class="smart-dates">' + field("С даты", "smart-start", c.start, "date", 10) + field("По дату включительно", "smart-end", c.end, "date", 10) + '</div><label class="settings-row"><span>Только с вложениями (почта)</span><input name="smart-attachments" type="checkbox" ' + (c.attachments ? "checked" : "") + '></label><p class="note">Даты получения писем — по Москве. Календарь: не более 12 месяцев за запрос; без дат — текущий и следующий месяц. Даты и отправитель не ограничивают контакты.</p>' + btn("Сбросить фильтры", "smart-reset-filters", "", "text-button") + '</details><p id="smart-error" role="alert"></p></form><div id="smart-results">' + smartResults() + "</div>");
-  }
 
   // ui/calendar/dates.mjs
   var dateText = (value) => value ? new Date(value).toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: "Europe/Moscow" }) : "";
@@ -90,6 +73,91 @@
     return t.endTime && t.endTime > t.time ? t.time + "–" + t.endTime : t.time;
   }
   var snoozeInput = (at) => new Date(at + 3 * 36e5).toISOString().slice(0, 16);
+
+  // ui/digest/render.mjs
+  function renderDigestView(context) {
+    const { digest, greeting, renderSmartResult, digestExcerpt, labelChip, local } = context;
+    const chosen = digest.picked.size, items = digest.items;
+    const title = greeting();
+    const intro = '<p class="digest-subtitle">Главное в вашей почте</p><p class="note">' + esc(digest.folder === "INBOX" ? "Входящие" : digest.folder) + " · загружено " + digest.base.length + " из " + digest.total + ". В обзоре только выбранные письма.</p>";
+    const tabs = '<div class="task-tabs">' + [["today", "Сегодня"], ["unread", "Непрочитанные"], ["loaded", "Загруженные"]].map(([key, label]) => '<button type="button" data-action="digest-scope" data-id="' + key + '" aria-pressed="' + (digest.scope === key) + '" ' + (digest.loading ? "disabled" : "") + ">" + label + "</button>").join("") + "</div>";
+    const list = digest.analysis ? renderSmartResult() : items ? '<p class="note">Короткие выдержки без ИИ. Проверьте, кому адресованы просьбы. Для общей сводки используйте кнопку ИИ ниже.</p>' + items.map((item, i) => {
+      const m = item.message, x = digestExcerpt(item.text);
+      return '<article class="digest-item"><small>Письмо ' + (i + 1) + " · " + esc(m.sender) + "</small><h4>" + esc(m.subject || "Без темы") + "</h4>" + labelChip(local.mailLabels[uidKey(m)]) + "<p>" + (x.action ? "<strong>Просьба в письме:</strong> " : "") + esc((x.action || x.brief).slice(0, 220)) + "</p>" + (x.deadline ? "<p><strong>Срок в тексте:</strong> " + esc(x.deadline.match(/(?:не позднее|до)\s+\d{1,2}(?:[./]\d{1,2}(?:[./]\d{2,4})?)?(?:\s+[а-яё]+)?|завтра|сегодня/i)?.[0] || x.deadline.slice(0, 120)) + "</p>" : "") + (item.truncated ? "<small>В обзоре только первые 4000 символов; вложения не анализируются.</small>" : "") + btn("Открыть письмо", "digest-source", String(i), "text-button") + "</article>";
+    }).join("") + (digest.failed ? '<p class="note">Не удалось прочитать писем: ' + digest.failed + ". Они не входят в обзор. Можно повторить выбор и загрузку.</p>" : "") : '<p class="note">Выберите до 20 писем. Показаны первые ' + digest.choices.length + ' подходящих писем из загруженных. Анализируются только выбранные письма. Gemini получает текст, отправителя, тему и дату; вложения не передаются. Письма не помечаются прочитанными.</p><div id="digest-choice-list">' + digest.choices.map((m, i) => '<label class="digest-choice"><input type="checkbox" data-digest-pick="' + i + '" ' + (digest.picked.has(uidKey(m)) ? "checked" : "") + " " + (digest.loading ? "disabled" : "") + "><span><strong>" + esc(m.subject || "Без темы") + "</strong><small>" + esc(m.sender) + " · " + dateText(m.date) + (m.seen ? "" : " · Непрочитано") + "</small></span></label>").join("") + "</div>";
+    return '<dialog id="quick-popup" class="digest-popup" aria-labelledby="quick-title"><div class="quick-head"><h3 id="quick-title">' + title + "</h3>" + btn(icon("x"), "close-quick") + "</div>" + intro + tabs + (digest.loading && digest.smart ? '<div class="smart-loading" role="status">' + icon("sparkles") + "<h4>Разбираем почту</h4><p>Загружаем выбранные письма и готовим сводку Gemini…</p></div>" : list) + (digest.error ? '<p class="form-message" role="alert">' + esc(digest.error) + "</p>" : "") + '<div class="actions">' + (digest.smart ? btn(digest.loading ? "Готовим сводку…" : digest.analysis ? "Обновить сводку" : "Проанализировать", "smart-load", "", "primary").replace("<button ", "<button " + (digest.loading || !chosen ? "disabled " : "")) + btn("Выбрать письма", "digest-reselect") + btn("Настройки Gemini", "gemini-settings") : items ? btn("Выбрать другие письма", "digest-reselect") + (items.length ? btn(icon("sparkles") + " Подготовить сводку для ИИ", "digest-ai", "", "primary") : "") : btn(digest.loading ? "Загружаем тексты…" : "Посмотреть обзор", "digest-load", "", "primary").replace("<button ", "<button " + (digest.loading ? "disabled " : ""))) + "</div>" + (!items ? '<p id="digest-count" class="note">Выбрано: ' + chosen + " / 20</p>" : "") + '<p id="quick-message" role="status"></p></dialog>';
+  }
+
+  // ui/digest/result.mjs
+  function renderDigestResult(context) {
+    const { digest } = context;
+    const a = digest.analysis;
+    return '<div class="smart-overview"><small>GEMINI · СВОДКА</small><p>' + esc(a.overview) + "</p></div>" + a.points.map((p) => '<article class="digest-item smart-point"><small>' + esc({ action: "Возможное действие", reply: "Стоит ответить", deadline: "Срок", info: "Для информации" }[p.kind] || "Обратите внимание") + "</small><h4>" + esc(p.title) + "</h4><p>" + esc(p.detail) + "</p>" + (p.deadline ? '<p class="smart-deadline">' + esc(p.deadline) + "</p>" : "") + '<div class="inline-actions">' + p.sources.map((n) => btn("Письмо " + n, "digest-source", String(n - 1), "text-button")).join("") + "</div></article>").join("") + '<p class="note">Проверьте выводы по исходным письмам. Вложения не анализировались' + (digest.items.some((i) => i.truncated) ? "; часть текстов обрезана до 4000 символов" : "") + ". Писем в сводке: " + digest.items.length + "." + (digest.failed ? " Не удалось прочитать: " + digest.failed + "." : "") + "</p>";
+  }
+
+  // ui/compose/writing-dialog.mjs
+  function renderWritingDialog(context) {
+    const { quickDiscard, templateDelete, signatureEdit, templateEdit, account, form, draft, local } = context;
+    const head = (title) => '<div class="quick-head"><h3 id="quick-title">' + title + "</h3>" + btn(icon("x"), "close-quick") + "</div>", status = '<p id="quick-message" class="form-message" role="status"></p>';
+    if (quickDiscard) return '<dialog id="quick-popup" aria-labelledby="quick-title">' + head("Изменения не сохранены") + '<p>Выйти из редактора без сохранения?</p><div class="actions">' + btn("Продолжить редактирование", "quick-keep-edit", "", "primary") + btn("Выйти без сохранения", "quick-discard") + "</div>" + status + "</dialog>";
+    if (templateDelete) return '<dialog id="quick-popup" aria-labelledby="quick-title">' + head("Удалить шаблон?") + "<p>" + esc(templateDelete.title) + '</p><p class="note">Шаблон будет удалён из этого ящика на телефоне. Текст писем останется.</p><div class="actions">' + btn("Отмена", "cancel-template-delete") + btn("Удалить", "confirm-template-delete", templateDelete.id, "danger") + "</div>" + status + "</dialog>";
+    if (signatureEdit) return '<dialog id="quick-popup" class="writing-popup" aria-labelledby="quick-title">' + head("Подпись ящика") + '<p class="note">' + esc(account) + '</p><form data-writing-form="signature" novalidate>' + area("Текст подписи", "signature-text", signatureEdit.text, 4e3) + '<label class="settings-row"><span>Добавлять в новые письма и ответы</span><input type="checkbox" name="signature-auto" ' + (signatureEdit.auto ? "checked" : "") + '></label><p class="note">Существующие черновики не меняются. Разделитель подписи добавляется автоматически. Пустой текст отключает подпись.</p><div class="actions">' + btn("Сохранить подпись", "save-signature", "", "primary") + btn("Отмена", "close-quick") + "</div>" + status + "</form></dialog>";
+    if (templateEdit) return '<dialog id="quick-popup" class="writing-popup" aria-labelledby="quick-title">' + head(templateEdit.id ? "Изменить шаблон" : "Новый шаблон") + '<form data-writing-form="template" novalidate>' + field("Название", "template-title", templateEdit.title) + area("Текст", "template-body", templateEdit.body, 1e5) + '<div class="actions">' + btn("Сохранить шаблон", "save-template", "", "primary") + btn("Отмена", "cancel-template-edit") + "</div>" + status + "</form></dialog>";
+    return '<dialog id="quick-popup" class="writing-popup" aria-labelledby="quick-title">' + head("Мои шаблоны") + '<p class="note">Для ' + esc(account) + (form === "compose" ? ". Вставка в позицию курсора." : ". Откройте письмо, чтобы вставить шаблон.") + '</p><div class="actions">' + btn("Новый шаблон", "new-template", "", "primary") + (form === "compose" && draft?.body?.trim() ? btn("Создать из письма", "template-from-mail") : "") + "</div>" + (local.templates.length ? local.templates.map((t) => '<div class="list-item"><h4>' + esc(t.title) + '</h4><p class="template-preview">' + esc(t.body) + '</p><div class="inline-actions">' + (form === "compose" ? btn("Вставить", "insert-template", t.id) : "") + btn("Изменить", "edit-template", t.id) + btn("Удалить", "delete-template", t.id) + "</div></div>").join("") : '<p class="note">Сохраните текст частого ответа, чтобы не набирать его заново.</p>') + status + "</dialog>";
+  }
+
+  // ui/forms/render.mjs
+  function renderLocalForm(context) {
+    const { form, renderCompose, local, draft, reminderChoices, reminderValue } = context;
+    if (form === "compose") return renderCompose();
+    let fields = "", title = "";
+    if (form === "task") {
+      title = local.tasks.some((t) => t.id === draft.id) ? "Изменить задачу" : "Новая задача";
+      fields = field("Что нужно сделать", "title", draft.title) + field("Срок", "date", draft.date, "date") + field("Время", "time", draft.time, "time") + area("Комментарий", "notes", draft.notes || "") + '<label>Приоритет<select name="priority">' + [["normal", "Обычный"], ["important", "Важно"], ["urgent", "Срочно"]].map(([value, title2]) => '<option value="' + value + '" ' + ((draft.priority || "normal") === value ? "selected" : "") + ">" + title2 + "</option>").join("") + '</select></label><label>Напоминание<select name="reminder">' + reminderChoices.map(([value, label]) => '<option value="' + value + '" ' + (reminderValue(draft) === value ? "selected" : "") + ">" + label + "</option>").join("") + '</select></label><p class="note">По умолчанию: за час до указанного времени, без времени — в 09:00 в день срока. Для остальных вариантов срок без времени считается в 09:00 по Москве. Уведомления задач должны быть включены в настройках.</p>' + (draft.calendarSource ? '<p class="note">Это ваша личная задача из календаря. Общее событие не изменяется.</p>' : "");
+    }
+    if (form === "note") {
+      title = "Заметка";
+      fields = field("Заголовок", "title", draft.title) + area("Текст", "body", draft.body);
+    }
+    if (form === "contact") {
+      title = draft.email ? "Контакт" : "Новый контакт";
+      fields = field("Имя", "sender", draft.sender) + field("Электронная почта", "email", draft.email, "email", 254) + field("Телефон", "number", draft.number || "", "tel", 60) + '<p class="note">Сохранение на этом телефоне для текущего ящика. Серверная адресная книга не изменяется.</p>';
+    }
+    if (form === "event") {
+      title = "Событие";
+      fields = (draft._mailEvent ? '<p class="note">Из письма: ' + esc(draft._mailEvent.subject || "Без темы") + ". Проверьте дату и время (Москва). Событие сохранится на этом телефоне со ссылкой на письмо.</p>" : "") + field("Название", "title", draft.title) + field("Дата", "date", draft.date, "date") + field("Время", "time", draft.time, "time");
+    }
+    return page(`<div class="form-head"><h3>${title}</h3>${btn(icon("x"), "cancel")}</div><form novalidate>${fields}<div class="actions"><button type="button" data-action="save-local" class="primary">Сохранить</button>${btn("Отмена", "cancel")}</div><p id="form-message" role="alert" class="form-message"></p></form>`);
+  }
+
+  // ui/files/render.mjs
+  function renderFilesView(context) {
+    const { Pilot: Pilot2, fileEntries, bodyCache, fileQuery, searchClear, folders, fileFolder, fileOffset, fileTotal, fileLoading, local, labelChip, attachmentButton, downloadTransferMarkup, fileDownloadButton, labelOptions, fileMore, fileListError } = context;
+    const entries = typeof Pilot2.filesPage === "function" ? fileEntries : Object.entries(bodyCache).flatMap(([key, b]) => (b.attachments || []).map((f) => ({ message: { folder: JSON.parse(key)[0], validity: JSON.parse(key)[1], uid: JSON.parse(key)[2] }, ...f }))).filter((f) => f.name.toLocaleLowerCase("ru").includes(fileQuery.toLocaleLowerCase("ru")));
+    return page((entries.length && typeof Pilot2.downloadAttachments === "function" ? '<div class="files-batch-actions">' + btn(icon("download") + " Скачать показанные · " + entries.length, "download-shown-files", "", "reader-small") + '<p class="note">Вложения из загруженного списка; другие страницы — по кнопке ниже.</p></div>' : "") + '<form data-file-search class="search-form"><input name="file-query" type="search" maxlength="200" value="' + esc(fileQuery) + '" aria-label="Поиск файлов" placeholder="Поиск файлов по имени"><button type="submit" aria-label="Найти файлы">' + icon("search") + "</button>" + searchClear("file-query", "clear-file-search", "Очистить поиск файлов", fileQuery) + '</form><label>Папка<select id="files-folder">' + folders.map((name) => '<option value="' + esc(name) + '" ' + (name === fileFolder ? "selected" : "") + ">" + esc(name === "INBOX" ? "Входящие" : name) + "</option>").join("") + '</select></label><p class="note">Вложения из писем этой папки. Проверено писем: ' + fileOffset + " из " + fileTotal + ". " + (fileLoading ? "Поиск продолжается…" : "") + "</p>" + entries.map((f) => {
+      const ref = f.message, key = JSON.stringify([ref.folder, ref.uid, ref.validity, f.path]);
+      return '<div class="list-item"><h4>' + esc(f.name) + '</h4><p class="note">' + esc(ref.sender || "") + " · " + esc(ref.subject || "") + "</p>" + labelChip(local.fileLabels[key]) + attachmentButton(ref, f) + downloadTransferMarkup(key) + '<div class="inline-actions">' + fileDownloadButton(key) + btn("Сохранить в…", "save-file", key) + btn(icon("share-2") + " Поделиться", "share-file", key) + btn("К письму", "file-source", uidKey(ref)) + '</div><label>Метка файла<select data-file-label="' + esc(key) + '">' + labelOptions(local.fileLabels[key]) + "</select></label></div>";
+    }).join("") + (fileMore && !fileLoading ? btn("Загрузить следующие вложения", "more-files", "", "full") : "") + (!entries.length ? '<p class="note">' + (fileLoading ? "Проверяем имена вложений…" : fileListError ? "Не удалось загрузить файлы. Проверьте подключение." : "Файлы не найдены.") + "</p>" + (fileListError ? btn("Повторить загрузку", "retry-files") : "") : ""));
+  }
+
+  // ui/settings/profile.mjs
+  function renderProfileView(context) {
+    const { account } = context;
+    return page('<div class="profile-avatar">' + esc(account.charAt(0).toUpperCase()) + "</div><h3>" + esc(account) + '</h3><p class="note">Данные входа сохранены на телефоне в зашифрованном виде. «Выйти» закрывает ящик, сохраняя пароль. Удалить сохранённый вход можно в списке аккаунтов.</p><div class="actions">' + btn("Сменить аккаунт", "switch-account", "", "primary") + btn("Выйти из текущего ящика", "logout") + "</div>");
+  }
+
+  // ui/settings/render.mjs
+  function renderSettingsView(context) {
+    const { account, local, Pilot: Pilot2, tasksEnabled, threadsEnabled, undoSendEnabled, aiEnabled } = context;
+    return page(btn(icon("tags") + " Категории и правила", "category-settings") + '<h3>Письма и ответы</h3><p class="note">Подпись и шаблоны для ' + esc(account) + ".</p>" + btn("Настроить подпись", "signature-settings") + btn("Мои шаблоны", "templates") + '<h3>Обновление приложения · 0.73</h3><p class="note">Загрузка новой версии из GitHub. Аккаунты и задачи сохраняются.</p>' + btn("Проверить обновление", "check-update") + "<h3>Начальный экран</h3><label>Открывать при запуске<select data-start-screen>" + [["mail", "Почта"], ["calendar", "Расписание дня"]].map(([value, label]) => '<option value="' + value + '" ' + ((local.settings.startScreen || "mail") === value ? "selected" : "") + ">" + label + "</option>").join("") + '</select></label><h3>Офлайн-почта</h3><label class="settings-row"><span>Сохранять открытые письма</span><input type="checkbox" data-setting="offlineMail" ' + (local.settings.offlineMail !== false ? "checked" : "") + '></label><p class="note">До 200 заголовков на папку и 50 открытых текстов. Зашифрованные копии на этом телефоне, отдельно для каждого ящика. Вложения загружаются при подключении. Ответы сохраняются в черновиках и отправляются только по кнопке.</p>' + btn("Удалить сохранённую почту", "clear-offline-mail") + '<h3>Отображение</h3><div class="icon-previews">' + [["spbu", "С надписью СПбГУ", "spbu"], ["classic", "Без надписи", "plain"]].map(([value, title, asset]) => '<button type="button" data-action="choose-icon" data-id="' + value + '" aria-pressed="' + ((typeof Pilot2.launcherIcon === "function" ? Pilot2.launcherIcon() : "spbu") === value) + '"><img src="icon-' + asset + '.png" alt="' + title + '"><span>' + title + "</span></button>").join("") + '</div><p class="note">Иконка общая для всех ящиков. Лаунчер может обновить её с небольшой задержкой.</p><label>Тема<select data-theme>' + [["system", "Как на телефоне"], ["light", "Светлая"], ["dark", "Тёмная"]].map(([value, title]) => '<option value="' + value + '" ' + ((local.settings.theme || "system") === value ? "selected" : "") + ">" + title + "</option>").join("") + "</select></label>" + [["showTasks", "Задачи и поручения"], ["mailThreads", "Цепочки писем"], ["undoSend", "Отмена отправки (10 секунд)"], ["compact", "Компактный список"], ["large", "Крупный текст"]].map(([key, name]) => `<label class="settings-row"><span>${name}</span><input type="checkbox" data-setting="${key}" ${(key === "showTasks" ? tasksEnabled() : key === "mailThreads" ? threadsEnabled() : key === "undoSend" ? undoSendEnabled() : local.settings[key]) ? "checked" : ""}></label>`).join("") + '<p class="note">Выключите, чтобы скрыть отдельный раздел задач и создание поручений из писем. Задачи и их добавление останутся в календаре. Напоминания настраиваются отдельно. Для текущего ящика.</p><h3>Защита приложения</h3><p class="note">' + (typeof Pilot2.appLockEnabled === "function" && Pilot2.appLockEnabled() ? "Блокировка включена." : "Блокировка выключена.") + " Для всех ящиков: биометрия или PIN устройства при возвращении из фона. Фоновая почта и расписание работают дальше. Виджеты и уведомления защищаются отдельно настройками Android.</p>" + (typeof Pilot2.appLockSettings === "function" ? btn("Настроить блокировку", "app-lock-settings") : "") + '<h3>Уведомления</h3><p class="note">Для ' + esc(account) + ". Проверяются все сохранённые ящики с включёнными уведомлениями; имя ящика указано в уведомлении. Чтобы изменить другой ящик, переключитесь на него.</p>" + [["mailNotifications", "Новые письма"], ["backgroundMail", "Проверять почту при закрытом приложении"], ["taskNotifications", "Сроки задач"]].map(([key, name]) => `<label class="settings-row"><span>${name}</span><input type="checkbox" data-setting="${key}" ${local.settings[key] ? "checked" : ""}></label>`).join("") + '<p class="note">Для текущего аккаунта. При открытом приложении почта обновляется по событиям IMAP IDLE, если сервер поддерживает их, иначе — примерно раз в 30 секунд. При включённой фоновой проверке отдельная служба проверяет текущий ящик примерно раз в минуту и показывает постоянное уведомление. Разрешите работу без ограничений батареи и исключите приложение из спящих, иначе Android может задерживать сеть при выключенном экране. Этот режим расходует дополнительную энергию. При отключении остаётся проверка планировщиком примерно раз в 15 минут, с возможными задержками Android. Напоминания: за час до указанного времени, без времени — в 09:00 по Москве. При выходе уведомления этого ящика останавливаются.</p><p class="note">' + (typeof Pilot2.notificationsAllowed === "function" && Pilot2.notificationsAllowed() ? "Разрешены в Android." : "Разрешите уведомления в Android.") + '</p><div class="actions">' + btn("Проверить уведомление", "test-notification") + btn("Настройки Android", "notification-settings") + btn("Разрешить работу в фоне", "allow-background-mail") + btn("Настройки батареи", "battery-settings") + "</div>" + (typeof Pilot2.backgroundMailStatus === "function" ? '<p class="note">' + esc(Pilot2.backgroundMailStatus()) + "</p>" : "") + '<p class="note">Отложенные письма и «Напомнить ответить»: напоминания для всех сохранённых ящиков, отдельные каналы Android «Отложенные письма» и «Напомнить ответить». Выключатели новых писем и задач на них не влияют.</p><h3>Подключение</h3><p class="note">IMAP с TLS и проверкой сертификата. При открытии письмо помечается прочитанным на сервере. Можно снова отметить его непрочитанным.</p><h3>Умная сводка · Gemini</h3><label class="settings-row"><span>Нейроанализ и приветствие</span><input type="checkbox" data-setting="neuralAnalysis" ' + (aiEnabled() ? "checked" : "") + '></label><p class="note">При отключении скрываются приветствие, умная панель и ИИ-действия. Тексты не передаются для анализа. Для текущего ящика; сохранённый ключ остаётся.</p><p class="note">По открытию панели анализируются выбранные письма. Тексты передаются Google Gemini; вложения не отправляются. API-ключ хранится зашифрованным на телефоне.</p>' + btn("Настроить Gemini", "gemini-settings") + '<p class="note">PDF и текст DOCX открываются прямо в приложении; остальные документы — в просмотрщиках телефона.</p>' + btn("Настройки отправки SMTP", "smtp-settings") + btn("Выйти из ящика", "logout"));
+  }
+
+  // ui/search/render.mjs
+  function renderSearchView(context) {
+    const { smart, folders, searchClear, smartResults } = context;
+    const c = smart.criteria;
+    return page('<form data-smart-search novalidate><div class="search-form"><label class="sr-only" for="smart-query">Поиск по почте, календарю и контактам</label><input id="smart-query" name="smart-query" type="search" maxlength="120" value="' + esc(c.query) + '" placeholder="Письма, события, контакты"><button type="submit" aria-label="Найти">' + icon("search") + "</button>" + searchClear("smart-query", "smart-clear", "Очистить общий поиск", c.query) + '</div><details class="smart-filters"><summary>Фильтры' + ([c.from, c.start, c.end, c.attachments].filter(Boolean).length ? " · " + [c.from, c.start, c.end, c.attachments].filter(Boolean).length : "") + '</summary><label>Папка почты<select name="smart-folder">' + [.../* @__PURE__ */ new Set([...folders, c.folder])].map((folder) => '<option value="' + esc(folder) + '" ' + (folder === c.folder ? "selected" : "") + ">" + esc(folderLabel(folder)) + "</option>").join("") + "</select></label>" + field("Отправитель (почта)", "smart-from", c.from, "text", 200) + '<div class="smart-dates">' + field("С даты", "smart-start", c.start, "date", 10) + field("По дату включительно", "smart-end", c.end, "date", 10) + '</div><label class="settings-row"><span>Только с вложениями (почта)</span><input name="smart-attachments" type="checkbox" ' + (c.attachments ? "checked" : "") + '></label><p class="note">Даты получения писем — по Москве. Календарь: не более 12 месяцев за запрос; без дат — текущий и следующий месяц. Даты и отправитель не ограничивают контакты.</p>' + btn("Сбросить фильтры", "smart-reset-filters", "", "text-button") + '</details><p id="smart-error" role="alert"></p></form><div id="smart-results">' + smartResults() + "</div>");
+  }
 
   // ui/search/results.mjs
   function renderSearchResults(context) {
@@ -352,6 +420,21 @@
   // ui/app.mjs
   (() => {
     "use strict";
+    function renderBatchPopup() {
+      return renderBatchDialog({ bulkState, batchProgressView, batchProgressMarkup, fileProgressMarkup });
+    }
+    function renderDigest() {
+      return renderDigestView({ digest, greeting, renderSmartResult, digestExcerpt, labelChip, local });
+    }
+    function renderSmartResult() {
+      return renderDigestResult({ digest });
+    }
+    function renderWritingPopup() {
+      return renderWritingDialog({ quickDiscard, templateDelete, signatureEdit, templateEdit, account, form, draft, local });
+    }
+    function renderForm() {
+      return renderLocalForm({ form, renderCompose, local, draft, reminderChoices, reminderValue });
+    }
     function renderFiles() {
       return renderFilesView({ Pilot, fileEntries, bodyCache, fileQuery, searchClear, folders, fileFolder, fileOffset, fileTotal, fileLoading, local, labelChip, attachmentButton, downloadTransferMarkup, fileDownloadButton, labelOptions, fileMore, fileListError });
     }
@@ -407,10 +490,10 @@
       return renderTasksView({ taskQuery, taskFilter, local, searchClear, taskRow });
     }
     function taskRow(t) {
-      return renderTaskItem(t, { labelChip, today, taskDate });
+      return renderTaskItem(t, { labelChip, today: currentDay(), taskDate });
     }
     function renderCalendar() {
-      return renderCalendarView({ calendarBounds, calendarView, calendarMonth, calendarEntries, onCalendarDay, today, calendarDay, calendarItem, calendarLoading, calendarData, calendarQuery, calendarSearchContent, dayPopup });
+      return renderCalendarView({ calendarBounds, calendarView, calendarMonth, calendarEntries, onCalendarDay, today: currentDay(), calendarDay, calendarItem, calendarLoading, calendarData, calendarQuery, calendarSearchContent, dayPopup });
     }
     function calendarSearchContent() {
       return renderCalendarSearch({ calendarQuery, calendarMatches, calendarView, calendarLoading, calendarBounds });
@@ -421,7 +504,7 @@
     function renderMail() {
       if (selected) return renderReaderView({ selected, bodyCache, headers, bodyErrors, local, senderName, readerCalendarHint, forwardBusy, labelChip, avatar, categoryChip, attachmentCard, root, labelOptions, tasksEnabled, Pilot });
       if (threadSelection) return renderThread();
-      return renderInboxView({ mailGroups, folders, mailFolder, localDraftFolder, local, scheduledProtected, messages, total, offlinePrefetchState, categoryFilter, mailCategory, mailFilter, hasMailFiles, today, mailRow, categoryList, hasMore, loading, mailDirty, aiEnabled, greeting, inboxSearchOpen, mailQuery, inboxSearchDraft, searchClear, responseItems, renderMailSelection, renderResponses, renderScheduled, renderSnoozes, renderReplyReminders, mailListError, mailOffline });
+      return renderInboxView({ mailGroups, folders, mailFolder, localDraftFolder, local, scheduledProtected, messages, total, offlinePrefetchState, categoryFilter, mailCategory, mailFilter, hasMailFiles, today: currentDay(), mailRow, categoryList, hasMore, loading, mailDirty, aiEnabled, greeting, inboxSearchOpen, mailQuery, inboxSearchDraft, searchClear, responseItems, renderMailSelection, renderResponses, renderScheduled, renderSnoozes, renderReplyReminders, mailListError, mailOffline });
     }
     function renderThread() {
       return renderThreadView({ currentThread, mailRow, hasMore, loading });
@@ -434,7 +517,7 @@
       return inferMailDateHint(m, previewText);
     }
     function mailRow(m, members = [m], child = false) {
-      return renderMailRow(m, members, child, { today, hasMailFiles, previewText, mailCategory, mailSelection, local, bodyCache, senderName, avatar, categoryChip, labelChip, mailDateHint, canUseCalendar: typeof Pilot.calendars === "function" });
+      return renderMailRow(m, members, child, { today: currentDay(), hasMailFiles, previewText, mailCategory, mailSelection, local, bodyCache, senderName, avatar, categoryChip, labelChip, mailDateHint, canUseCalendar: typeof Pilot.calendars === "function" });
     }
     function renderCompose() {
       return renderComposeView({ draft, signatureBlock, aiEnabled, composeSaveNotice, sendBusy, canScheduleSend: typeof Pilot.scheduleSend === "function" });
@@ -632,10 +715,11 @@
       return true;
     }
     const account = Pilot.account();
-    const today = (/* @__PURE__ */ new Date()).toLocaleDateString("en-CA", { timeZone: "Europe/Moscow" });
+    const currentDay = () => (/* @__PURE__ */ new Date()).toLocaleDateString("en-CA", { timeZone: "Europe/Moscow" });
+    const initialDay = currentDay();
     let calendarQuery = "";
-    let dayPopup = false, calendarDay = today, calendarMonth = today.slice(0, 7), calendarData = { calendars: [], events: [] }, calendarLoading = false, calendarGeneration = 0;
-    let calendarAnchor = today;
+    let dayPopup = false, calendarDay = initialDay, calendarMonth = initialDay.slice(0, 7), calendarData = { calendars: [], events: [] }, calendarLoading = false, calendarGeneration = 0;
+    let calendarAnchor = initialDay;
     let calendarView = ["month", "week", "agenda", "day"].includes(local.settings.calendarView) ? local.settings.calendarView : "month";
     const calendarMonths = /* @__PURE__ */ new Map();
     function calendarBounds() {
@@ -700,7 +784,7 @@
     const readingOffline = () => offlineSession() || (selected ? bodyCache[uidKey(selected)] ? !!bodyCache[uidKey(selected)].offline : mailOffline : mailOffline);
     function save() {
       const saved = Pilot.saveState(JSON.stringify(local));
-      if (saved === false) say("Не удалось сохранить данные на телефоне. Проверьте свободное место.");
+      if (saved === false) say("Не удалось сохранить: данные могли измениться в другом окне. Сохраните введённый текст, закройте форму и обновите экран; проверьте свободное место.");
       return saved !== false;
     }
     const tasksEnabled = () => local.settings.showTasks !== false;
@@ -940,7 +1024,10 @@
       continueNavigation();
       return true;
     }
-    window.sendWindowHidden = () => cancelDelayedSend("Отправка отменена при закрытии окна. Письмо сохранено в черновиках.");
+    window.sendWindowHidden = () => {
+      stopCopyAge();
+      return cancelDelayedSend("Отправка отменена при закрытии окна. Письмо сохранено в черновиках.");
+    };
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) window.sendWindowHidden();
     });
@@ -1150,8 +1237,16 @@
     function refresh() {
       loadPage(true);
     }
-    function openMail(uid, validity, folder = mailFolder, fromThread2 = false) {
+    let readerReturnScroll = null;
+    function restoreReaderScroll(source) {
+      const position = readerReturnScroll;
+      readerReturnScroll = null;
+      if (!position || source !== position.mail || route !== "mail" || selected || form || mailFolder !== position.folder || (threadSelection ? uidKey(threadSelection) : "") !== position.thread) return;
+      window.scrollTo?.(0, position.y);
+    }
+    function openMail(uid, validity, folder = mailFolder, fromThread2 = false, returnPosition = null) {
       const entering = !selected || uidKey(selected) !== uidKey({ uid, validity, folder });
+      if (entering) readerReturnScroll = returnPosition;
       if (!fromThread2) threadSelection = null;
       route = "mail";
       selected = { uid, validity, folder };
@@ -1211,10 +1306,26 @@
       const inbox = route === "mail" && !selected && !form && !threadSelection;
       return '<div class="offline-banner" role="status"><span>' + icon("cloud-off") + (inbox ? " Офлайн-режим" : " Сохранённая почта") + (!inbox && offlineAt ? ' · <time data-copy-at="' + offlineAt + '" title="Копия от ' + esc(new Date(offlineAt).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })) + '">' + esc(copyAge(offlineAt)) + "</time>" : "") + "</span>" + btn("Подключиться", "reconnect-mail", "", "text-button") + "</div>";
     }
+    let copyAgeTimer = null;
+    function stopCopyAge() {
+      if (copyAgeTimer !== null) {
+        window.clearInterval(copyAgeTimer);
+        copyAgeTimer = null;
+      }
+    }
     function updateCopyAge() {
-      root.querySelectorAll("[data-copy-at]").forEach((el) => {
+      const stamps = root.querySelectorAll("[data-copy-at]");
+      if (document.hidden || typeof Pilot.appVisible === "function" && !Pilot.appVisible() || !stamps.length) {
+        stopCopyAge();
+        return;
+      }
+      stamps.forEach((el) => {
         el.textContent = copyAge(el.dataset.copyAt);
       });
+      if (copyAgeTimer === null) {
+        copyAgeTimer = window.setInterval(updateCopyAge, 6e4);
+        copyAgeTimer?.unref?.();
+      }
     }
     window.offlinePrefetchDone = (report) => {
       if (!report || local.settings.offlineMail === false || report.folder !== mailFolder || report.validity && mailValidity && report.validity !== mailValidity || !Number.isInteger(report.saved) || !Number.isInteger(report.total) || report.saved < 0 || report.saved > report.total || report.total > 50) return;
@@ -2059,27 +2170,6 @@
     function contactNumber(p) {
       return local.contacts.find((c) => c.email.toLowerCase() === p.email.toLowerCase())?.number || p.number || local.phoneContacts.find((c) => c.email.toLowerCase() === p.email.toLowerCase())?.number || Object.values(bodyCache).filter((b) => b.message?.email?.toLowerCase() === p.email.toLowerCase()).flatMap((b) => b.phones || [])[0] || "";
     }
-    function renderForm() {
-      if (form === "compose") return renderCompose();
-      let fields = "", title = "";
-      if (form === "task") {
-        title = local.tasks.some((t) => t.id === draft.id) ? "Изменить задачу" : "Новая задача";
-        fields = field("Что нужно сделать", "title", draft.title) + field("Срок", "date", draft.date, "date") + field("Время", "time", draft.time, "time") + area("Комментарий", "notes", draft.notes || "") + '<label>Приоритет<select name="priority">' + [["normal", "Обычный"], ["important", "Важно"], ["urgent", "Срочно"]].map(([value, title2]) => '<option value="' + value + '" ' + ((draft.priority || "normal") === value ? "selected" : "") + ">" + title2 + "</option>").join("") + '</select></label><label>Напоминание<select name="reminder">' + reminderChoices.map(([value, label]) => '<option value="' + value + '" ' + (reminderValue(draft) === value ? "selected" : "") + ">" + label + "</option>").join("") + '</select></label><p class="note">По умолчанию: за час до указанного времени, без времени — в 09:00 в день срока. Для остальных вариантов срок без времени считается в 09:00 по Москве. Уведомления задач должны быть включены в настройках.</p>' + (draft.calendarSource ? '<p class="note">Это ваша личная задача из календаря. Общее событие не изменяется.</p>' : "");
-      }
-      if (form === "note") {
-        title = "Заметка";
-        fields = field("Заголовок", "title", draft.title) + area("Текст", "body", draft.body);
-      }
-      if (form === "contact") {
-        title = draft.email ? "Контакт" : "Новый контакт";
-        fields = field("Имя", "sender", draft.sender) + field("Электронная почта", "email", draft.email, "email", 254) + field("Телефон", "number", draft.number || "", "tel", 60) + '<p class="note">Сохранение на этом телефоне для текущего ящика. Серверная адресная книга не изменяется.</p>';
-      }
-      if (form === "event") {
-        title = "Событие";
-        fields = (draft._mailEvent ? '<p class="note">Из письма: ' + esc(draft._mailEvent.subject || "Без темы") + ". Проверьте дату и время (Москва). Событие сохранится на этом телефоне со ссылкой на письмо.</p>" : "") + field("Название", "title", draft.title) + field("Дата", "date", draft.date, "date") + field("Время", "time", draft.time, "time");
-      }
-      return page(`<div class="form-head"><h3>${title}</h3>${btn(icon("x"), "cancel")}</div><form novalidate>${fields}<div class="actions"><button type="button" data-action="save-local" class="primary">Сохранить</button>${btn("Отмена", "cancel")}</div><p id="form-message" role="alert" class="form-message"></p></form>`);
-    }
     function greeting() {
       const hour = Number((/* @__PURE__ */ new Date()).toLocaleTimeString("en-GB", { hour: "2-digit", hour12: false, timeZone: "Europe/Moscow" }));
       return hour >= 5 && hour < 12 ? "Доброе утро" : hour < 18 && hour >= 12 ? "Добрый день" : hour >= 18 && hour < 23 ? "Добрый вечер" : "Доброй ночи";
@@ -2132,29 +2222,6 @@
         digest.failed = result.failed || 0;
         render();
       });
-    }
-    function renderSmartResult() {
-      const a = digest.analysis;
-      return '<div class="smart-overview"><small>GEMINI · СВОДКА</small><p>' + esc(a.overview) + "</p></div>" + a.points.map((p) => '<article class="digest-item smart-point"><small>' + esc({ action: "Возможное действие", reply: "Стоит ответить", deadline: "Срок", info: "Для информации" }[p.kind] || "Обратите внимание") + "</small><h4>" + esc(p.title) + "</h4><p>" + esc(p.detail) + "</p>" + (p.deadline ? '<p class="smart-deadline">' + esc(p.deadline) + "</p>" : "") + '<div class="inline-actions">' + p.sources.map((n) => btn("Письмо " + n, "digest-source", String(n - 1), "text-button")).join("") + "</div></article>").join("") + '<p class="note">Проверьте выводы по исходным письмам. Вложения не анализировались' + (digest.items.some((i) => i.truncated) ? "; часть текстов обрезана до 4000 символов" : "") + ". Писем в сводке: " + digest.items.length + "." + (digest.failed ? " Не удалось прочитать: " + digest.failed + "." : "") + "</p>";
-    }
-    function renderDigest() {
-      const chosen = digest.picked.size, items = digest.items;
-      const title = greeting();
-      const intro = '<p class="digest-subtitle">Главное в вашей почте</p><p class="note">' + esc(digest.folder === "INBOX" ? "Входящие" : digest.folder) + " · загружено " + digest.base.length + " из " + digest.total + ". В обзоре только выбранные письма.</p>";
-      const tabs = '<div class="task-tabs">' + [["today", "Сегодня"], ["unread", "Непрочитанные"], ["loaded", "Загруженные"]].map(([key, label]) => '<button type="button" data-action="digest-scope" data-id="' + key + '" aria-pressed="' + (digest.scope === key) + '" ' + (digest.loading ? "disabled" : "") + ">" + label + "</button>").join("") + "</div>";
-      const list = digest.analysis ? renderSmartResult() : items ? '<p class="note">Короткие выдержки без ИИ. Проверьте, кому адресованы просьбы. Для общей сводки используйте кнопку ИИ ниже.</p>' + items.map((item, i) => {
-        const m = item.message, x = digestExcerpt(item.text);
-        return '<article class="digest-item"><small>Письмо ' + (i + 1) + " · " + esc(m.sender) + "</small><h4>" + esc(m.subject || "Без темы") + "</h4>" + labelChip(local.mailLabels[uidKey(m)]) + "<p>" + (x.action ? "<strong>Просьба в письме:</strong> " : "") + esc((x.action || x.brief).slice(0, 220)) + "</p>" + (x.deadline ? "<p><strong>Срок в тексте:</strong> " + esc(x.deadline.match(/(?:не позднее|до)\s+\d{1,2}(?:[./]\d{1,2}(?:[./]\d{2,4})?)?(?:\s+[а-яё]+)?|завтра|сегодня/i)?.[0] || x.deadline.slice(0, 120)) + "</p>" : "") + (item.truncated ? "<small>В обзоре только первые 4000 символов; вложения не анализируются.</small>" : "") + btn("Открыть письмо", "digest-source", String(i), "text-button") + "</article>";
-      }).join("") + (digest.failed ? '<p class="note">Не удалось прочитать писем: ' + digest.failed + ". Они не входят в обзор. Можно повторить выбор и загрузку.</p>" : "") : '<p class="note">Выберите до 20 писем. Показаны первые ' + digest.choices.length + ' подходящих писем из загруженных. Анализируются только выбранные письма. Gemini получает текст, отправителя, тему и дату; вложения не передаются. Письма не помечаются прочитанными.</p><div id="digest-choice-list">' + digest.choices.map((m, i) => '<label class="digest-choice"><input type="checkbox" data-digest-pick="' + i + '" ' + (digest.picked.has(uidKey(m)) ? "checked" : "") + " " + (digest.loading ? "disabled" : "") + "><span><strong>" + esc(m.subject || "Без темы") + "</strong><small>" + esc(m.sender) + " · " + dateText(m.date) + (m.seen ? "" : " · Непрочитано") + "</small></span></label>").join("") + "</div>";
-      return '<dialog id="quick-popup" class="digest-popup" aria-labelledby="quick-title"><div class="quick-head"><h3 id="quick-title">' + title + "</h3>" + btn(icon("x"), "close-quick") + "</div>" + intro + tabs + (digest.loading && digest.smart ? '<div class="smart-loading" role="status">' + icon("sparkles") + "<h4>Разбираем почту</h4><p>Загружаем выбранные письма и готовим сводку Gemini…</p></div>" : list) + (digest.error ? '<p class="form-message" role="alert">' + esc(digest.error) + "</p>" : "") + '<div class="actions">' + (digest.smart ? btn(digest.loading ? "Готовим сводку…" : digest.analysis ? "Обновить сводку" : "Проанализировать", "smart-load", "", "primary").replace("<button ", "<button " + (digest.loading || !chosen ? "disabled " : "")) + btn("Выбрать письма", "digest-reselect") + btn("Настройки Gemini", "gemini-settings") : items ? btn("Выбрать другие письма", "digest-reselect") + (items.length ? btn(icon("sparkles") + " Подготовить сводку для ИИ", "digest-ai", "", "primary") : "") : btn(digest.loading ? "Загружаем тексты…" : "Посмотреть обзор", "digest-load", "", "primary").replace("<button ", "<button " + (digest.loading ? "disabled " : ""))) + "</div>" + (!items ? '<p id="digest-count" class="note">Выбрано: ' + chosen + " / 20</p>" : "") + '<p id="quick-message" role="status"></p></dialog>';
-    }
-    function renderWritingPopup() {
-      const head = (title) => '<div class="quick-head"><h3 id="quick-title">' + title + "</h3>" + btn(icon("x"), "close-quick") + "</div>", status = '<p id="quick-message" class="form-message" role="status"></p>';
-      if (quickDiscard) return '<dialog id="quick-popup" aria-labelledby="quick-title">' + head("Изменения не сохранены") + '<p>Выйти из редактора без сохранения?</p><div class="actions">' + btn("Продолжить редактирование", "quick-keep-edit", "", "primary") + btn("Выйти без сохранения", "quick-discard") + "</div>" + status + "</dialog>";
-      if (templateDelete) return '<dialog id="quick-popup" aria-labelledby="quick-title">' + head("Удалить шаблон?") + "<p>" + esc(templateDelete.title) + '</p><p class="note">Шаблон будет удалён из этого ящика на телефоне. Текст писем останется.</p><div class="actions">' + btn("Отмена", "cancel-template-delete") + btn("Удалить", "confirm-template-delete", templateDelete.id, "danger") + "</div>" + status + "</dialog>";
-      if (signatureEdit) return '<dialog id="quick-popup" class="writing-popup" aria-labelledby="quick-title">' + head("Подпись ящика") + '<p class="note">' + esc(account) + '</p><form data-writing-form="signature" novalidate>' + area("Текст подписи", "signature-text", signatureEdit.text, 4e3) + '<label class="settings-row"><span>Добавлять в новые письма и ответы</span><input type="checkbox" name="signature-auto" ' + (signatureEdit.auto ? "checked" : "") + '></label><p class="note">Существующие черновики не меняются. Разделитель подписи добавляется автоматически. Пустой текст отключает подпись.</p><div class="actions">' + btn("Сохранить подпись", "save-signature", "", "primary") + btn("Отмена", "close-quick") + "</div>" + status + "</form></dialog>";
-      if (templateEdit) return '<dialog id="quick-popup" class="writing-popup" aria-labelledby="quick-title">' + head(templateEdit.id ? "Изменить шаблон" : "Новый шаблон") + '<form data-writing-form="template" novalidate>' + field("Название", "template-title", templateEdit.title) + area("Текст", "template-body", templateEdit.body, 1e5) + '<div class="actions">' + btn("Сохранить шаблон", "save-template", "", "primary") + btn("Отмена", "cancel-template-edit") + "</div>" + status + "</form></dialog>";
-      return '<dialog id="quick-popup" class="writing-popup" aria-labelledby="quick-title">' + head("Мои шаблоны") + '<p class="note">Для ' + esc(account) + (form === "compose" ? ". Вставка в позицию курсора." : ". Откройте письмо, чтобы вставить шаблон.") + '</p><div class="actions">' + btn("Новый шаблон", "new-template", "", "primary") + (form === "compose" && draft?.body?.trim() ? btn("Создать из письма", "template-from-mail") : "") + "</div>" + (local.templates.length ? local.templates.map((t) => '<div class="list-item"><h4>' + esc(t.title) + '</h4><p class="template-preview">' + esc(t.body) + '</p><div class="inline-actions">' + (form === "compose" ? btn("Вставить", "insert-template", t.id) : "") + btn("Изменить", "edit-template", t.id) + btn("Удалить", "delete-template", t.id) + "</div></div>").join("") : '<p class="note">Сохраните текст частого ответа, чтобы не набирать его заново.</p>') + status + "</dialog>";
     }
     function startAttachmentBatch(refs) {
       if (typeof Pilot.downloadAttachments !== "function") {
@@ -2222,15 +2289,6 @@
       Object.assign(bulkState, result);
       paintAttachmentBatch();
     };
-    function renderBatchPopup() {
-      const state = bulkState, result = state.result, failures = result?.failures || [], v = batchProgressView();
-      let content = "";
-      if (state.busy) content = batchProgressMarkup() + '<div class="batch-file-status"><p id="batch-caption" role="status">' + esc(v.caption) + '</p><strong id="batch-name">' + esc(state.stage === "folder" ? "" : v.name) + '</strong><div id="batch-file-progress">' + (state.stage === "folder" || state.stage === "finished" ? "" : fileProgressMarkup(state)) + '</div><p id="batch-size" class="note" hidden>' + esc(v.size) + "</p></div>" + btn("Отменить скачивание", "cancel-batch", "", "full");
-      else if (result?.error) content = '<p role="alert">' + esc(result.error) + "</p>" + btn("Повторить", "retry-batch");
-      else if (result?.total === void 0) content = "<p>Выбор папки отменён.</p>";
-      else content = batchProgressMarkup() + "<p>Сохранено: " + (result.saved || 0) + " из " + result.total + "." + (result.cancelled ? " Скачивание остановлено." : "") + "</p>" + (failures.length ? "<p>Не удалось скачать: " + failures.length + ".</p>" + failures.slice(0, 30).map((f) => '<p class="note">' + esc(f.name) + (f.reason === "unsupported_destination" ? " — выберите папку с поддержкой переименования" : "") + "</p>").join("") + btn("Повторить несохранённые", "retry-batch") : "");
-      return '<dialog id="quick-popup" class="batch-popup" aria-labelledby="quick-title"><div class="quick-head"><h3 id="quick-title">Скачивание вложений</h3>' + (!state.busy ? btn(icon("x"), "close-quick") : "") + "</div>" + content + (!state.busy ? btn("Готово", "close-quick", "", "primary") : "") + '<p id="quick-message" role="status"></p></dialog>';
-    }
     function renderQuickPopup() {
       if (quickDiscard) return renderWritingPopup();
       if (rowActions) return renderRowActions();
@@ -2582,6 +2640,16 @@
       document.documentElement.dataset.system = (typeof Pilot.systemDark === "function" ? Pilot.systemDark() : window.matchMedia?.("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
     }
     window.accountPickerClosed = () => say("");
+    window.reloadNativeState = () => {
+      if (form || categoryEdit || selectPopup || snoozePopup || schedulePopup || labelTarget || assistText || templatePopup || digest) return;
+      try {
+        const saved = JSON.parse(Pilot.loadState());
+        if (!["tasks", "notes", "events"].every((k) => Array.isArray(saved[k]))) return;
+        local = { ...local, ...saved, settings: { ...local.settings, ...saved.settings } };
+        if (["tasks", "notes", "calendar", "categories"].includes(route) || route === "mail" && safeMailUpdate()) render();
+      } catch (e) {
+      }
+    };
     window.systemThemeChanged = () => {
       applyTheme();
       refreshScheduled();
@@ -2688,8 +2756,8 @@
       const titleButton = root.querySelector("#folder-title");
       titleButton.disabled = route !== "mail" || !!selected || !!form || !!threadSelection;
       root.querySelector("#folder-title-arrow").hidden = titleButton.disabled;
-      const globalButton = root.querySelector('.header-actions [data-action="global-search"]');
-      if (globalButton) globalButton.hidden = ["calendar", "contacts"].includes(route);
+      if (searchButton) searchButton.hidden = ["calendar", "contacts"].includes(route);
+      updateCopyAge();
       const refreshButton = root.querySelector('.header-actions [data-action="refresh"]');
       refreshButton.hidden = !!form || !["mail", "calendar"].includes(route);
       refreshButton.setAttribute("aria-label", route === "calendar" ? "Обновить календарь" : selected ? "Обновить письмо" : "Обновить почту");
@@ -2869,6 +2937,7 @@
         return;
       }
       if (!canLeaveForm() || !keepDraft()) return;
+      const readerSource = selected && !form ? uidKey(selected) : null;
       if (form) {
         form = null;
         draft = null;
@@ -2886,6 +2955,7 @@
       }
       root.querySelector(".folder-menu").open = false;
       render();
+      if (readerSource) restoreReaderScroll(readerSource);
     };
     window.openScheduledFromNotification = () => {
       if (!window.prepareNotificationNavigation()) return false;
@@ -2921,6 +2991,35 @@
       const allowed = !bulkState?.busy && !sendBusy && (!quickDirty() || (leaveQuickEditor(), false)) && canLeaveForm() && keepDraft();
       if (allowed) closeDrawer(false);
       return allowed;
+    };
+    window.composeNativeReply = (value) => {
+      if (sendDelay || sendBusy || uploadBusy) return false;
+      const m = value?.message, to = m?.replyTo || m?.email, subject = m?.subject || "", parent = m?.messageId || "", refs = m?.references || [];
+      if (typeof to !== "string" || to.length > 4e3 || /[\r\n]/.test(to) || !to.includes("@") || typeof subject !== "string" || subject.length > 496 || /[\r\n]/.test(subject) || typeof value.text !== "string" || value.text.length > 1e5 || typeof parent !== "string" || parent && !/^<[^<>\s]+>$/.test(parent) || !Array.isArray(refs) || refs.length > 100 || refs.some((x) => typeof x !== "string" || !/^<[^<>\s]+>$/.test(x))) return false;
+      if (!window.prepareNotificationNavigation()) return false;
+      smartCancel();
+      mailSelection.clear();
+      rowActions = null;
+      categoryEdit = null;
+      quickDiscard = null;
+      searchMailReturn = false;
+      scheduledPreview = null;
+      schedulePopup = null;
+      snoozePopup = null;
+      bulkState = null;
+      calendarLink = null;
+      cancelDigest();
+      selectPopup = null;
+      labelTarget = null;
+      assistText = null;
+      templatePopup = false;
+      templateEdit = null;
+      signatureEdit = null;
+      templateDelete = null;
+      dayPopup = false;
+      contactCard = null;
+      compose(to, /^re:/i.test(subject) ? subject : "Re: " + subject, "", parent, value.text, parent ? refs : []);
+      return true;
     };
     window.openMailFromNotification = (ref) => {
       if (!ref || typeof ref.folder !== "string" || !ref.folder || ref.folder.length > 1024 || /[\u0000-\u001f\u007f]/.test(ref.folder) || !/^\d{1,20}$/.test(ref.uid) || !/^\d{1,20}$/.test(ref.validity) || !window.prepareNotificationNavigation()) return false;
@@ -4420,6 +4519,7 @@
         calendarScrollDay = calendarView === "week";
         dayPopup = false;
         if (action === "calendar-today") {
+          const today = currentDay();
           calendarScrollDay = calendarView === "week";
           calendarDay = today;
           calendarAnchor = today;
@@ -4658,16 +4758,21 @@
         return;
       }
       if (action === "open") {
-        openMail(key, b.dataset.validity, mailFolder, b.hasAttribute("data-thread-child"));
+        const position = { mail: uidKey({ folder: mailFolder, uid: key, validity: b.dataset.validity }), folder: mailFolder, thread: b.hasAttribute("data-thread-child") && threadSelection ? uidKey(threadSelection) : "", y: window.scrollY || 0 };
+        openMail(key, b.dataset.validity, mailFolder, b.hasAttribute("data-thread-child"), position);
         return;
       }
       if (action === "back") {
+        const source = selected && uidKey(selected);
         selected = null;
         if (calendarMailReturn) {
           route = "calendar";
           dayPopup = calendarMailReturn.dayWasOpen;
           calendarMailReturn = null;
         }
+        render();
+        restoreReaderScroll(source);
+        return;
       }
       if (action === "calendar-my-task") {
         const event = calendarData.events.find((t) => t.kind === "remote" && calendarSourceKey(t) === key);
