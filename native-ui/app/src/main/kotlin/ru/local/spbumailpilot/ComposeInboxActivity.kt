@@ -196,12 +196,13 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             LaunchedEffect(pending,navigationAllowed,resumed,inbox.state.owner,unlockEpoch) {
                 if(pending!=null&&navigationAllowed&&resumed&&!AppLock.locked(this@ComposeInboxActivity))openNavigation(pending)
             }
-            Column(Modifier.fillMaxSize()) {
+            val transferBannerVisible=!AppLock.locked(this@ComposeInboxActivity)&&((composer.state.open&&composer.state.minimized)||(!exports.state.open&&exports.state.notice.isNotBlank()))
+            Column(Modifier.fillMaxSize().then(if(transferBannerVisible)Modifier.statusBarsPadding().consumeWindowInsets(WindowInsets.statusBars) else Modifier)) {
                 if(composer.state.open&&composer.state.minimized&&!AppLock.locked(this@ComposeInboxActivity)){
                     if(composer.state.owner==inbox.state.owner)NativeComposerTransfer(composer)
                     else Text("Операция в другом ящике. Вернитесь в него, чтобы увидеть состояние письма.",Modifier.padding(12.dp),fontSize=12.sp)
                 }
-                if(!exports.state.open&&exports.state.notice.isNotBlank())Surface(tonalElevation=2.dp){
+                if(!AppLock.locked(this@ComposeInboxActivity)&&!exports.state.open&&exports.state.notice.isNotBlank())Surface(tonalElevation=2.dp){
                     Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
                         Text(exports.state.notice+if(exports.state.phase=="result")" Сохранено: ${exports.state.saved} из ${exports.state.total}; ошибок: ${exports.state.failures}." else "",Modifier.weight(1f),fontSize=12.sp)
                         if(exports.state.phase=="result")TextButton(onClick=exports::cancel){Text("Убрать")}
