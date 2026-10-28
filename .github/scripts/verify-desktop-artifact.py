@@ -10,6 +10,6 @@ assert re.fullmatch('[0-9a-f]{64}',expected) and hashlib.sha256(installer.read_b
 name='spbu-mail-desktop-0.1.0-preview.1-windows-x64-setup.exe'
 shutil.copy2(installer,target/name)
 locks=list(source.rglob('Cargo.lock'));assert len(locks)==1;shutil.copy2(locks[0],target/'Cargo.lock')
-info=dict(version='0.1.0',channel='preview.1',platform='windows-x64',file=name,sha256=expected,sizeBytes=installer.stat().st_size,sourceCommit='8248251f607e3f1bf87ef5223abed97d0dafdc3b',buildRun=40755423562,cargoLockSha256=hashlib.sha256(locks[0].read_bytes()).hexdigest())
+info=dict(version='0.1.0',channel='preview.1',platform='windows-x64',file=name,sha256=expected,sizeBytes=installer.stat().st_size,sourceCommit='dfa428bcbec8821c3ad6a3e16b65f34c878e9026',buildRun=40760245789,cargoLockSha256=hashlib.sha256(locks[0].read_bytes()).hexdigest())
 (target/'build-info.json').write_text(json.dumps(info,indent=2)+'\n',encoding='utf-8')
 print('Verified installer and resolved dependency lock from the successful Windows build.')
