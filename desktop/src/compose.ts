@@ -6,9 +6,12 @@ const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 type FileEntry={token:string;name:string;size:number};
 export type ReplyMail={replyTo:string;subject:string;messageId:string;references:string[]};
 export class Composer {
-  private id='';private dirty=false;private picking=false;private state:'editing'|'countdown'|'sending'|'sent'|'unknown'='editing';private timer:ReturnType<typeof setInterval>|null=null;private request='';private parent='';private references:string[]=[];private files:FileEntry[]=[];private generation=0;private creating=false;private closing=false;private confirmAction:(()=>void)|null=null;private account='';private host='';
+  private id='';private dirty=false;private picking=false;private state:'editing'|'countdown'|'sending'|'sent'|'unknown'='editing';private timer:ReturnType<typeof setInterval>|null=null;private request='';private parent='';private references:string[]=[];private files:FileEntry[]=[];private generation=0;private creating=false;private composing=false;private closing=false;private confirmAction:(()=>void)|null=null;private account='';private host='';
   constructor(private client:Client){
-    $('compose-form').addEventListener('submit',event=>{event.preventDefault();void this.startSend()});
+    $('compose-form').addEventListener('compositionstart',()=>{this.composing=true});
+    $('compose-form').addEventListener('compositionend',()=>{this.composing=false});
+    $('compose-form').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing&&event.target instanceof HTMLInputElement)event.preventDefault()});
+    $('compose-form').addEventListener('submit',event=>{event.preventDefault();if(!this.composing)void this.startSend()});
     $('compose-form').addEventListener('input',()=>{this.dirty=true});
     $('compose-close').addEventListener('click',()=>void this.guard(()=>void this.discard()));
     $('compose-attach').addEventListener('click',()=>void this.attach());
