@@ -153,7 +153,7 @@ Windows-имя установленного приложения — SPbU Mail; 
 протокол и браузерные сценарии проверяются на фикстурах.
 
 
-Актуальный предварительный Windows-выпуск с локальной книгой: [desktop-v0.1.0-preview.7](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/desktop-v0.1.0-preview.7).
+Предварительный Windows-выпуск с локальной книгой: [desktop-v0.1.0-preview.7](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/desktop-v0.1.0-preview.7).
 
 ## Локальная адресная книга
 
@@ -180,6 +180,8 @@ CurrentUser с контекстом владельца и атомарной з�
 до результата. Внезапное завершение сохраняет только уже подтверждённые изменения:
 несохранённая контактная форма не является автоматически сохраняемым черновиком.
 
+
+Актуальный предварительный Windows-выпуск с импортом: [desktop-v0.1.0-preview.8](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/desktop-v0.1.0-preview.8).
 
 ## Импорт CSV / vCard
 
