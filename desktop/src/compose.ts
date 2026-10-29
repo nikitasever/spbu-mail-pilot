@@ -44,6 +44,15 @@ export class Composer {
     if(this.id){if(!reply){$('composer').hidden=false;$('compose-body').focus();return}this.guard(()=>void this.replace(reply));return}
     await this.replace(reply);
   }
+  async address(email:string){
+    if(!/^[^\s<>@,;]+@[^\s<>@,;]+$/.test(email)||email.length>254)return;
+    if(this.creating)return;
+    if(this.id&&this.state!=='editing'&&this.state!=='countdown'){$('composer').hidden=false;this.error('Текущая отправка или её результат не допускают изменения получателей. Сначала проверьте это письмо.');return}
+    const generation=this.generation;this.undo();await this.open();if(generation!==this.generation||!this.id||this.state!=='editing')return;
+    const input=$<HTMLInputElement>('compose-to'),existing=(input.value.match(/[^\s<>,;]+@[^\s<>,;]+/g)??[]).map(value=>value.toLowerCase());
+    if(!existing.includes(email.toLowerCase())){const next=input.value.trim()?input.value.trim()+', '+email:email;if(next.length>4000){this.error('В поле получателей слишком много текста. Адрес не добавлен.');return}input.value=next;input.dispatchEvent(new Event('input',{bubbles:true}))}
+    input.focus();
+  }
   private async replace(reply?:ReplyMail){
     if(this.id&&!await this.discard())return;this.creating=true;const generation=this.generation;
     try{const result=await invoke<{id:string}>('draft_begin',{epoch:this.sessionEpoch});if(generation!==this.generation){void invoke('draft_discard',{id:result.id}).catch(()=>{});return}this.id=result.id;this.revision=0;this.edit=0;this.saved=false;this.state='editing';this.files=[];this.parent=reply?.messageId??'';this.references=this.parent?(reply?.references??[]):[];

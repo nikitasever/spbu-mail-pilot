@@ -19,7 +19,7 @@ public final class DesktopEngine implements AutoCloseable {
     interface Sink {void write(JSONObject message);}
     private static final class Failure extends Exception {final String code;Failure(String code){this.code=code;}}
     private static final class Operation {
-        final AtomicBoolean stopped=new AtomicBoolean();volatile Gateway active;volatile AutoCloseable resource;boolean transfer,write,started,calendar;
+        final AtomicBoolean stopped=new AtomicBoolean();volatile Gateway active;volatile AutoCloseable resource;boolean transfer,write,started,calendar,contacts;
         synchronized void beginSend()throws Failure{check();started=true;}
         void check()throws Failure{if(stopped.get())throw new Failure("CANCELLED");}
     }
@@ -27,6 +27,9 @@ public final class DesktopEngine implements AutoCloseable {
     private final Sink sink;
     private final DesktopCalendars.Factory calendarFactory;
     private final ExecutorService calendarWorker=Executors.newSingleThreadExecutor();
+    private final ExecutorService contactsWorker=Executors.newSingleThreadExecutor();
+    private volatile DesktopContacts contacts;
+    private final DesktopContacts.Factory contactsFactory;
     private final DesktopOutgoing outgoing=new DesktopOutgoing();
     private final ExecutorService sends=Executors.newSingleThreadExecutor();
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
@@ -37,7 +40,8 @@ public final class DesktopEngine implements AutoCloseable {
     private volatile SavedAccounts.Login credentials; // session memory only; never serialized
     private volatile Gateway session; // worker only; a cancelled connection is never reused
     DesktopEngine(Factory factory,Sink sink){this(factory,sink,DesktopCalendars::create);}
-    DesktopEngine(Factory factory,Sink sink,DesktopCalendars.Factory calendars){this.factory=factory;this.sink=sink;this.calendarFactory=calendars;}
+    DesktopEngine(Factory factory,Sink sink,DesktopCalendars.Factory calendars){this(factory,sink,calendars,DesktopContacts::new);}
+    DesktopEngine(Factory factory,Sink sink,DesktopCalendars.Factory calendars,DesktopContacts.Factory contacts){this.factory=factory;this.sink=sink;this.calendarFactory=calendars;this.contactsFactory=contacts;}
     private static String string(JSONObject args,String key,int max,boolean empty)throws Failure {
         Object value=args.opt(key);
         if(!(value instanceof String)||((String)value).length()>max||(!empty&&((String)value).isEmpty()))throw new Failure("BAD_REQUEST");
@@ -75,16 +79,17 @@ public final class DesktopEngine implements AutoCloseable {
                 String target=string(args,"requestId",64,false);Operation old=pending.get(target);boolean stopped=old!=null&&stop(old);
                 response(id,new JSONObject().put("cancelled",stopped),null);return;
             }
-            if(!java.util.Arrays.asList("connect","disconnect","folders","page","body","attachment","send","calendarDiscover","calendarMonth").contains(method))throw new Failure("BAD_REQUEST");
+            if(!java.util.Arrays.asList("connect","disconnect","folders","page","body","attachment","send","calendarDiscover","calendarMonth","contactsPage").contains(method))throw new Failure("BAD_REQUEST");
             if(method.equals("connect")||method.equals("disconnect")){
-                credentials=null;for(Operation task:pending.values())if(task.transfer||task.calendar)stop(task);
+                credentials=null;for(Operation task:pending.values())if(task.transfer||task.calendar||task.contacts)stop(task);closeLater(contacts);contacts=null;
             }
-            Operation operation=new Operation();operation.transfer=method.equals("attachment");operation.write=method.equals("send");operation.calendar=method.equals("calendarDiscover")||method.equals("calendarMonth");
+            SavedAccounts.Login contactAuth=credentials;
+            Operation operation=new Operation();operation.contacts=method.equals("contactsPage");operation.transfer=method.equals("attachment");operation.write=method.equals("send");operation.calendar=method.equals("calendarDiscover")||method.equals("calendarMonth");
             if(pending.size()>=16)throw new Failure("BUSY");
             if(pending.putIfAbsent(id,operation)!=null){response(null,null,"DUPLICATE_REQUEST");return;}
             final String key=id;
             if(operation.transfer)sink.write(new JSONObject().put("id",key).put("event","attachmentProgress").put("bytes",0).put("total",-1));
-            (operation.calendar?calendarWorker:operation.write?sends:operation.transfer?transfers:worker).execute(()->{
+            (operation.contacts?contactsWorker:operation.calendar?calendarWorker:operation.write?sends:operation.transfer?transfers:worker).execute(()->{
                 try{
                     operation.check();Object result;
                     switch(method){
@@ -96,6 +101,11 @@ public final class DesktopEngine implements AutoCloseable {
                             Gateway next=factory.connect(host,port,user,password,gateway->{operation.active=gateway;if(operation.stopped.get())closeLater(gateway);operation.check();});
                             operation.active=next;operation.check();session=next;credentials=new SavedAccounts.Login(host,port,user,password);
                             result=new JSONObject().put("account",user).put("connected",true);break;
+                        }
+                        case "contactsPage":{
+                            if(contactAuth==null||contactAuth!=credentials||!DesktopContacts.owner(contactAuth).equals(args.optString("_owner")))throw new Failure("NO_SESSION");
+                            DesktopContacts source=contacts;if(source==null||source.closed()){source=contactsFactory.create();contacts=source;}
+                            operation.resource=source;operation.check();result=source.page(contactAuth,args);if(contactAuth!=credentials)throw new Failure("CANCELLED");break;
                         }
                         case "calendarDiscover":case "calendarMonth":{
                             DesktopCalendars.Transport calendar=calendarFactory.create();operation.resource=calendar;
@@ -152,6 +162,7 @@ public final class DesktopEngine implements AutoCloseable {
         }catch(Exception invalid){response(id,null,code(invalid));}
     }
     private static String code(Exception failure){
+        if(failure instanceof DesktopContacts.Fault)return ((DesktopContacts.Fault)failure).code;
         if(failure instanceof DesktopCalendars.Fault)return ((DesktopCalendars.Fault)failure).code;
         if(failure instanceof DesktopOutgoing.Fault)return ((DesktopOutgoing.Fault)failure).code;
         if(failure instanceof Failure)return ((Failure)failure).code;
@@ -166,7 +177,7 @@ public final class DesktopEngine implements AutoCloseable {
         }
         return "UNAVAILABLE";
     }
-    @Override public void close(){closed=true;for(Operation operation:pending.values())stop(operation);worker.shutdownNow();transfers.shutdownNow();sends.shutdownNow();calendarWorker.shutdownNow();closeLater(session);session=null;credentials=null;closer.shutdown();}
+    @Override public void close(){closed=true;for(Operation operation:pending.values())stop(operation);worker.shutdownNow();transfers.shutdownNow();sends.shutdownNow();calendarWorker.shutdownNow();contactsWorker.shutdownNow();closeLater(contacts);closeLater(session);session=null;credentials=null;closer.shutdown();}
     private static String line(Reader input)throws IOException{
         StringBuilder result=new StringBuilder();int c;
         while((c=input.read())!=-1){if(c=='\n')return result.toString();if(result.length()>=1048576)throw new IOException("Protocol line limit");if(c!='\r')result.append((char)c);}

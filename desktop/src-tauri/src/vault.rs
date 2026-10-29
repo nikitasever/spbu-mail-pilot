@@ -92,3 +92,9 @@ pub fn connect_saved(mut request:Request,app:&tauri::AppHandle,engine:&Arc<Engin
         let mut broken=cipher;let index=broken.len()/2;broken[index]^=1;std::fs::write(&path,broken).unwrap();assert!(read(&path,"fixture-owner",1000).is_err());
     }
 }
+
+#[cfg(test)]mod contact_scope_tests{
+    #[test]fn scope_matches_jvm_directory_boundary(){
+        assert_eq!(super::owner(&serde_json::json!({"host":"MAIL.SPBU.RU","port":993,"user":"Fixture"})).unwrap(),"01bb68ff93b4bbbef383e6571d5e0c05ed07ee1856b53de698cde0e134103726");
+    }
+}

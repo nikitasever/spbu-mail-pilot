@@ -1,4 +1,5 @@
 import './styles.css';
+import {ContactsScreen} from './contacts';
 import {CalendarScreen} from './calendar';
 import {Composer,type ReplyMail} from './compose';
 import {Attachments,parseAttachments} from './attachments';
@@ -9,7 +10,7 @@ const text=(id:string,value:string)=>{$(id).textContent=value};
 const show=(id:string,visible:boolean)=>{$(id).hidden=!visible};
 const client=new Client((command,args)=>invoke(command,args));
 const calendar=new CalendarScreen(client);
-const composer=new Composer(client);let replyMail:ReplyMail|null=null;
+const composer=new Composer(client);const contacts=new ContactsScreen(client,async person=>{await composer.address(person.email)});let replyMail:ReplyMail|null=null;
 const attachmentUI=new Attachments(client,$('transfers'));
 const connectLane=new Lane(client),folderLane=new Lane(client),listLane=new Lane(client),bodyLane=new Lane(client);
 let remembered:{id?:string;host:string;port:number;user:string}|null=null;let canRemembered=false;
@@ -79,7 +80,7 @@ async function connect(saved=false){
   const ticket=++epoch;loginBusy(true);text('login-status','Подключаемся к почтовому серверу…');
   const args={host:saved?remembered!.host:host.value.trim(),port:saved?remembered!.port:Number(port.value),user:saved?remembered!.user:user.value.trim(),password:saved?'':password.value,remember:!saved&&$<HTMLInputElement>('remember-account').checked};password.value='';hidePassword();
   try{
-    const result=await connectLane.run<{account?:string;host?:string;epoch?:number;remembered?:boolean}>(saved?'connectSaved':'connect',saved?{}:args);args.password='';if(ticket!==epoch)return;connected=true;account=result.account??args.user;composer.setup(account,result.host??args.host,result.epoch??0);calendar.setup(result.epoch??0);showMail();void composer.restore();text('account-note',result.remembered===false?'Не удалось запомнить аккаунт. Текущий вход работает; пароль потребуется после закрытия.':'');show('account-note',result.remembered===false);if(args.remember)void rememberedStatus();show('login-screen',false);show('workspace',true);text('account-name',account);text('account-avatar',avatar(account));folder='INBOX';query='';rows=[];page=null;renderFolders(['INBOX']);text('folder-title','Входящие');await loadFolders();if(ticket===epoch)await loadPage(false);
+    const result=await connectLane.run<{account?:string;host?:string;epoch?:number;remembered?:boolean}>(saved?'connectSaved':'connect',saved?{}:args);args.password='';if(ticket!==epoch)return;connected=true;account=result.account??args.user;composer.setup(account,result.host??args.host,result.epoch??0);calendar.setup(result.epoch??0);contacts.setup(result.epoch??0,result.host??args.host);showMail();void composer.restore();text('account-note',result.remembered===false?'Не удалось запомнить аккаунт. Текущий вход работает; пароль потребуется после закрытия.':'');show('account-note',result.remembered===false);if(args.remember)void rememberedStatus();show('login-screen',false);show('workspace',true);text('account-name',account);text('account-avatar',avatar(account));folder='INBOX';query='';rows=[];page=null;renderFolders(['INBOX']);text('folder-title','Входящие');await loadFolders();if(ticket===epoch)await loadPage(false);
   }catch(error){if(!(error instanceof StaleReply)&&ticket===epoch){text('login-error',failure(error));show('login-error',true);password.focus()}}
   finally{args.password='';if(ticket===epoch){loginBusy(false);text('login-status','')}}
 }
@@ -93,9 +94,15 @@ search.addEventListener('input',()=>show('clear-search',search.value.length>0));
 $('search-form').addEventListener('submit',event=>{event.preventDefault();query=search.value.trim();void loadPage(false)});
 $('clear-search').addEventListener('click',()=>{search.value='';query='';show('clear-search',false);search.focus();void loadPage(false)});
 $('new-mail').addEventListener('click',()=>void composer.open());$('reply-mail').addEventListener('click',()=>{if(replyMail)void composer.open(replyMail)});
-$('logout').addEventListener('click',()=>void composer.leave(()=>{void composer.reset();calendar.reset();showMail();attachmentUI.reset();epoch++;connectLane.cancel();folderLane.cancel();listLane.cancel();bodyLane.cancel();connected=false;account='';rows=[];page=null;resetReader();folders.replaceChildren();text('account-name','');password.value='';hidePassword();search.value='';query='';show('clear-search',false);text('account-avatar','');text('folder-title','');show('workspace',false);show('login-screen',true);void client.start('disconnect').promise.catch(()=>{});user.focus()}));
-function showMail(){calendar.hide();show('calendar-screen',false);show('mailbox-panel',true);show('reader-panel',true);$('nav-mail').setAttribute('aria-current','page');$('nav-calendar').removeAttribute('aria-current')}
-$('nav-mail').addEventListener('click',showMail);$('nav-calendar').addEventListener('click',async()=>{if(!connected||!await composer.hide())return;show('mailbox-panel',false);show('reader-panel',false);show('calendar-screen',true);$('nav-calendar').setAttribute('aria-current','page');$('nav-mail').removeAttribute('aria-current');void calendar.open()});
+$('logout').addEventListener('click',()=>void composer.leave(()=>{void composer.reset();calendar.reset();contacts.reset();showMail();attachmentUI.reset();epoch++;connectLane.cancel();folderLane.cancel();listLane.cancel();bodyLane.cancel();connected=false;account='';rows=[];page=null;resetReader();folders.replaceChildren();text('account-name','');password.value='';hidePassword();search.value='';query='';show('clear-search',false);text('account-avatar','');text('folder-title','');show('workspace',false);show('login-screen',true);void client.start('disconnect').promise.catch(()=>{});user.focus()}));
+function showSection(section:'mail'|'calendar'|'contacts'){
+ if(section!=='calendar')calendar.hide();if(section!=='contacts')contacts.hide();
+ show('calendar-screen',section==='calendar');show('contacts-screen',section==='contacts');show('mailbox-panel',section==='mail');show('reader-panel',section==='mail');
+ for(const key of ['mail','calendar','contacts']){if(key===section)$('nav-'+key).setAttribute('aria-current','page');else $('nav-'+key).removeAttribute('aria-current')}
+}
+function showMail(){showSection('mail')}
+$('nav-mail').addEventListener('click',showMail);$('nav-calendar').addEventListener('click',async()=>{if(!connected||!await composer.hide())return;showSection('calendar');void calendar.open()});
+$('nav-contacts').addEventListener('click',async()=>{if(!connected||!await composer.hide())return;showSection('contacts');contacts.open()});
 async function rememberedStatus(){
   try{remembered=await invoke('account_status');canRemembered=Boolean(remembered);show('saved-account',canRemembered);if(remembered)text('saved-account-name',`${remembered.user} · ${remembered.host}`);$<HTMLButtonElement>('saved-login').disabled=!canRemembered}
   catch{remembered=null;canRemembered=false;show('saved-account',true);text('saved-account-name','Не удалось открыть сохранённый аккаунт. Можно войти вручную или забыть сохранённый пароль.');$<HTMLButtonElement>('saved-login').disabled=true}

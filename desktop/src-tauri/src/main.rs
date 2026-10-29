@@ -71,7 +71,7 @@ impl Engine {
         Ok(Arc::new(Self { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), pending, saved:Mutex::new(HashMap::new()),epoch:AtomicU64::new(0),owner:Mutex::new(None),calendar_serial:AtomicU64::new(0),calendar_jobs:Mutex::new(HashMap::new()),session_gate:Mutex::new(()),drafts:Mutex::new(HashMap::new()) }))
     }
     fn request(&self, request: Request) -> Reply {
-        const METHODS: &[&str] = &["capabilities", "connect", "disconnect", "folders", "page", "body", "cancel", "attachment", "send", "calendarDiscover", "calendarMonth"];
+        const METHODS: &[&str] = &["capabilities", "connect", "disconnect", "folders", "page", "body", "cancel", "attachment", "send", "calendarDiscover", "calendarMonth", "contactsPage"];
         if request.id.is_empty() || request.id.len() > 64 || !request.id.bytes().all(|c| c.is_ascii_alphanumeric() || b"._-".contains(&c)) || !METHODS.contains(&request.method.as_str()) || !request.args.is_object() { return Err("BAD_REQUEST".into()); }
         let id = request.id.clone();
         let line = json!({"id": request.id, "method": request.method, "args": request.args}).to_string();
@@ -104,11 +104,20 @@ fn connect(mut request:Request,app:&tauri::AppHandle,engine:&Arc<Engine>,remembe
     }Ok(reply)
 }
 #[tauri::command]
-async fn mail_request(request: Request, app:tauri::AppHandle, state: tauri::State<'_, Arc<Engine>>) -> Reply {
+async fn mail_request(mut request: Request, app:tauri::AppHandle, state: tauri::State<'_, Arc<Engine>>) -> Reply {
     let engine = state.inner().clone();
     if request.method=="cancel"{if let Some(target)=request.args["requestId"].as_str(){calendars::cancel(&engine,target);}}
     if ["calendarStatus","calendarConnect","calendarSelect","calendarForget","calendarMonth"].contains(&request.method.as_str()){return calendars::run(request,app,engine).await;}
     tauri::async_runtime::spawn_blocking(move || {
+        if request.method == "contactsPage" {
+            let epoch=request.args["epoch"].as_u64().ok_or("BAD_REQUEST")?;
+            {let _gate=engine.session_gate.lock().map_err(|_|"NO_SESSION")?;
+                if engine.epoch.load(Ordering::SeqCst)!=epoch{return Err("NO_SESSION".into());}
+                request.args["_owner"]=json!(engine.owner.lock().map_err(|_|"NO_SESSION")?.clone().ok_or("NO_SESSION")?);}
+            let reply=engine.request(request)?;
+            let _gate=engine.session_gate.lock().map_err(|_|"NO_SESSION")?;
+            if engine.epoch.load(Ordering::SeqCst)!=epoch{return Err("CANCELLED".into());}return Ok(reply);
+        }
         if request.method == "attachment" { return attachments::save(request,&app,&engine); }
         if request.method == "send" {return compose::send(request,&app,&engine);}
         if request.method == "connectSaved" {return vault::connect_saved(request,&app,&engine);}

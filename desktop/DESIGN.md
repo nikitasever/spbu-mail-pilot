@@ -91,3 +91,25 @@ redirect to another origin. Same-origin redirects are followed within a bounded 
 The public profile contains names/IDs, origin and login,
 never a password or private collection URL. Frontend month queries contain calendar
 IDs, not credentials/paths. Native code resolves credentials and the collection URL.
+
+
+Contacts reuse the shared section switcher in main.ts and the native select,
+search form, inline live feedback and scroll tokens from mail/calendar. The three
+sections share one account; navigation never silently drops a draft. ContactsScreen
+owns read-only university book selection and explicit server search (no live
+queries or URL/localStorage persistence). Its alphabet is an operable horizontal
+scroller, not an incomplete subset. Contacts-list owns scrolling; footer actions
+remain reachable at 760×600. Each row uses the mail avatar palette, name/email and
+an explicit Write action. The native book selector accepts platform popup geometry.
+Book/search/letter changes reset paging and cancel old requests; refresh errors
+keep only the same route's previously loaded data. Paging is bounded, explicit,
+deduplicated by case-insensitive email and checked against repeated cursor tokens.
+The fixed university HTTPS origin, account/epoch boundary, separate worker and
+socket cancellation live in DesktopContacts/Engine and mail_request. No new vault
+or Android contact store is implied. Records stay in RAM and are cleared at logout.
+Composer.address is the single recipient-add owner: preserve existing draft/text/
+files/headers, deduplicate, cancel an unstarted send countdown, refuse terminal or
+in-flight sends, autosave through the existing composer service. No external mailto
+handler or browser navigation gets contact data. Remote contact changes/import are
+outside this milestone; no UI promises them. Fixture E2E covers navigation, search,
+IME, safe content, paging, stale replies, errors, recipient append and send locks.
