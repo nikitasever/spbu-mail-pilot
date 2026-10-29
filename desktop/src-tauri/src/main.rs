@@ -16,6 +16,7 @@ struct Engine { child: Mutex<Option<Child>>, stdin: Mutex<ChildStdin>, pending: 
 // Use an existing filesystem short alias when available; never change system locale or 8.3 policy.
 #[cfg(windows)]
 fn java_root(root: &Path) -> PathBuf {
+    let root=dunce::simplified(root);
     use std::{ffi::OsString, os::windows::ffi::{OsStrExt, OsStringExt}};
     #[link(name = "kernel32")]
     extern "system" { fn GetShortPathNameW(long: *const u16, short: *mut u16, count: u32) -> u32; }
@@ -112,11 +113,14 @@ fn root_for(app: &tauri::App) -> Result<PathBuf, Box<dyn std::error::Error>> {
 fn main() {
     if std::env::args().any(|arg| arg == "--verify-engine") {
         let root = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).expect("Executable location missing");
+        let root=root.canonicalize().expect("Canonical executable location missing");
         let engine = Engine::start(&root,None).expect("Bundled engine unavailable");
         let reply = engine.request(Request { id: "probe".into(), method: "capabilities".into(), args: json!({}) }).expect("Engine probe failed");
         assert_eq!(reply["result"]["readOnly"], true);engine.stop();return;
     }
-    tauri::Builder::default().plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_opener::init()).setup(|app| { let root = root_for(app)?;let engine = Engine::start(&root,Some(app.handle().clone())).map_err(std::io::Error::other)?;app.manage(engine);Ok(()) })
+    tauri::Builder::default().plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_opener::init()).setup(|app| { let root = root_for(app)?;let engine = Engine::start(&root,Some(app.handle().clone())).map_err(std::io::Error::other)?;let ready=engine.request(Request{id:"startup".into(),method:"capabilities".into(),args:json!({})}).map_err(std::io::Error::other)?;
+            if ready["result"]["readOnly"]!=true {return Err(std::io::Error::other("Engine handshake failed").into());}
+            app.manage(engine);Ok(()) })
         .invoke_handler(tauri::generate_handler![mail_request,open_saved])
         .on_window_event(|window, event| { if matches!(event, tauri::WindowEvent::Destroyed) { if let Some(engine) = window.try_state::<Arc<Engine>>() { engine.stop(); } } })
         .run(tauri::generate_context!()).expect("Desktop window failed to start");
