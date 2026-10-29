@@ -52,7 +52,7 @@ After handoff, no cancellation/delivery guarantee or automatic retry is implied.
 Content-free durable receipts and native draft state lock ambiguous attempts.
 Failure to append the Sent copy is a warning on an accepted send, never a reason
 to send again. Unknown outcomes keep text available for copying but freeze send.
-Discard/logout/close use the shared app-owned confirmation with Keep as initial
+Deletion and close/logout failures use the shared app-owned confirmation with Keep as initial
 focus; Escape preserves the draft. Window destroy permission applies only to the
 main local window so this close guard can finish an explicit user close. SMTP
 settings use native radio semantics. Draft text/SMTP settings and file snapshots persist encrypted with Windows DPAPI.
