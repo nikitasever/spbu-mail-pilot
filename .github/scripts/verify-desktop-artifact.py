@@ -7,9 +7,9 @@ sums=list(source.rglob('SHA256SUMS-windows.txt'));assert len(sums)==1
 records=[line.strip() for line in sums[0].read_text(encoding='utf-8-sig').splitlines() if line.strip()]
 expected=next(line[:64].lower() for line in records if line[64:].strip()==installer.name)
 assert re.fullmatch('[0-9a-f]{64}',expected) and hashlib.sha256(installer.read_bytes()).hexdigest()==expected
-name='spbu-mail-desktop-0.1.0-preview.1-windows-x64-setup.exe'
+name='spbu-mail-desktop-0.1.0-preview.2-windows-x64-setup.exe'
 shutil.copy2(installer,target/name)
 locks=list(source.rglob('Cargo.lock'));assert len(locks)==1;shutil.copy2(locks[0],target/'Cargo.lock')
-info=dict(version='0.1.0',channel='preview.1',platform='windows-x64',file=name,sha256=expected,sizeBytes=installer.stat().st_size,sourceCommit='9bbb7b9f6f0e29fee95e94c404b8792d470f9c0b',buildRun=40761473511,cargoLockSha256=hashlib.sha256(locks[0].read_bytes()).hexdigest())
+info=dict(version='0.1.0',channel='preview.2',platform='windows-x64',file=name,sha256=expected,sizeBytes=installer.stat().st_size,sourceCommit='3d861d6a86237613f3cb4089cf489e927e5a1ac2',buildRun=40813492525,cargoLockSha256=hashlib.sha256(locks[0].read_bytes()).hexdigest())
 (target/'build-info.json').write_text(json.dumps(info,indent=2)+'\n',encoding='utf-8')
 print('Verified installer and resolved dependency lock from the successful Windows build.')

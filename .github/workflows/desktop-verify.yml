@@ -21,7 +21,7 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: desktop-windows-readonly-prototype
-          run-id: 40761473511
+          run-id: 40813492525
           github-token: ${{ github.token }}
           path: candidate
       - name: Verify immutable installer checksum
@@ -29,7 +29,7 @@ jobs:
       - name: Install, start window and verify child shutdown
         shell: powershell
         run: |
-          $setup = Get-Item 'verified/spbu-mail-desktop-0.1.0-preview.1-windows-x64-setup.exe'
+          $setup = Get-Item 'verified/spbu-mail-desktop-0.1.0-preview.2-windows-x64-setup.exe'
           $install = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw 'Silent installation failed' }
           $binary = Get-ChildItem -Path $env:LOCALAPPDATA -Filter 'spbu-mail-desktop.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -72,7 +72,7 @@ jobs:
             if (-not $app.WaitForExit(10000)) { throw 'App did not exit after window close' }
             Start-Sleep -Seconds 2
             if (Get-Process -Id $engine.ProcessId -ErrorAction SilentlyContinue) { throw 'JVM remained after app exit' }
-            '{"installed":true,"windowOpened":true,"jvmStoppedOnExit":true,"buildRun":40761473511}' | Set-Content -Encoding utf8 verified/install-proof.json
+            '{"installed":true,"windowOpened":true,"jvmStoppedOnExit":true,"buildRun":40813492525}' | Set-Content -Encoding utf8 verified/install-proof.json
           } finally {
             if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue }
             if ($engine) { Stop-Process -Id $engine.ProcessId -Force -ErrorAction SilentlyContinue }
@@ -107,10 +107,10 @@ jobs:
           PYTHON
           ssh-keyscan github.com > "$RUNNER_TEMP/update-known-hosts" 2>/dev/null
           export GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/update-deploy-key -o UserKnownHostsFile=$RUNNER_TEMP/update-known-hosts -o StrictHostKeyChecking=yes"
-          git clone --single-branch --branch codex/desktop-0.1.0-preview.1 git@github.com:nikitasever/spbu-mail-pilot-updates.git updates
+          git clone --single-branch --branch codex/desktop-0.1.0-preview.2 git@github.com:nikitasever/spbu-mail-pilot-updates.git updates
           python3 - <<'PYTHON'
           import pathlib,shutil,json,hashlib
-          source=pathlib.Path('verified');target=pathlib.Path('updates/candidates/desktop-0.1.0-preview.1')
+          source=pathlib.Path('verified');target=pathlib.Path('updates/candidates/desktop-0.1.0-preview.2')
           proof=json.loads((source/'install-proof.json').read_text(encoding='utf-8-sig'))
           assert proof['installed'] and proof['windowOpened'] and proof['jvmStoppedOnExit']
           for path in source.iterdir():
@@ -122,7 +122,7 @@ jobs:
           cd updates
           git config user.name 'Desktop preview builder'
           git config user.email 'desktop-preview@users.noreply.github.com'
-          git add candidates/desktop-0.1.0-preview.1
+          git add candidates/desktop-0.1.0-preview.2
           git commit -m 'Stage verified Windows desktop installer and installation proof'
-          git push origin HEAD:refs/heads/codex/desktop-0.1.0-preview.1
+          git push origin HEAD:refs/heads/codex/desktop-0.1.0-preview.2
           rm -f "$RUNNER_TEMP/update-deploy-key"
