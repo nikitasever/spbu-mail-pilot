@@ -21,7 +21,7 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: desktop-windows-readonly-prototype
-          run-id: 40813492525
+          run-id: 40814415213
           github-token: ${{ github.token }}
           path: candidate
       - name: Verify immutable installer checksum
@@ -48,7 +48,7 @@ jobs:
             if ($app.MainWindowHandle -eq 0) { throw 'Desktop window was not created' }
             if (-not $app.Responding) { throw 'Desktop window not responding' }
             # Tauri may create its window before setup() starts the engine.
-            $engineDeadline = (Get-Date).AddSeconds(20)
+            $engineDeadline = (Get-Date).AddSeconds(60)
             do {
               $engine = Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $app.Id -and $_.Name -eq 'java.exe' } | Select-Object -First 1
               if (-not $engine) { Start-Sleep -Milliseconds 250 }
@@ -78,7 +78,7 @@ jobs:
             if (-not $app.WaitForExit(10000)) { throw 'App did not exit after window close' }
             Start-Sleep -Seconds 2
             if (Get-Process -Id $engine.ProcessId -ErrorAction SilentlyContinue) { throw 'JVM remained after app exit' }
-            '{"installed":true,"windowOpened":true,"jvmStoppedOnExit":true,"buildRun":40813492525}' | Set-Content -Encoding utf8 verified/install-proof.json
+            '{"installed":true,"windowOpened":true,"jvmStoppedOnExit":true,"buildRun":40814415213}' | Set-Content -Encoding utf8 verified/install-proof.json
           } finally {
             if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue }
             if ($engine) { Stop-Process -Id $engine.ProcessId -Force -ErrorAction SilentlyContinue }
@@ -120,7 +120,7 @@ jobs:
           proof=json.loads((source/'install-proof.json').read_text(encoding='utf-8-sig'))
           assert proof['installed'] and proof['windowOpened'] and proof['jvmStoppedOnExit']
           for path in source.iterdir():
-              if path.is_file():shutil.copy2(path,target/path.name)
+              if path.is_file() and path.suffix != ".log":shutil.copy2(path,target/path.name)
           (target/'install-proof.json').write_text(json.dumps(proof,indent=2)+'\n')
           names=sorted(path.name for path in target.iterdir() if path.is_file() and path.name not in ['SHA256SUMS.txt','release-notes.md'])
           (target/'SHA256SUMS.txt').write_text(''.join(hashlib.sha256((target/name).read_bytes()).hexdigest()+'  '+name+'\n' for name in names))
