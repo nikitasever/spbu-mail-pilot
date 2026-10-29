@@ -1,11 +1,12 @@
+import {parseImport,type ImportPreview} from './contact-import-model';
 import {Client,Lane,MailFault,StaleReply,failure} from './protocol';
 import {confirmAction,cancelConfirmation,confirmationOpen} from './confirmation';
 import {parseLocalBook,type LocalBook,type LocalPerson,validContact} from './contacts-model';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 export class LocalContacts{
- private trigger:HTMLElement|null=null;private serial=0;private lane:Lane;private epoch=0;private generation=0;private book:LocalBook|null=null;private id='';private initial='';private pending=false;private frozen=false;private composing=false;
+ private preview:ImportPreview|null=null;private selected=new Set<number>();private importFrozen=false;private trigger:HTMLElement|null=null;private serial=0;private lane:Lane;private epoch=0;private generation=0;private book:LocalBook|null=null;private id='';private initial='';private pending=false;private frozen=false;private composing=false;
  constructor(private client:Client,private changed:(action:'saved'|'deleted')=>void,private status:(text:string)=>void,private redraw:()=>void){
-  this.lane=new Lane(client);$('contact-editor-form').addEventListener('submit',event=>{event.preventDefault();if(!this.composing)void this.save()});$('contact-editor-form').addEventListener('compositionstart',()=>this.composing=true);$('contact-editor-form').addEventListener('compositionend',()=>this.composing=false);
+  this.lane=new Lane(client);$('contacts-import').addEventListener('click',()=>void this.pickImport());$('contact-import-commit').addEventListener('click',()=>void this.commitImport());$('contact-import-cancel').addEventListener('click',()=>{if(!this.pending)this.closeImport()});$('contact-import-dialog').addEventListener('cancel',event=>{event.preventDefault();if(!this.pending)this.closeImport()});$('contact-import-all').addEventListener('click',()=>{this.selected=new Set((this.preview?.rows??[]).filter(row=>!row.issue).slice(0,this.preview?.capacity??0).map(row=>row.index));this.renderImport()});$('contact-import-none').addEventListener('click',()=>{this.selected.clear();this.renderImport()});$('contact-editor-form').addEventListener('submit',event=>{event.preventDefault();if(!this.composing)void this.save()});$('contact-editor-form').addEventListener('compositionstart',()=>this.composing=true);$('contact-editor-form').addEventListener('compositionend',()=>this.composing=false);
   $('contact-cancel').addEventListener('click',()=>void this.mayClose());$('contact-editor').addEventListener('cancel',event=>{event.preventDefault();void this.mayClose()});
   $('contact-editor').addEventListener('close',()=>{if(this.trigger?.isConnected)this.trigger.focus();else $('contacts-new').focus();this.trigger=null});
  }
@@ -13,12 +14,12 @@ export class LocalContacts{
  get people(){return this.book?.people??[]}
  get ready(){return this.book!==null}
  setup(epoch:number){this.reset();this.epoch=epoch}
- reset(){this.generation++;this.serial++;this.lane.cancel();this.book=null;this.pending=false;this.frozen=false;this.composing=false;cancelConfirmation();this.closeEditor()}
+ reset(){this.generation++;this.serial++;this.lane.cancel();this.closeImport();this.book=null;this.pending=false;this.frozen=false;this.composing=false;cancelConfirmation();this.closeEditor()}
  cancelRead(){this.lane.cancel()}
  async read(){const epoch=this.epoch,generation=this.generation,serial=this.serial;const value=parseLocalBook(await this.lane.run('localContactsRead',{epoch}));if(epoch!==this.epoch||generation!==this.generation||serial!==this.serial)throw new StaleReply();this.book=value;return value}
- needsCloseGuard(){return this.pending||$<HTMLDialogElement>('contact-editor').open||confirmationOpen()}
+ needsCloseGuard(){return this.pending||$<HTMLDialogElement>('contact-editor').open||$<HTMLDialogElement>('contact-import-dialog').open||confirmationOpen()}
  async mayClose(){
-  if(this.pending||confirmationOpen())return false;const editor=$<HTMLDialogElement>('contact-editor');if(!editor.open)return true;
+  if(this.pending||confirmationOpen())return false;if($<HTMLDialogElement>('contact-import-dialog').open)this.closeImport();const editor=$<HTMLDialogElement>('contact-editor');if(!editor.open)return true;
   const generation=this.generation;if(this.fields()!==this.initial&&!await confirmAction('Не сохранять контакт?','Изменения этой формы будут потеряны. Уже сохранённая адресная книга останется на компьютере.','Не сохранять'))return false;
   if(generation!==this.generation)return false;this.closeEditor();return true;
  }
@@ -28,7 +29,7 @@ export class LocalContacts{
  }
  private fields(){return JSON.stringify([$<HTMLInputElement>('contact-name').value,$<HTMLInputElement>('contact-email').value])}
  private closeEditor(){$<HTMLDialogElement>('contact-editor').close();for(const id of ['contact-name','contact-email'])$<HTMLInputElement>(id).value='';this.id='';this.initial='';$('contact-error').hidden=true}
- private controls(){for(const input of document.querySelectorAll<HTMLInputElement|HTMLButtonElement>('#contact-editor-form input,#contact-editor-form button'))input.disabled=this.pending;$<HTMLButtonElement>('contact-save').disabled=this.pending||this.frozen;$('contact-editor-form').setAttribute('aria-busy',String(this.pending));this.redraw()}
+ private controls(){for(const input of document.querySelectorAll<HTMLInputElement|HTMLButtonElement>('#contact-editor-form input,#contact-editor-form button'))input.disabled=this.pending;$<HTMLButtonElement>('contact-save').disabled=this.pending||this.frozen;$('contact-editor-form').setAttribute('aria-busy',String(this.pending));this.redraw();this.importControls()}
  private error(text:string,field?:string){$('contact-error').textContent=text;$('contact-error').hidden=false;if(field){$(field).setAttribute('aria-invalid','true');$(field).focus()}}
  private async save(){
   if(!this.book||this.pending||this.frozen)return;const sender=$<HTMLInputElement>('contact-name').value.trim(),email=$<HTMLInputElement>('contact-email').value.trim();
@@ -42,4 +43,21 @@ export class LocalContacts{
   if(epoch!==this.epoch||generation!==this.generation)return;this.pending=true;this.serial++;this.lane.cancel();this.redraw();this.status('Удаляем контакт…');let removed=false;
   try{const value=await this.client.start('localContactsDelete',{epoch,revision,id:person.id}).promise;if(epoch!==this.epoch||generation!==this.generation)return;this.book=parseLocalBook(value);this.changed('deleted');removed=true;this.status('Контакт удалён из локальной книги.')}catch(error){if(epoch===this.epoch&&generation===this.generation)this.status(failure(error))}finally{if(epoch===this.epoch&&generation===this.generation){this.pending=false;this.redraw();if(removed)$('contacts-new').focus()}}
  }
+ private importControls(){for(const button of document.querySelectorAll<HTMLButtonElement>('#contact-import-dialog button'))button.disabled=this.pending;$<HTMLButtonElement>('contact-import-commit').disabled=this.pending||this.importFrozen||!this.selected.size||this.selected.size>(this.preview?.capacity??0);for(const input of document.querySelectorAll<HTMLInputElement>('#contact-import-rows input'))input.disabled=this.pending||Boolean(this.preview?.rows.find(row=>row.index===Number(input.value))?.issue);$('contact-import-dialog').setAttribute('aria-busy',String(this.pending));$('contact-import-status').textContent=this.pending?'Сохраняем выбранные контакты…':`Выбрано: ${this.selected.size}. Свободно в книге: ${this.preview?.capacity??0}.`}
+ private closeImport(){const token=this.preview?.token;this.preview=null;this.selected.clear();this.importFrozen=false;$<HTMLDialogElement>('contact-import-dialog').close();$('contact-import-rows').replaceChildren();$('contact-import-error').hidden=true;$('contact-import-name').textContent='';$('contact-import-summary').textContent='';$('contact-import-error').textContent='';$('contact-import-status').textContent='';if(token)void this.client.start('localContactsDiscardImport',{epoch:this.epoch,token}).promise.catch(()=>{});$('contacts-import').focus()}
+ private renderImport(){
+  const preview=this.preview;if(!preview)return;$('contact-import-name').textContent=preview.name;const list=$('contact-import-rows');list.replaceChildren();
+  const counts={invalid:0,existing:0,duplicate:0};for(const row of preview.rows)if(row.issue)counts[row.issue]++;
+  $('contact-import-summary').textContent=`Записей: ${preview.rows.length}; ошибок: ${counts.invalid}; уже в книге: ${counts.existing}; повторов в файле: ${counts.duplicate}.`;
+  for(const row of preview.rows){const label=document.createElement('label');label.className='contact-import-row';const check=document.createElement('input');check.type='checkbox';check.value=String(row.index);check.checked=this.selected.has(row.index);check.disabled=Boolean(row.issue)||this.pending;check.addEventListener('change',()=>{if(check.checked)this.selected.add(row.index);else this.selected.delete(row.index);this.importControls()});const copy=document.createElement('span'),name=document.createElement('strong'),email=document.createElement('span'),note=document.createElement('span');name.textContent=row.sender||'Без имени';email.textContent=row.email||'Адрес не указан';email.className='small muted';note.className='small';note.textContent=`Запись ${row.source} · `+({invalid:'Имя или адрес не поддерживаются',existing:'Уже есть в книге',duplicate:'Повтор в файле','':'Можно добавить'})[row.issue];copy.append(name,email,note);label.append(check,copy);list.append(label)}this.importControls();
+ }
+ private async pickImport(){
+  if(this.pending||!this.book)return;const epoch=this.epoch,generation=this.generation;this.pending=true;this.serial++;this.lane.cancel();this.redraw();this.status('Выберите CSV или vCard. Переносятся только имя и email.');
+  try{const raw=await this.client.start<{cancelled?:boolean}>('localContactsPickImport',{epoch,revision:this.book.revision}).promise;if(epoch!==this.epoch||generation!==this.generation)return;if(raw?.cancelled){this.status('Выбор файла отменён. Книга не изменена.');return}this.preview=parseImport(raw);this.importFrozen=false;this.selected=new Set(this.preview.rows.filter(row=>!row.issue).slice(0,this.preview.capacity).map(row=>row.index));this.pending=false;this.renderImport();$<HTMLDialogElement>('contact-import-dialog').showModal();$('contact-import-cancel').focus();this.status('Просмотрите записи и подтвердите импорт. Книга ещё не изменена.')}catch(error){if(epoch===this.epoch&&generation===this.generation)this.status(failure(error))}finally{if(epoch===this.epoch&&generation===this.generation){this.pending=false;this.controls()}}
+ }
+ private async commitImport(){
+  if(!this.preview||this.pending||this.importFrozen||!this.selected.size||this.selected.size>this.preview.capacity)return;const epoch=this.epoch,generation=this.generation;this.pending=true;this.serial++;this.lane.cancel();this.importControls();this.redraw();$('contact-import-error').hidden=true;
+  try{const result=await this.client.start<{book:unknown;added:number}>('localContactsImport',{epoch,token:this.preview.token,selected:[...this.selected]}).promise;if(epoch!==this.epoch||generation!==this.generation)return;this.book=parseLocalBook(result.book);this.pending=false;this.closeImport();this.changed('saved');this.status(`Импортировано контактов: ${result.added}. Сохранено на этом компьютере.`)}catch(error){if(epoch!==this.epoch||generation!==this.generation)return;this.importFrozen=error instanceof MailFault&&['CONTACTS_CONFLICT','CONTACTS_IMPORT_EXPIRED','ENGINE_UNAVAILABLE','BAD_RESPONSE'].includes(error.code);$('contact-import-error').textContent=failure(error)+(this.importFrozen?' Результат импорта нужно проверить: закройте предпросмотр, перечитайте книгу и выберите файл заново. Повтор из этого предпросмотра заблокирован.':' Выбранный пакет не сохранён частично; автоматического повтора нет.');$('contact-import-error').hidden=false}finally{if(epoch===this.epoch&&generation===this.generation){this.pending=false;this.controls()}}
+ }
+
 }

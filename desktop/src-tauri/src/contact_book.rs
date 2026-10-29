@@ -8,7 +8,7 @@ const LIMIT:u64=8*1024*1024;
 struct Person{id:String,sender:String,email:String}
 #[derive(Serialize,Deserialize)]
 struct Book{version:u8,owner:String,revision:String,people:Vec<Person>}
-fn valid_person(sender:&str,email:&str)->bool{
+pub(super) fn valid_person(sender:&str,email:&str)->bool{
     let parts:Vec<_>=email.split('@').collect();
     !sender.trim().is_empty()&&sender.encode_utf16().count()<=180&&!sender.chars().any(char::is_control)&&email.len()<=254&&parts.len()==2&&parts.iter().all(|v|!v.is_empty())&&!email.chars().any(|c|c.is_whitespace()||c.is_control()||"<>,;\"".contains(c))
 }
@@ -38,9 +38,20 @@ fn apply(path:&Path,owner:&str,method:&str,args:&Value)->Result<Value,String>{
         "localContactsDelete"=>{let index=book.people.iter().position(|row|row.id==id).ok_or("CONTACTS_CONFLICT")?;book.people.remove(index);}
         _=>return Err("BAD_REQUEST".into())
     }
+    persist(path,owner,book)
+}
+fn persist(path:&Path,owner:&str,mut book:Book)->Result<Value,String>{
     book.revision=Uuid::new_v4().to_string();let bytes=serde_json::to_vec(&book).map_err(|_|"CONTACTS_STORE")?;
     if bytes.len() as u64>LIMIT{return Err("CONTACTS_LIMIT".into());}
     super::vault::write(path,&format!("spbu-contacts-v1:{owner}"),bytes).map_err(|_|"CONTACTS_STORE")?;Ok(public(&book))
+}
+pub(super) fn snapshot(path:&Path,owner:&str)->Result<Value,String>{Ok(public(&load(path,owner)?))}
+pub(super) fn import(path:&Path,owner:&str,revision:&str,rows:&[(String,String)])->Result<Value,String>{
+    let mut book=load(path,owner)?;if book.revision!=revision{return Err("CONTACTS_CONFLICT".into());}
+    if rows.is_empty()||rows.len()>500{return Err("BAD_REQUEST".into());}if book.people.len()+rows.len()>5000{return Err("CONTACTS_LIMIT".into());}
+    let mut emails:std::collections::HashSet<String>=book.people.iter().map(|row|row.email.to_lowercase()).collect();
+    for (sender,email) in rows{if !valid_person(sender,email){return Err("BAD_CONTACT".into());}if !emails.insert(email.to_lowercase()){return Err("CONTACTS_EXISTS".into());}}
+    for (sender,email) in rows{book.people.push(Person{id:Uuid::new_v4().to_string(),sender:sender.clone(),email:email.clone()});}persist(path,owner,book)
 }
 pub fn execute(request:Request,app:&tauri::AppHandle,engine:&Engine)->Reply{
     if request.id.is_empty()||request.id.len()>64||!request.id.bytes().all(|c|c.is_ascii_alphanumeric()||b"._-".contains(&c)){return Err("BAD_REQUEST".into());}
@@ -53,6 +64,11 @@ pub fn execute(request:Request,app:&tauri::AppHandle,engine:&Engine)->Reply{
 }
 #[cfg(all(test,windows))]mod tests{
     use super::*;
+    #[test]fn batch_import_is_atomic_and_revision_bound(){
+        let folder=tempfile::tempdir().unwrap();let path=folder.path().join("book.dpapi");let rows=vec![("One".into(),"one@example.invalid".into()),("Two".into(),"two@example.invalid".into())];
+        let book=import(&path,"owner","0",&rows).unwrap();assert_eq!(book["people"].as_array().unwrap().len(),2);let bytes=std::fs::read(&path).unwrap();
+        assert!(import(&path,"owner","0",&rows).is_err());assert!(import(&path,"owner",book["revision"].as_str().unwrap(),&[("Three".into(),"three@example.invalid".into()),("Dup".into(),"ONE@example.invalid".into())]).is_err());assert_eq!(std::fs::read(&path).unwrap(),bytes);
+    }
     #[test]fn encrypted_book_cas_identity_validation_and_failure_preserve_data(){
         let folder=tempfile::tempdir().unwrap();let path=folder.path().join("book.dpapi");
         let first=apply(&path,"owner-a","localContactsSave",&json!({"revision":"0","id":"","sender":"Имя","email":"person@example.invalid"})).unwrap();

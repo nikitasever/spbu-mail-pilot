@@ -140,3 +140,28 @@ local reads cannot replace a newer mutation. Local data is cleared from DOM/memo
 on logout while the encrypted book remains. Import/export and remote contact writes
 are outside this milestone. Failure/CRUD/close/persistence fixture E2E and genuine
 Windows DPAPI/CAS unit checks are the verification owners.
+
+
+Contact import extends LocalContacts and the same native book service. Import is
+file-picker → read-only preview → explicit selected batch → existing local list.
+Windows owns file choice; contact_import.rs only reads the chosen regular CSV/VCF,
+bounded to 1 MiB and 500 rows. Parser supports the documented CSV header subset,
+text vCard 3/4, strict UTF-8 and BOM UTF-16; it never resolves remote properties.
+Only name/email are transferred; omitted fields are disclosed before confirmation.
+Native memory holds one opaque preview scoped by account/epoch/book revision.
+Browser supplies row indices and a token, not paths or imported field values.
+contact-import-model validates the bounded DTO; native chosen() validates the
+actual selection against its own immutable preview, including invalid/duplicate/
+existing rows. Native book import checks the fresh revision and validates the full
+batch before one DPAPI atomic write. Success consumes the token; unknown outcomes
+freeze frontend confirmation and require reload instead of blind replay.
+The preview uses an app-owned native dialog with existing tokens, a row scroller,
+fixed header/footer, native labelled checkboxes and first focus on Cancel. Select
+Available means importable rows up to capacity; All does not imply server selection.
+Errors retain the selected rows. Pending state disables controls and announces the
+commit; window close cannot interrupt a picker/commit. Closing the read-only preview
+needs no dirty-editor confirmation. Existing external close guard flushes mail after
+closing the preview. Cancel/logout clears row DOM, filenames and native preview;
+shared confirmations also clear their private text after dismissal. Native parser,
+file bounds, owner/token/selection and DPAPI batch/CAS tests plus fixture UI cover the
+flow. Real Windows file-picker interaction remains a manual acceptance check.

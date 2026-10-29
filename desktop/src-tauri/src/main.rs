@@ -10,12 +10,14 @@ mod compose;
 mod vault;
 mod calendars;
 mod contact_book;
+mod contact_import;
+mod contact_import_parser;
 
 #[derive(Deserialize)]
 struct Request { id: String, method: String, args: Value }
 type Reply = Result<Value, String>;
 type Pending = Arc<Mutex<HashMap<String, mpsc::Sender<Reply>>>>;
-struct Engine { child: Mutex<Option<Child>>, stdin: Mutex<ChildStdin>, pending: Pending, saved: Mutex<HashMap<String,PathBuf>>, epoch:AtomicU64, owner:Mutex<Option<String>>,calendar_serial:AtomicU64,calendar_jobs:Mutex<HashMap<String,Arc<std::sync::atomic::AtomicBool>>>,session_gate:Mutex<()>,drafts:Mutex<HashMap<String,Arc<Mutex<compose::Draft>>>> }
+struct Engine { child: Mutex<Option<Child>>, stdin: Mutex<ChildStdin>, pending: Pending, saved: Mutex<HashMap<String,PathBuf>>, epoch:AtomicU64, owner:Mutex<Option<String>>,contact_import:Mutex<Option<contact_import::Preview>>,calendar_serial:AtomicU64,calendar_jobs:Mutex<HashMap<String,Arc<std::sync::atomic::AtomicBool>>>,session_gate:Mutex<()>,drafts:Mutex<HashMap<String,Arc<Mutex<compose::Draft>>>> }
 // Older Windows Java launchers may resolve their DLLs through the active ANSI code page.
 // Use an existing filesystem short alias when available; never change system locale or 8.3 policy.
 #[cfg(windows)]
@@ -69,7 +71,7 @@ impl Engine {
             }
             if let Ok(mut map) = waiting.lock() { for (_, sender) in map.drain() { let _ = sender.send(Err("ENGINE_UNAVAILABLE".into())); } }
         });
-        Ok(Arc::new(Self { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), pending, saved:Mutex::new(HashMap::new()),epoch:AtomicU64::new(0),owner:Mutex::new(None),calendar_serial:AtomicU64::new(0),calendar_jobs:Mutex::new(HashMap::new()),session_gate:Mutex::new(()),drafts:Mutex::new(HashMap::new()) }))
+        Ok(Arc::new(Self { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), pending, saved:Mutex::new(HashMap::new()),epoch:AtomicU64::new(0),owner:Mutex::new(None),contact_import:Mutex::new(None),calendar_serial:AtomicU64::new(0),calendar_jobs:Mutex::new(HashMap::new()),session_gate:Mutex::new(()),drafts:Mutex::new(HashMap::new()) }))
     }
     fn request(&self, request: Request) -> Reply {
         const METHODS: &[&str] = &["capabilities", "connect", "disconnect", "folders", "page", "body", "cancel", "attachment", "send", "calendarDiscover", "calendarMonth", "contactsPage"];
@@ -93,7 +95,7 @@ impl Drop for Engine { fn drop(&mut self) { self.stop(); } }
 
 fn connect(mut request:Request,app:&tauri::AppHandle,engine:&Arc<Engine>,remember:bool)->Reply{
     let _gate=engine.session_gate.lock().map_err(|_|"NO_SESSION")?;
-    compose::clear(engine)?;
+    compose::clear(engine)?;contact_import::clear(engine);
     *engine.owner.lock().map_err(|_|"NO_SESSION")?=None;
     if let Ok(mut saved)=engine.saved.lock(){engine.epoch.fetch_add(1,Ordering::SeqCst);saved.clear();}
     request.method="connect".into();let auth=request.args.clone();
@@ -110,6 +112,7 @@ async fn mail_request(mut request: Request, app:tauri::AppHandle, state: tauri::
     if request.method=="cancel"{if let Some(target)=request.args["requestId"].as_str(){calendars::cancel(&engine,target);}}
     if ["calendarStatus","calendarConnect","calendarSelect","calendarForget","calendarMonth"].contains(&request.method.as_str()){return calendars::run(request,app,engine).await;}
     tauri::async_runtime::spawn_blocking(move || {
+        if ["localContactsPickImport","localContactsImport","localContactsDiscardImport"].contains(&request.method.as_str()){return contact_import::execute(request,&app,&engine);}
         if ["localContactsRead","localContactsSave","localContactsDelete"].contains(&request.method.as_str()){return contact_book::execute(request,&app,&engine);}
         if request.method == "contactsPage" {
             let epoch=request.args["epoch"].as_u64().ok_or("BAD_REQUEST")?;
@@ -126,7 +129,7 @@ async fn mail_request(mut request: Request, app:tauri::AppHandle, state: tauri::
         if request.method == "connect" {let remember=request.args["remember"].as_bool()==Some(true);return connect(request,&app,&engine,remember);}
         if request.method == "disconnect" {
             let _gate=engine.session_gate.lock().map_err(|_|"NO_SESSION")?;
-            compose::clear(&engine)?;*engine.owner.lock().map_err(|_|"NO_SESSION")?=None;
+            compose::clear(&engine)?;contact_import::clear(&engine);*engine.owner.lock().map_err(|_|"NO_SESSION")?=None;
             if let Ok(mut saved)=engine.saved.lock(){engine.epoch.fetch_add(1,Ordering::SeqCst);saved.clear();}
         }
         engine.request(request)

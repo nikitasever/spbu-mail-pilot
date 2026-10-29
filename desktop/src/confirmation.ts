@@ -7,5 +7,5 @@ export function confirmAction(title:string,message:string,action:string):Promise
  return new Promise(done=>{resolve=done;dialog().showModal();document.getElementById('confirm-keep')!.focus()});
 }
 export function cancelConfirmation(){finish(false)}
-function finish(value:boolean){if(!resolve)return;const done=resolve;resolve=null;dialog().close();const focus=trigger;trigger=null;if(focus?.isConnected)focus.focus();done(value)}
+function finish(value:boolean){if(!resolve)return;const done=resolve;resolve=null;dialog().close();for(const id of ['confirm-title','confirm-message','confirm-accept'])document.getElementById(id)!.textContent='';const focus=trigger;trigger=null;if(focus?.isConnected)focus.focus();done(value)}
 export function setupConfirmation(){document.getElementById('confirm-keep')!.addEventListener('click',()=>finish(false));document.getElementById('confirm-accept')!.addEventListener('click',()=>finish(true));dialog().addEventListener('cancel',event=>{event.preventDefault();finish(false)})}
