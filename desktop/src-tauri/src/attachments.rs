@@ -8,6 +8,15 @@ pub fn openable(path:&Path)->bool {
     ["pdf","txt","csv","png","jpg","jpeg","gif","webp","bmp","doc","docx","xls","xlsx","ppt","pptx","odt","ods","odp","rtf","eml","msg","ics","vcf","zip","7z","rar","mp3","mp4"].contains(&extension.as_str())
 }
 fn fault(id:&str,code:&str)->Reply{Ok(json!({"id":id,"error":{"code":code}}))}
+fn save_atomic(source:&Path,destination:&Path)->std::io::Result<()> {
+    let parent=destination.parent().ok_or_else(||std::io::Error::other("Destination parent missing"))?;
+    let mut output=tempfile::NamedTempFile::new_in(parent)?;
+    let mut input=std::fs::File::open(source)?;
+    std::io::copy(&mut input,&mut output)?;
+    output.as_file().sync_all()?;
+    output.persist(destination).map_err(|error|error.error)?;
+    Ok(())
+}
 
 pub fn save(mut request:Request,app:&tauri::AppHandle,engine:&Arc<Engine>)->Reply {
     let id=request.id.clone();
@@ -37,16 +46,8 @@ pub fn save(mut request:Request,app:&tauri::AppHandle,engine:&Arc<Engine>)->Repl
     if source.parent()!=Some(root.as_path()){return fault(&id,"FILE_UNAVAILABLE");}
     let mut files=engine.saved.lock().map_err(|_|"FILE_UNAVAILABLE")?;
     if epoch!=engine.epoch.load(Ordering::SeqCst){return fault(&id,"CANCELLED");}
-    let Some(parent)=destination.parent() else{return fault(&id,"SAVE_FAILED");};
     // Copy beside the destination then replace atomically; failed transfers preserve existing files.
-    let saved=(||->std::io::Result<()>{
-        let mut output=tempfile::NamedTempFile::new_in(parent)?;
-        let mut input=std::fs::File::open(&source)?;
-        std::io::copy(&mut input,&mut output)?;
-        output.as_file().sync_all()?;
-        output.persist(&destination).map_err(|error|error.error)?;
-        Ok(())
-    })();
+    let saved=save_atomic(&source,&destination);
     if saved.is_err(){return fault(&id,"SAVE_FAILED");}
     let can_open=openable(&destination);
     if files.len()>=64 {if let Some(key)=files.keys().next().cloned(){files.remove(&key);}}
@@ -61,5 +62,15 @@ mod tests {
         assert!(openable(Path::new("Пересланное письмо.eml")));
         assert!(openable(Path::new("DOC.PDF")));
         for name in ["file.exe","file.pdf.exe","script.cmd","link.url","link.lnk","page.html","image.svg","file"]{assert!(!openable(Path::new(name)));}
+    }
+    #[test]fn failed_copy_preserves_existing_destination(){
+        let folder=tempfile::tempdir().unwrap();let target=folder.path().join("Существующий.pdf");
+        std::fs::write(&target,b"original").unwrap();
+        assert!(save_atomic(&folder.path().join("missing"),&target).is_err());
+        assert_eq!(std::fs::read(&target).unwrap(),b"original");
+        assert_eq!(std::fs::read_dir(folder.path()).unwrap().count(),1);
+        let source=folder.path().join("source");std::fs::write(&source,b"complete").unwrap();
+        save_atomic(&source,&target).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(),b"complete");
     }
 }

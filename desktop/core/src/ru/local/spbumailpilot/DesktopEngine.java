@@ -70,7 +70,9 @@ public final class DesktopEngine implements AutoCloseable {
                 response(id,new JSONObject().put("cancelled",old!=null),null);return;
             }
             if(!java.util.Arrays.asList("connect","disconnect","folders","page","body","attachment").contains(method))throw new Failure("BAD_REQUEST");
-            if(method.equals("connect")||method.equals("disconnect"))for(Operation task:pending.values())if(task.transfer)stop(task);
+            if(method.equals("connect")||method.equals("disconnect")){
+                credentials=null;for(Operation task:pending.values())if(task.transfer)stop(task);
+            }
             Operation operation=new Operation();operation.transfer=method.equals("attachment");
             if(pending.size()>=16)throw new Failure("BUSY");
             if(pending.putIfAbsent(id,operation)!=null){response(null,null,"DUPLICATE_REQUEST");return;}

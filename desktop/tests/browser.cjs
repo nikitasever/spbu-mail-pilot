@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 const path=require('node:path'),fs=require('node:fs');const output=path.join(__dirname,'../build/screenshots');fs.mkdirSync(output,{recursive:true});
 (async()=>{
  const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE?{executablePath:process.env.CHROMIUM_EXECUTABLE}:{})});const page=await browser.newPage({viewport:{width:1360,height:860}});
+ try {
  await page.addInitScript(()=>{
   const callbacks=new Map();let callbackSerial=0,progressCallback,activeDownload;
   window.__TAURI_INTERNALS__={transformCallback:handler=>{const id=++callbackSerial;callbacks.set(id,handler);return id},invoke:async(command,params)=>{
@@ -19,7 +20,7 @@ const path=require('node:path'),fs=require('node:fs');const output=path.join(__d
     }else if(method==='attachment'){
      if(args.path==='2'){window.failedAttempts=(window.failedAttempts||0)+1;if(window.failedAttempts===1)return {id,error:{code:'NETWORK'}}}
      let release;const wait=new Promise(resolve=>release=resolve);activeDownload={id,release};
-     progressCallback({payload:{id,bytes:25,total:100}});await Promise.race([wait,new Promise(resolve=>setTimeout(resolve,600))]);
+     await new Promise(resolve=>setTimeout(resolve,10));progressCallback({payload:{id,bytes:25,total:100}});await Promise.race([wait,new Promise(resolve=>setTimeout(resolve,600))]);
      if(activeDownload?.cancelled)return {id,error:{code:'CANCELLED'}};
      result={saved:true,token:id,openable:true};
    }else if(method==='cancel'){if(activeDownload?.id===args.requestId){activeDownload.cancelled=true;activeDownload.release()}result={cancelled:true}}else result={connected:false};
@@ -53,5 +54,6 @@ const path=require('node:path'),fs=require('node:fs');const output=path.join(__d
  await page.setViewportSize({width:800,height:650});await page.screenshot({path:path.join(output,'narrow.png')});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  await page.locator('#logout').click();assert.equal(await page.locator('#body').textContent(),'');assert.equal(await page.locator('#transfers').textContent(),'');assert.equal(await page.locator('#folders button').count(),0);
- await browser.close();console.log('PASS desktop UI: real component rendering, folder selection data, empty/password states, late read ignored, literal HTML, logout cleanup and narrow layout (fixture transport).');
+ }finally{await browser.close()}
+ console.log('PASS desktop UI: real component rendering, folder selection data, empty/password states, late read ignored, literal HTML, attachment progress/navigation/open/cancel/retry, logout cleanup and narrow layout (fixture transport).');
 })().catch(error=>{console.error(error);process.exitCode=1});

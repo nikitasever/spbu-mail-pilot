@@ -60,6 +60,9 @@ jobs:
       - name: Build Windows installer
         working-directory: desktop
         run: npm run tauri -- build
+      - name: Verify native file safety
+        working-directory: desktop/src-tauri
+        run: cargo test --release --bin spbu-mail-desktop
       - name: Verify packaged resources and parent-child protocol
         shell: pwsh
         run: |
