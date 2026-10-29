@@ -26,6 +26,6 @@ subprocess.run([os.environ.get('JAVAC','javac'),'-source','17','-target','17','-
 libraries=build/'engine/lib'
 if libraries.exists():shutil.rmtree(libraries)
 libraries.mkdir(parents=True)
-for name in ['android-mail-1.6.7.jar','android-activation-1.6.7.jar','json-test-20240303.jar']:
+for name in ['android-mail-1.6.7.jar','android-activation-1.6.7.jar','json-test-20240303.jar','okhttp-4.12.0.jar','okio-jvm-3.6.0.jar','kotlin-stdlib-1.9.10.jar','kotlin-stdlib-common-1.9.10.jar','kotlin-stdlib-jdk7-1.9.10.jar','kotlin-stdlib-jdk8-1.9.10.jar','rfc5545-datetime-0.3.jar','jems2-2.23.1.jar','lib-recur-0.17.1.jar']:
     shutil.copy2(root/'lib'/name,libraries/name.replace('json-test-', 'json-'))
 print('Desktop protocol classes compiled; Android sources unchanged.')

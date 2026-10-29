@@ -79,7 +79,7 @@ export class Composer {
     try{await task;if(generation!==this.generation||id!==this.id)return false;if(edit!==this.edit)return this.flush();if(edit===this.edit){this.dirty=false;this.saved=true;this.status('Черновик сохранён на этом компьютере.')}return true}
     catch{if(generation===this.generation&&id===this.id){this.saved=false;this.error('Не удалось сохранить последние изменения на компьютере. Держите приложение открытым и повторите попытку.');this.status('Последние изменения пока только в памяти.')}return false}
   }
-  private async hide(){if(this.picking||this.state==='sending'){ $('composer').hidden=true;this.entry();return }this.undo();if(await this.flush()){$('composer').hidden=true;this.entry()}}
+  async hide(){if(this.picking||this.state==='sending'){ $('composer').hidden=true;this.entry();return true }this.undo();if(await this.flush()){$('composer').hidden=true;this.entry();return true}return false}
   async leave(action:()=>void){if(this.state==='sending'||this.picking||this.creating){$('composer').hidden=false;this.error('Дождитесь завершения текущей операции.');return}this.undo();if(await this.flush())action();else{$('composer').hidden=false;this.ask('Не удалось сохранить последние изменения. Выйти, оставив только предыдущую сохранённую копию?',action,'Выйти без сохранения')}}
   async restore(){
     if(this.id||this.creating)return;this.creating=true;const generation=this.generation;this.notice('Проверяем сохранённый черновик…');

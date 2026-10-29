@@ -8,12 +8,13 @@ use std::sync::atomic::{AtomicU64,Ordering};
 mod attachments;
 mod compose;
 mod vault;
+mod calendars;
 
 #[derive(Deserialize)]
 struct Request { id: String, method: String, args: Value }
 type Reply = Result<Value, String>;
 type Pending = Arc<Mutex<HashMap<String, mpsc::Sender<Reply>>>>;
-struct Engine { child: Mutex<Option<Child>>, stdin: Mutex<ChildStdin>, pending: Pending, saved: Mutex<HashMap<String,PathBuf>>, epoch:AtomicU64, owner:Mutex<Option<String>>,session_gate:Mutex<()>,drafts:Mutex<HashMap<String,Arc<Mutex<compose::Draft>>>> }
+struct Engine { child: Mutex<Option<Child>>, stdin: Mutex<ChildStdin>, pending: Pending, saved: Mutex<HashMap<String,PathBuf>>, epoch:AtomicU64, owner:Mutex<Option<String>>,calendar_serial:AtomicU64,calendar_jobs:Mutex<HashMap<String,Arc<std::sync::atomic::AtomicBool>>>,session_gate:Mutex<()>,drafts:Mutex<HashMap<String,Arc<Mutex<compose::Draft>>>> }
 // Older Windows Java launchers may resolve their DLLs through the active ANSI code page.
 // Use an existing filesystem short alias when available; never change system locale or 8.3 policy.
 #[cfg(windows)]
@@ -67,10 +68,10 @@ impl Engine {
             }
             if let Ok(mut map) = waiting.lock() { for (_, sender) in map.drain() { let _ = sender.send(Err("ENGINE_UNAVAILABLE".into())); } }
         });
-        Ok(Arc::new(Self { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), pending, saved:Mutex::new(HashMap::new()),epoch:AtomicU64::new(0),owner:Mutex::new(None),session_gate:Mutex::new(()),drafts:Mutex::new(HashMap::new()) }))
+        Ok(Arc::new(Self { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), pending, saved:Mutex::new(HashMap::new()),epoch:AtomicU64::new(0),owner:Mutex::new(None),calendar_serial:AtomicU64::new(0),calendar_jobs:Mutex::new(HashMap::new()),session_gate:Mutex::new(()),drafts:Mutex::new(HashMap::new()) }))
     }
     fn request(&self, request: Request) -> Reply {
-        const METHODS: &[&str] = &["capabilities", "connect", "disconnect", "folders", "page", "body", "cancel", "attachment", "send"];
+        const METHODS: &[&str] = &["capabilities", "connect", "disconnect", "folders", "page", "body", "cancel", "attachment", "send", "calendarDiscover", "calendarMonth"];
         if request.id.is_empty() || request.id.len() > 64 || !request.id.bytes().all(|c| c.is_ascii_alphanumeric() || b"._-".contains(&c)) || !METHODS.contains(&request.method.as_str()) || !request.args.is_object() { return Err("BAD_REQUEST".into()); }
         let id = request.id.clone();
         let line = json!({"id": request.id, "method": request.method, "args": request.args}).to_string();
@@ -81,7 +82,7 @@ impl Engine {
           map.insert(id.clone(), sender); }
         let written = self.stdin.lock().map_err(|_| "ENGINE_UNAVAILABLE").and_then(|mut stream| writeln!(stream, "{}", line).and_then(|_| stream.flush()).map_err(|_| "ENGINE_UNAVAILABLE"));
         if written.is_err() { if let Ok(mut map) = self.pending.lock() { map.remove(&id); } return Err("ENGINE_UNAVAILABLE".into()); }
-        let result = receiver.recv_timeout(Duration::from_secs(if matches!(request.method.as_str(),"attachment"|"send") {600} else {90})).unwrap_or_else(|_| Err("ENGINE_UNAVAILABLE".into()));
+        let result = receiver.recv_timeout(Duration::from_secs(if matches!(request.method.as_str(),"attachment"|"send"|"calendarDiscover"|"calendarMonth") {600} else {90})).unwrap_or_else(|_| Err("ENGINE_UNAVAILABLE".into()));
         if let Ok(mut map) = self.pending.lock() { map.remove(&id); }
         result
     }
@@ -105,6 +106,8 @@ fn connect(mut request:Request,app:&tauri::AppHandle,engine:&Arc<Engine>,remembe
 #[tauri::command]
 async fn mail_request(request: Request, app:tauri::AppHandle, state: tauri::State<'_, Arc<Engine>>) -> Reply {
     let engine = state.inner().clone();
+    if request.method=="cancel"{if let Some(target)=request.args["requestId"].as_str(){calendars::cancel(&engine,target);}}
+    if ["calendarStatus","calendarConnect","calendarSelect","calendarForget","calendarMonth"].contains(&request.method.as_str()){return calendars::run(request,app,engine).await;}
     tauri::async_runtime::spawn_blocking(move || {
         if request.method == "attachment" { return attachments::save(request,&app,&engine); }
         if request.method == "send" {return compose::send(request,&app,&engine);}

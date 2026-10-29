@@ -40,7 +40,7 @@ message content and invalidates outstanding requests. Body HTML/images/scripts
 are never executed or requested by the frontend.
 
 Production CSP permits local assets and IPC only; no external-page capabilities,
-filesystem, shell or HTTP plugin are granted to the web window. Offline store, calendar and account switching are future work.
+filesystem, shell or HTTP plugin are granted to the web window. Offline mail, multiple saved accounts and calendar writes are future work.
 
 Composer is the shared native-backed non-modal editor (compose.ts, compose.rs).
 It preserves one active local draft per authenticated server/port/user through navigation and restarts. Windows owns
@@ -65,3 +65,28 @@ Close/minimize saves and hides the editor; deletion has its own confirmation.
 Normal window close/logout flushes autosave first; failures retain edits and offer
 Keep before an explicit close without saving. Failed decryption is visible and
 never silently replaced. The native persistence owners are vault.rs and compose.rs.
+
+
+Calendar uses the existing CalDav/CalendarDiscovery/CalendarRecurrence Java core.
+The sidebar switches between mail and calendar without ending the mail session.
+Calendar connection credentials are entered separately and saved explicitly through
+Windows DPAPI, one source per mail owner. The source may discover multiple calendars;
+one is selected with the platform-owned native select (keyboard and popup owned by
+Windows/WebView). CalendarScreen owns day/week/month/agenda and the day modal.
+Calendar-content owns normal scrolling, the settings form and day modal have bounded
+scroll areas; at short heights the calendar screen can scroll to keep actions reachable.
+Month/week use Monday-first civil dates; event times use Europe/Moscow independently
+of Windows locale/timezone. All-day DTEND is exclusive. A week crossing a month loads
+both months and merges occurrence IDs. Month cells and agenda never claim an empty
+day while its data is missing. Refresh failures retain the correct cached period and
+expose both the cause and staleness. Events live only in session RAM, cleared on logout;
+opening the calendar explicitly reads its saved profile and requests missing periods.
+The day modal uses the existing time-rail hierarchy: time, title, calendar, location,
+expandable literal description. Escape/close restores focus; no remote markup runs.
+Server events are read-only; no create/task controls imply unavailable writes.
+Disconnect confirms removal of the local connection only. Native owner/epoch/profile
+checks guard commits and late results; cancellation closes the separate HTTP transport.
+All calendar URLs require HTTPS and the discovery origin; credentials never reach a
+redirect or another origin. The public profile contains names/IDs, origin and login,
+never a password or private collection URL. Frontend month queries contain calendar
+IDs, not credentials/paths. Native code resolves credentials and the collection URL.
