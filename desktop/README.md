@@ -125,6 +125,8 @@ Windows-имя установленного приложения — SPbU Mail; 
 подключение к реальному пользовательскому CalDAV-серверу ещё не проверено.
 
 
+Предварительный Windows-выпуск с контактами: [desktop-v0.1.0-preview.6](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/desktop-v0.1.0-preview.6).
+
 ## Контакты СПбГУ
 
 Для активного аккаунта на `mail.spbu.ru` доступны серверная личная книга,
