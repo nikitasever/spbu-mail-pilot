@@ -113,3 +113,30 @@ in-flight sends, autosave through the existing composer service. No external mai
 handler or browser navigation gets contact data. Remote contact changes/import are
 outside this milestone; no UI promises them. Fixture E2E covers navigation, search,
 IME, safe content, paging, stale replies, errors, recipient append and send locks.
+
+
+Local contact book extends the existing ContactsScreen through LocalContacts, not
+a second list. Native contact_book.rs is the only persistence/mutation owner; it
+shares the existing DPAPI/atomic-write vault and session gate. Books are scoped by
+mail server/port/user, loaded only after authentication, and never stored in WebView
+storage. UUID revisions protect every create/edit/delete against stale writes.
+Corruption, a foreign owner or failed decrypt must block writes rather than seed an
+empty replacement. Up to 5000 contacts; UI displays explicit 50-row batches and
+filters the complete loaded local book. This is device-local storage, not sync.
+Native book select remains platform-owned. Unsupported university accounts default
+to the local book; server books retain their existing read-only rules.
+Local editor uses a native dialog, shared field tokens and inline validation; Save
+commits only after native confirmation and returns to the list. Failed writes keep
+inputs. A conflict freezes Save and preserves text for copying; the user must close,
+reload and reopen instead of silently rebasing stale edits. Delete identifies the
+contact and affects only this book. confirmation.ts owns shared confirmations for
+contact deletion and dirty-editor dismissal: Keep first, Escape preserves, native
+focus trap, return focus to the invoker or the New Contact action after row removal.
+The existing composer window-close owner accepts an external contact guard before
+flushing the mail draft, so no competing close listener bypasses autosave. Native
+close during a pending contact commit is blocked; dirty contact cancellation never
+discards mail. Controls expose pending state and suppress duplicate submits; late
+local reads cannot replace a newer mutation. Local data is cleared from DOM/memory
+on logout while the encrypted book remains. Import/export and remote contact writes
+are outside this milestone. Failure/CRUD/close/persistence fixture E2E and genuine
+Windows DPAPI/CAS unit checks are the verification owners.

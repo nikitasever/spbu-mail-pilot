@@ -1,4 +1,6 @@
 import './styles.css';
+import {setupConfirmation} from './confirmation';
+setupConfirmation();
 import {ContactsScreen} from './contacts';
 import {CalendarScreen} from './calendar';
 import {Composer,type ReplyMail} from './compose';
@@ -10,7 +12,7 @@ const text=(id:string,value:string)=>{$(id).textContent=value};
 const show=(id:string,visible:boolean)=>{$(id).hidden=!visible};
 const client=new Client((command,args)=>invoke(command,args));
 const calendar=new CalendarScreen(client);
-const composer=new Composer(client);const contacts=new ContactsScreen(client,async person=>{await composer.address(person.email)});let replyMail:ReplyMail|null=null;
+const composer=new Composer(client);const contacts=new ContactsScreen(client,async person=>{await composer.address(person.email)});composer.setCloseGuard(()=>contacts.needsCloseGuard(),()=>contacts.mayClose());let replyMail:ReplyMail|null=null;
 const attachmentUI=new Attachments(client,$('transfers'));
 const connectLane=new Lane(client),folderLane=new Lane(client),listLane=new Lane(client),bodyLane=new Lane(client);
 let remembered:{id?:string;host:string;port:number;user:string}|null=null;let canRemembered=false;
@@ -94,7 +96,7 @@ search.addEventListener('input',()=>show('clear-search',search.value.length>0));
 $('search-form').addEventListener('submit',event=>{event.preventDefault();query=search.value.trim();void loadPage(false)});
 $('clear-search').addEventListener('click',()=>{search.value='';query='';show('clear-search',false);search.focus();void loadPage(false)});
 $('new-mail').addEventListener('click',()=>void composer.open());$('reply-mail').addEventListener('click',()=>{if(replyMail)void composer.open(replyMail)});
-$('logout').addEventListener('click',()=>void composer.leave(()=>{void composer.reset();calendar.reset();contacts.reset();showMail();attachmentUI.reset();epoch++;connectLane.cancel();folderLane.cancel();listLane.cancel();bodyLane.cancel();connected=false;account='';rows=[];page=null;resetReader();folders.replaceChildren();text('account-name','');password.value='';hidePassword();search.value='';query='';show('clear-search',false);text('account-avatar','');text('folder-title','');show('workspace',false);show('login-screen',true);void client.start('disconnect').promise.catch(()=>{});user.focus()}));
+$('logout').addEventListener('click',async()=>{if(!await contacts.mayClose())return;void composer.leave(()=>{void composer.reset();calendar.reset();contacts.reset();showMail();attachmentUI.reset();epoch++;connectLane.cancel();folderLane.cancel();listLane.cancel();bodyLane.cancel();connected=false;account='';rows=[];page=null;resetReader();folders.replaceChildren();text('account-name','');password.value='';hidePassword();search.value='';query='';show('clear-search',false);text('account-avatar','');text('folder-title','');show('workspace',false);show('login-screen',true);void client.start('disconnect').promise.catch(()=>{});user.focus()})});
 function showSection(section:'mail'|'calendar'|'contacts'){
  if(section!=='calendar')calendar.hide();if(section!=='contacts')contacts.hide();
  show('calendar-screen',section==='calendar');show('contacts-screen',section==='contacts');show('mailbox-panel',section==='mail');show('reader-panel',section==='mail');

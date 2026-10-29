@@ -9,6 +9,7 @@ mod attachments;
 mod compose;
 mod vault;
 mod calendars;
+mod contact_book;
 
 #[derive(Deserialize)]
 struct Request { id: String, method: String, args: Value }
@@ -109,6 +110,7 @@ async fn mail_request(mut request: Request, app:tauri::AppHandle, state: tauri::
     if request.method=="cancel"{if let Some(target)=request.args["requestId"].as_str(){calendars::cancel(&engine,target);}}
     if ["calendarStatus","calendarConnect","calendarSelect","calendarForget","calendarMonth"].contains(&request.method.as_str()){return calendars::run(request,app,engine).await;}
     tauri::async_runtime::spawn_blocking(move || {
+        if ["localContactsRead","localContactsSave","localContactsDelete"].contains(&request.method.as_str()){return contact_book::execute(request,&app,&engine);}
         if request.method == "contactsPage" {
             let epoch=request.args["epoch"].as_u64().ok_or("BAD_REQUEST")?;
             {let _gate=engine.session_gate.lock().map_err(|_|"NO_SESSION")?;

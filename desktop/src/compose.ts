@@ -6,6 +6,8 @@ const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 type FileEntry={token:string;name:string;size:number};
 export type ReplyMail={replyTo:string;subject:string;messageId:string;references:string[]};
 export class Composer {
+  private closeNeeded=()=>false;private allowClose=async()=>true;
+  setCloseGuard(needed:()=>boolean,allow:()=>Promise<boolean>){this.closeNeeded=needed;this.allowClose=allow}
   private id='';private dirty=false;private picking=false;private state:'editing'|'countdown'|'sending'|'sent'|'unknown'='editing';private timer:ReturnType<typeof setInterval>|null=null;private request='';private parent='';private references:string[]=[];private files:FileEntry[]=[];private generation=0;private creating=false;private composing=false;private closing=false;private confirmAction:(()=>void)|null=null;private sessionEpoch=0;private account='';private host='';private revision=0;private edit=0;private saved=false;private saveTimer:ReturnType<typeof setTimeout>|null=null;private saveQueue:Promise<unknown>=Promise.resolve();
   constructor(private client:Client){
     $('compose-form').addEventListener('compositionstart',()=>{this.composing=true});
@@ -29,14 +31,14 @@ export class Composer {
         else{meter.removeAttribute('value');this.status(stages[p.stage]??'Подготавливаем письмо…')}
       }).catch(()=>{});
       const current=getCurrentWindow();void current.onCloseRequested(async event=>{
-        if(!this.id&&!this.creating)return;
-        event.preventDefault();this.undo();
+        if(!this.id&&!this.creating&&!this.closeNeeded())return;
+        event.preventDefault();if(!await this.allowClose())return;this.undo();
         const close=()=>{this.closing=true;void current.destroy().catch(()=>{this.closing=false;this.error('Не удалось закрыть окно приложения.')})};
         if(this.state==='sending'||this.picking||this.creating){this.ask(this.state==='sending'?'Письмо уже передаётся. Закрытие не отменяет отправку; результат может остаться неизвестным. Последняя сохранённая копия останется на компьютере.':'Подготовка черновика ещё не завершена. Несохранённые изменения могут потеряться.',close,'Закрыть приложение');return}
         if(await this.flush())close();else this.ask('Не удалось сохранить последние изменения. Последняя сохранённая копия останется, но новые изменения могут потеряться.',close,'Закрыть без сохранения');
       }).catch(()=>{});
     }
-    window.addEventListener('beforeunload',event=>{if(!this.closing&&(this.dirty||this.picking||this.state==='countdown'||this.state==='sending')){event.preventDefault();event.returnValue=''}});
+    window.addEventListener('beforeunload',event=>{if(!this.closing&&(this.dirty||this.picking||this.state==='countdown'||this.state==='sending'||this.closeNeeded())){event.preventDefault();event.returnValue=''}});
   }
   setup(account:string,host:string,epoch=0){this.sessionEpoch=epoch;this.account=account;this.host=host;const from=account.includes('@')?account:`${account}@${host.replace(/^mail\./i,'')}`;$<HTMLInputElement>('mail-from').value=from;$<HTMLInputElement>('smtp-host').value=host.toLowerCase()==='imap.mail.ru'?'smtp.mail.ru':host;$<HTMLInputElement>('smtp-port').value='465';$<HTMLInputElement>('smtp-ssl').checked=true}
   async open(reply?:ReplyMail){
