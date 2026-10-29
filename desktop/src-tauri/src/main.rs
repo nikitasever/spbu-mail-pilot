@@ -82,7 +82,7 @@ impl Engine {
           map.insert(id.clone(), sender); }
         let written = self.stdin.lock().map_err(|_| "ENGINE_UNAVAILABLE").and_then(|mut stream| writeln!(stream, "{}", line).and_then(|_| stream.flush()).map_err(|_| "ENGINE_UNAVAILABLE"));
         if written.is_err() { if let Ok(mut map) = self.pending.lock() { map.remove(&id); } return Err("ENGINE_UNAVAILABLE".into()); }
-        let result = receiver.recv_timeout(Duration::from_secs(if matches!(request.method.as_str(),"attachment"|"send"|"calendarDiscover"|"calendarMonth") {600} else {90})).unwrap_or_else(|_| Err("ENGINE_UNAVAILABLE".into()));
+        let result = receiver.recv_timeout(Duration::from_secs(if matches!(request.method.as_str(),"attachment"|"send"|"calendarDiscover"|"calendarMonth"|"contactsPage") {600} else {90})).unwrap_or_else(|_| Err("ENGINE_UNAVAILABLE".into()));
         if let Ok(mut map) = self.pending.lock() { map.remove(&id); }
         result
     }
