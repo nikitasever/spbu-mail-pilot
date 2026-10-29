@@ -4,6 +4,9 @@ on:
     branches: [codex/desktop-web-start-20261028]
     paths: [desktop/**, .github/workflows/desktop-windows.yml]
   workflow_dispatch:
+concurrency:
+  group: desktop-windows-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
