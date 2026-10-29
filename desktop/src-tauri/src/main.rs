@@ -13,7 +13,7 @@ mod vault;
 struct Request { id: String, method: String, args: Value }
 type Reply = Result<Value, String>;
 type Pending = Arc<Mutex<HashMap<String, mpsc::Sender<Reply>>>>;
-struct Engine { child: Mutex<Option<Child>>, stdin: Mutex<ChildStdin>, pending: Pending, saved: Mutex<HashMap<String,PathBuf>>, epoch:AtomicU64, owner:Mutex<Option<String>>,drafts:Mutex<HashMap<String,Arc<Mutex<compose::Draft>>>> }
+struct Engine { child: Mutex<Option<Child>>, stdin: Mutex<ChildStdin>, pending: Pending, saved: Mutex<HashMap<String,PathBuf>>, epoch:AtomicU64, owner:Mutex<Option<String>>,session_gate:Mutex<()>,drafts:Mutex<HashMap<String,Arc<Mutex<compose::Draft>>>> }
 // Older Windows Java launchers may resolve their DLLs through the active ANSI code page.
 // Use an existing filesystem short alias when available; never change system locale or 8.3 policy.
 #[cfg(windows)]
@@ -67,7 +67,7 @@ impl Engine {
             }
             if let Ok(mut map) = waiting.lock() { for (_, sender) in map.drain() { let _ = sender.send(Err("ENGINE_UNAVAILABLE".into())); } }
         });
-        Ok(Arc::new(Self { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), pending, saved:Mutex::new(HashMap::new()),epoch:AtomicU64::new(0),owner:Mutex::new(None),drafts:Mutex::new(HashMap::new()) }))
+        Ok(Arc::new(Self { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), pending, saved:Mutex::new(HashMap::new()),epoch:AtomicU64::new(0),owner:Mutex::new(None),session_gate:Mutex::new(()),drafts:Mutex::new(HashMap::new()) }))
     }
     fn request(&self, request: Request) -> Reply {
         const METHODS: &[&str] = &["capabilities", "connect", "disconnect", "folders", "page", "body", "cancel", "attachment", "send"];
@@ -90,6 +90,7 @@ impl Engine {
 impl Drop for Engine { fn drop(&mut self) { self.stop(); } }
 
 fn connect(mut request:Request,app:&tauri::AppHandle,engine:&Arc<Engine>,remember:bool)->Reply{
+    let _gate=engine.session_gate.lock().map_err(|_|"NO_SESSION")?;
     compose::clear(engine)?;
     *engine.owner.lock().map_err(|_|"NO_SESSION")?=None;
     if let Ok(mut saved)=engine.saved.lock(){engine.epoch.fetch_add(1,Ordering::SeqCst);saved.clear();}
@@ -97,7 +98,7 @@ fn connect(mut request:Request,app:&tauri::AppHandle,engine:&Arc<Engine>,remembe
     let mut reply=engine.request(request)?;
     if reply["result"]["connected"]==true{
         *engine.owner.lock().map_err(|_|"NO_SESSION")?=Some(vault::owner(&auth)?);
-        reply["result"]["host"]=auth["host"].clone();reply["result"]["port"]=auth["port"].clone();
+        reply["result"]["epoch"]=json!(engine.epoch.load(Ordering::SeqCst));reply["result"]["host"]=auth["host"].clone();reply["result"]["port"]=auth["port"].clone();
         if remember{reply["result"]["remembered"]=json!(vault::remember(app,&auth).is_ok());}
     }Ok(reply)
 }
@@ -110,6 +111,7 @@ async fn mail_request(request: Request, app:tauri::AppHandle, state: tauri::Stat
         if request.method == "connectSaved" {return vault::connect_saved(request,&app,&engine);}
         if request.method == "connect" {let remember=request.args["remember"].as_bool()==Some(true);return connect(request,&app,&engine,remember);}
         if request.method == "disconnect" {
+            let _gate=engine.session_gate.lock().map_err(|_|"NO_SESSION")?;
             compose::clear(&engine)?;*engine.owner.lock().map_err(|_|"NO_SESSION")?=None;
             if let Ok(mut saved)=engine.saved.lock(){engine.epoch.fetch_add(1,Ordering::SeqCst);saved.clear();}
         }

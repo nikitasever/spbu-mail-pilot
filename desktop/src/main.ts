@@ -10,7 +10,7 @@ const client=new Client((command,args)=>invoke(command,args));
 const composer=new Composer(client);let replyMail:ReplyMail|null=null;
 const attachmentUI=new Attachments(client,$('transfers'));
 const connectLane=new Lane(client),folderLane=new Lane(client),listLane=new Lane(client),bodyLane=new Lane(client);
-let remembered:{host:string;port:number;user:string}|null=null;let canRemembered=false;
+let remembered:{id?:string;host:string;port:number;user:string}|null=null;let canRemembered=false;
 let connected=false,account='',folder='INBOX',rows:Mail[]=[],page:Page|null=null,selected:Mail|null=null,query='',epoch=0;
 let listBusy=false,bodyBusy=false,listGeneration=0,bodyGeneration=0;
 const form=$<HTMLFormElement>('login-form'),user=$<HTMLInputElement>('user'),password=$<HTMLInputElement>('password'),host=$<HTMLInputElement>('host'),port=$<HTMLInputElement>('port'),search=$<HTMLInputElement>('query');
@@ -77,7 +77,7 @@ async function connect(saved=false){
   const ticket=++epoch;loginBusy(true);text('login-status','Подключаемся к почтовому серверу…');
   const args={host:saved?remembered!.host:host.value.trim(),port:saved?remembered!.port:Number(port.value),user:saved?remembered!.user:user.value.trim(),password:saved?'':password.value,remember:!saved&&$<HTMLInputElement>('remember-account').checked};password.value='';hidePassword();
   try{
-    const result=await connectLane.run<{account?:string;host?:string;remembered?:boolean}>(saved?'connectSaved':'connect',saved?{}:args);args.password='';if(ticket!==epoch)return;connected=true;account=result.account??args.user;composer.setup(account,result.host??args.host);void composer.restore();text('account-note',result.remembered===false?'Не удалось запомнить аккаунт. Текущий вход работает; пароль потребуется после закрытия.':'');show('account-note',result.remembered===false);if(args.remember)void rememberedStatus();show('login-screen',false);show('workspace',true);text('account-name',account);text('account-avatar',avatar(account));folder='INBOX';query='';rows=[];page=null;renderFolders(['INBOX']);text('folder-title','Входящие');await loadFolders();if(ticket===epoch)await loadPage(false);
+    const result=await connectLane.run<{account?:string;host?:string;epoch?:number;remembered?:boolean}>(saved?'connectSaved':'connect',saved?{}:args);args.password='';if(ticket!==epoch)return;connected=true;account=result.account??args.user;composer.setup(account,result.host??args.host,result.epoch??0);void composer.restore();text('account-note',result.remembered===false?'Не удалось запомнить аккаунт. Текущий вход работает; пароль потребуется после закрытия.':'');show('account-note',result.remembered===false);if(args.remember)void rememberedStatus();show('login-screen',false);show('workspace',true);text('account-name',account);text('account-avatar',avatar(account));folder='INBOX';query='';rows=[];page=null;renderFolders(['INBOX']);text('folder-title','Входящие');await loadFolders();if(ticket===epoch)await loadPage(false);
   }catch(error){if(!(error instanceof StaleReply)&&ticket===epoch){text('login-error',failure(error));show('login-error',true);password.focus()}}
   finally{args.password='';if(ticket===epoch){loginBusy(false);text('login-status','')}}
 }
@@ -96,6 +96,6 @@ async function rememberedStatus(){
   try{remembered=await invoke('account_status');canRemembered=Boolean(remembered);show('saved-account',canRemembered);if(remembered)text('saved-account-name',`${remembered.user} · ${remembered.host}`);$<HTMLButtonElement>('saved-login').disabled=!canRemembered}
   catch{remembered=null;canRemembered=false;show('saved-account',true);text('saved-account-name','Не удалось открыть сохранённый аккаунт. Можно войти вручную или забыть сохранённый пароль.');$<HTMLButtonElement>('saved-login').disabled=true}
 }
-$('saved-login').addEventListener('click',()=>void connect(true));$('forget-account').addEventListener('click',async()=>{try{await invoke('account_forget');remembered=null;canRemembered=false;show('saved-account',false);$<HTMLInputElement>('remember-account').checked=false;void rememberedStatus()}catch{text('login-error','Не удалось удалить сохранённый пароль. Повторите попытку.');show('login-error',true)}});
+$('saved-login').addEventListener('click',()=>void connect(true));$('forget-account').addEventListener('click',async()=>{try{await invoke('account_forget',{expected:remembered?.id??null});remembered=null;canRemembered=false;show('saved-account',false);$<HTMLInputElement>('remember-account').checked=false;void rememberedStatus()}catch{text('login-error','Не удалось удалить сохранённый пароль. Повторите попытку.');show('login-error',true)}});
 if('__TAURI_INTERNALS__' in window)void rememberedStatus();
 if(!('__TAURI_INTERNALS__' in window)){text('login-error','Это предпросмотр интерфейса. Для подключения почты откройте установленное приложение Windows.');show('login-error',true);$<HTMLButtonElement>('connect').disabled=true}

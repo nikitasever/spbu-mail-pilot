@@ -25,16 +25,18 @@ fn draft(engine:&Engine,id:&str)->Result<Arc<Mutex<Draft>>,String>{
     engine.drafts.lock().map_err(|_|"DRAFT_UNAVAILABLE")?.get(id).cloned().ok_or("DRAFT_UNAVAILABLE".into())
 }
 fn editable(value:&Draft,engine:&Engine)->Result<(),String>{
-    if value.deleted||value.epoch!=engine.epoch.load(Ordering::SeqCst){return Err("DRAFT_UNAVAILABLE".into());}
+    if value.deleted||value.epoch!=engine.epoch.load(Ordering::SeqCst)||engine.owner.lock().map_err(|_|"NO_SESSION")?.as_deref()!=Some(value.owner.as_str()){return Err("DRAFT_UNAVAILABLE".into());}
     if value.busy||value.terminal{return Err("SEND_LOCKED".into());}Ok(())
 }
 pub fn clear(engine:&Engine)->Result<(),String>{
     let mut drafts=engine.drafts.lock().map_err(|_|"DRAFT_UNAVAILABLE")?;
-    for value in drafts.values(){if value.lock().map_err(|_|"DRAFT_UNAVAILABLE")?.busy{return Err("SEND_BUSY".into());}}
+    let mut guards=Vec::new();for value in drafts.values(){let guard=value.lock().map_err(|_|"DRAFT_UNAVAILABLE")?;if guard.busy{return Err("SEND_BUSY".into());}guards.push(guard);}
+    for value in &mut guards{value.deleted=true;}drop(guards);
     drafts.clear();Ok(())
 }
 #[tauri::command]
-pub fn draft_begin(app:tauri::AppHandle,state:State<'_,Arc<Engine>>)->Result<Value,String>{
+pub fn draft_begin(epoch:u64,app:tauri::AppHandle,state:State<'_,Arc<Engine>>)->Result<Value,String>{
+    let _gate=state.session_gate.lock().map_err(|_|"NO_SESSION")?;if epoch!=state.epoch.load(Ordering::SeqCst){return Err("DRAFT_UNAVAILABLE".into());}
     let owner=active_owner(&state)?;let root=super::vault::root(&app)?;
     let mut drafts=state.drafts.lock().map_err(|_|"DRAFT_UNAVAILABLE")?;
     if drafts.len()>=4{return Err("DRAFT_LIMIT".into());}
@@ -54,16 +56,18 @@ pub async fn draft_save(id:String,revision:u64,content:Value,state:State<'_,Arc<
     }).await.map_err(|_|"DRAFT_SAVE_FAILED".to_string())?
 }
 #[tauri::command]
-pub fn draft_forget(app:tauri::AppHandle,state:State<'_,Arc<Engine>>)->Result<(),String>{
+pub fn draft_forget(epoch:u64,app:tauri::AppHandle,state:State<'_,Arc<Engine>>)->Result<(),String>{
+    let _gate=state.session_gate.lock().map_err(|_|"NO_SESSION")?;if epoch!=state.epoch.load(Ordering::SeqCst){return Err("DRAFT_UNAVAILABLE".into());}
     let owner=active_owner(&state)?;let drafts=state.drafts.lock().map_err(|_|"DRAFT_UNAVAILABLE")?;
     if drafts.values().any(|v|v.lock().map(|v|v.owner==owner).unwrap_or(true)){return Err("DRAFT_EXISTS".into());}
     let path=super::vault::root(&app)?.join("drafts").join(owner);
     match std::fs::remove_dir_all(path){Ok(())=>Ok(()),Err(error)if error.kind()==std::io::ErrorKind::NotFound=>Ok(()),Err(_)=>Err("DRAFT_SAVE_FAILED".into())}
 }
 #[tauri::command]
-pub async fn draft_restore(app:tauri::AppHandle,state:State<'_,Arc<Engine>>)->Result<Value,String>{
+pub async fn draft_restore(epoch:u64,app:tauri::AppHandle,state:State<'_,Arc<Engine>>)->Result<Value,String>{
     let engine=state.inner().clone();
     tauri::async_runtime::spawn_blocking(move||{
+        let _gate=engine.session_gate.lock().map_err(|_|"NO_SESSION")?;if epoch!=engine.epoch.load(Ordering::SeqCst){return Err("DRAFT_UNAVAILABLE".into());}
         let owner=active_owner(&engine)?;let root=super::vault::root(&app)?;let epoch=engine.epoch.load(Ordering::SeqCst);
         let mut drafts=engine.drafts.lock().map_err(|_|"DRAFT_UNAVAILABLE")?;
         if let Some(handle)=drafts.values().find(|handle|handle.lock().map(|v|v.owner==owner).unwrap_or(false)){
@@ -121,7 +125,7 @@ pub fn draft_discard(id:String,state:State<'_,Arc<Engine>>)->Result<(),String>{
     drafts.remove(&id);Ok(())
 }
 pub fn send(mut request:Request,app:&tauri::AppHandle,engine:&Arc<Engine>)->Reply{
-    let id=request.id.clone();let fault=|code:&str|Ok(json!({"id":id,"error":{"code":code}}));
+    let gate=engine.session_gate.lock().map_err(|_|"NO_SESSION")?;let id=request.id.clone();let fault=|code:&str|Ok(json!({"id":id,"error":{"code":code}}));
     let Some(draft_id)=request.args["draftId"].as_str().map(String::from) else{return fault("BAD_DRAFT");};
     let handle=draft(engine,&draft_id)?;
     {
@@ -133,7 +137,7 @@ pub fn send(mut request:Request,app:&tauri::AppHandle,engine:&Arc<Engine>)->Repl
         value.content=validate_content(&content)?;value.status="pending".into();if persist(&mut value).is_err(){value.status="editing".into();return fault("DRAFT_SAVE_FAILED");}
         value.busy=true;
     }
-    let result=engine.request(request);
+    drop(gate);let result=engine.request(request);
     let mut value=handle.lock().map_err(|_|"DRAFT_UNAVAILABLE")?;value.busy=false;
     let reply=match result{
         Ok(reply)=>{value.terminal=reply["result"]["accepted"]==true||reply["error"]["code"]=="SEND_UNKNOWN";reply}

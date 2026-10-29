@@ -1,7 +1,7 @@
 use serde_json::{json,Value};
 use std::path::{Path,PathBuf};
 use sha2::{Digest,Sha256};
-use tauri::Manager;
+use tauri::{Manager,State};
 use super::{Engine,Request,Reply};
 use std::sync::Arc;
 
@@ -64,11 +64,14 @@ pub fn remember(app:&tauri::AppHandle,args:&Value)->Result<(),String>{
 #[tauri::command]
 pub fn account_status(app:tauri::AppHandle)->Result<Value,String>{
     if !root(&app)?.join("account.dpapi").try_exists().map_err(|_|"VAULT_UNAVAILABLE")?{return Ok(Value::Null);}
-    let value=load(&app)?;Ok(json!({"host":value["host"],"port":value["port"],"user":value["user"]}))
+    let value=load(&app)?;Ok(json!({"id":owner(&value)?,"host":value["host"],"port":value["port"],"user":value["user"]}))
 }
 #[tauri::command]
-pub fn account_forget(app:tauri::AppHandle)->Result<(),String>{
-    let file=root(&app)?.join("account.dpapi");match std::fs::remove_file(file){Ok(())=>Ok(()),Err(error) if error.kind()==std::io::ErrorKind::NotFound=>Ok(()),Err(_)=>Err("VAULT_UNAVAILABLE".into())}
+pub fn account_forget(expected:Option<String>,app:tauri::AppHandle,state:State<'_,Arc<Engine>>)->Result<(),String>{
+    let _gate=state.session_gate.lock().map_err(|_|"VAULT_UNAVAILABLE")?;
+    let file=root(&app)?.join("account.dpapi");if !file.try_exists().map_err(|_|"VAULT_UNAVAILABLE")?{return Ok(());}
+    match load(&app){Ok(current)=>{if expected.as_deref()!=Some(owner(&current)?.as_str()){return Err("VAULT_CONFLICT".into());}},Err(_)=>{if expected.is_some(){return Err("VAULT_UNAVAILABLE".into());}}}
+    match std::fs::remove_file(file){Ok(())=>Ok(()),Err(error) if error.kind()==std::io::ErrorKind::NotFound=>Ok(()),Err(_)=>Err("VAULT_UNAVAILABLE".into())}
 }
 pub fn connect_saved(mut request:Request,app:&tauri::AppHandle,engine:&Arc<Engine>)->Reply{
     request.method="connect".into();request.args=load(app)?;

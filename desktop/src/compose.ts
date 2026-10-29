@@ -6,14 +6,14 @@ const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 type FileEntry={token:string;name:string;size:number};
 export type ReplyMail={replyTo:string;subject:string;messageId:string;references:string[]};
 export class Composer {
-  private id='';private dirty=false;private picking=false;private state:'editing'|'countdown'|'sending'|'sent'|'unknown'='editing';private timer:ReturnType<typeof setInterval>|null=null;private request='';private parent='';private references:string[]=[];private files:FileEntry[]=[];private generation=0;private creating=false;private composing=false;private closing=false;private confirmAction:(()=>void)|null=null;private account='';private host='';private revision=0;private edit=0;private saved=false;private saveTimer:ReturnType<typeof setTimeout>|null=null;private saveQueue:Promise<unknown>=Promise.resolve();
+  private id='';private dirty=false;private picking=false;private state:'editing'|'countdown'|'sending'|'sent'|'unknown'='editing';private timer:ReturnType<typeof setInterval>|null=null;private request='';private parent='';private references:string[]=[];private files:FileEntry[]=[];private generation=0;private creating=false;private composing=false;private closing=false;private confirmAction:(()=>void)|null=null;private sessionEpoch=0;private account='';private host='';private revision=0;private edit=0;private saved=false;private saveTimer:ReturnType<typeof setTimeout>|null=null;private saveQueue:Promise<unknown>=Promise.resolve();
   constructor(private client:Client){
     $('compose-form').addEventListener('compositionstart',()=>{this.composing=true});
     $('compose-form').addEventListener('compositionend',()=>{this.composing=false});
     $('compose-form').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing&&event.target instanceof HTMLInputElement)event.preventDefault()});
     $('compose-form').addEventListener('submit',event=>{event.preventDefault();if(!this.composing)void this.startSend()});
     $('compose-form').addEventListener('input',()=>{this.dirty=true;this.edit++;this.scheduleSave()});
-    $('compose-close').addEventListener('click',()=>void this.hide());$('compose-delete').addEventListener('click',()=>this.guard(()=>void this.discard()));$('restore-draft').addEventListener('click',()=>void this.restore());$('forget-draft').addEventListener('click',()=>this.ask('Удалить сохранённый черновик этого аккаунта? Текст и вложения восстановить не получится. Если запускалась отправка, сначала проверьте «Отправленные» или уточните у получателя.',()=>{void invoke('draft_forget').then(()=>{this.notice('');$('restore-draft').hidden=true;$('forget-draft').hidden=true}).catch(()=>this.notice('Не удалось удалить сохранённый черновик.'))},'Удалить черновик'));
+    $('compose-close').addEventListener('click',()=>void this.hide());$('compose-delete').addEventListener('click',()=>this.guard(()=>void this.discard()));$('restore-draft').addEventListener('click',()=>void this.restore());$('forget-draft').addEventListener('click',()=>this.ask('Удалить сохранённый черновик этого аккаунта? Текст и вложения восстановить не получится. Если запускалась отправка, сначала проверьте «Отправленные» или уточните у получателя.',()=>{void invoke('draft_forget',{epoch:this.sessionEpoch}).then(()=>{this.notice('');$('restore-draft').hidden=true;$('forget-draft').hidden=true}).catch(()=>this.notice('Не удалось удалить сохранённый черновик.'))},'Удалить черновик'));
     $('compose-attach').addEventListener('click',()=>void this.attach());
     $('compose-undo').addEventListener('click',()=>this.undo());
     $('keep-draft').addEventListener('click',()=>{$<HTMLDialogElement>('discard-dialog').close();this.confirmAction=null});
@@ -38,7 +38,7 @@ export class Composer {
     }
     window.addEventListener('beforeunload',event=>{if(!this.closing&&(this.dirty||this.picking||this.state==='countdown'||this.state==='sending')){event.preventDefault();event.returnValue=''}});
   }
-  setup(account:string,host:string){this.account=account;this.host=host;const from=account.includes('@')?account:`${account}@${host.replace(/^mail\./i,'')}`;$<HTMLInputElement>('mail-from').value=from;$<HTMLInputElement>('smtp-host').value=host.toLowerCase()==='imap.mail.ru'?'smtp.mail.ru':host;$<HTMLInputElement>('smtp-port').value='465';$<HTMLInputElement>('smtp-ssl').checked=true}
+  setup(account:string,host:string,epoch=0){this.sessionEpoch=epoch;this.account=account;this.host=host;const from=account.includes('@')?account:`${account}@${host.replace(/^mail\./i,'')}`;$<HTMLInputElement>('mail-from').value=from;$<HTMLInputElement>('smtp-host').value=host.toLowerCase()==='imap.mail.ru'?'smtp.mail.ru':host;$<HTMLInputElement>('smtp-port').value='465';$<HTMLInputElement>('smtp-ssl').checked=true}
   async open(reply?:ReplyMail){
     if(this.creating)return;
     if(this.id){if(!reply){$('composer').hidden=false;$('compose-body').focus();return}this.guard(()=>void this.replace(reply));return}
@@ -46,7 +46,7 @@ export class Composer {
   }
   private async replace(reply?:ReplyMail){
     if(this.id&&!await this.discard())return;this.creating=true;const generation=this.generation;
-    try{const result=await invoke<{id:string}>('draft_begin');if(generation!==this.generation){void invoke('draft_discard',{id:result.id}).catch(()=>{});return}this.id=result.id;this.revision=0;this.edit=0;this.saved=false;this.state='editing';this.files=[];this.parent=reply?.messageId??'';this.references=this.parent?(reply?.references??[]):[];
+    try{const result=await invoke<{id:string}>('draft_begin',{epoch:this.sessionEpoch});if(generation!==this.generation){void invoke('draft_discard',{id:result.id}).catch(()=>{});return}this.id=result.id;this.revision=0;this.edit=0;this.saved=false;this.state='editing';this.files=[];this.parent=reply?.messageId??'';this.references=this.parent?(reply?.references??[]):[];
       for(const id of ['compose-to','compose-cc','compose-bcc','compose-subject','compose-body'])$<HTMLInputElement>(id).value='';
       $<HTMLInputElement>('compose-to').value=reply?.replyTo??'';$<HTMLInputElement>('compose-subject').value=reply?(/^(re|ответ):/i.test(reply.subject)?reply.subject:`Re: ${reply.subject}`).slice(0,500):'';
       $('compose-title').textContent=reply?'Ответить на письмо':'Новое письмо';this.dirty=Boolean(reply);$('composer').hidden=false;$('compose-error').hidden=true;$('send-meter').hidden=true;this.status('Подготавливаем защищённую копию черновика…');this.renderFiles();this.controls();this.scheduleSave();$(reply?'compose-body':'compose-to').focus();
@@ -76,14 +76,14 @@ export class Composer {
     if(this.state==='sending')return false;
     const id=this.id,revision=++this.revision,content=this.content(),edit=this.edit,generation=this.generation;
     const task=this.saveQueue.catch(()=>{}).then(()=>invoke<{saved:boolean;revision:number}>('draft_save',{id,revision,content}));this.saveQueue=task;
-    try{await task;if(generation!==this.generation||id!==this.id)return false;if(edit===this.edit){this.dirty=false;this.saved=true;this.status('Черновик сохранён на этом компьютере.')}return true}
+    try{await task;if(generation!==this.generation||id!==this.id)return false;if(edit!==this.edit)return this.flush();if(edit===this.edit){this.dirty=false;this.saved=true;this.status('Черновик сохранён на этом компьютере.')}return true}
     catch{if(generation===this.generation&&id===this.id){this.saved=false;this.error('Не удалось сохранить последние изменения на компьютере. Держите приложение открытым и повторите попытку.');this.status('Последние изменения пока только в памяти.')}return false}
   }
   private async hide(){if(this.picking||this.state==='sending'){ $('composer').hidden=true;this.entry();return }this.undo();if(await this.flush()){$('composer').hidden=true;this.entry()}}
   async leave(action:()=>void){if(this.state==='sending'||this.picking||this.creating){$('composer').hidden=false;this.error('Дождитесь завершения текущей операции.');return}this.undo();if(await this.flush())action();else{$('composer').hidden=false;this.ask('Не удалось сохранить последние изменения. Выйти, оставив только предыдущую сохранённую копию?',action,'Выйти без сохранения')}}
   async restore(){
     if(this.id||this.creating)return;this.creating=true;const generation=this.generation;this.notice('Проверяем сохранённый черновик…');
-    try{const result=await invoke<{id:string;revision:number;content:Record<string,unknown>;files:FileEntry[];state:string}|null>('draft_restore');if(generation!==this.generation)return;$('restore-draft').hidden=true;$('forget-draft').hidden=true;
+    try{const result=await invoke<{id:string;revision:number;content:Record<string,unknown>;files:FileEntry[];state:string}|null>('draft_restore',{epoch:this.sessionEpoch});if(generation!==this.generation)return;$('restore-draft').hidden=true;$('forget-draft').hidden=true;
       if(!result){this.notice('');return}this.id=result.id;this.revision=result.revision;this.edit=0;this.files=result.files;this.parent=String(result.content.inReplyTo??'');this.references=Array.isArray(result.content.references)?result.content.references as string[]:[];this.state=result.state==='editing'?'editing':result.state==='sent'?'sent':'unknown';this.saved=true;this.dirty=false;
       for(const [key,id]of Object.entries({to:'compose-to',cc:'compose-cc',bcc:'compose-bcc',subject:'compose-subject',body:'compose-body',from:'mail-from',smtpHost:'smtp-host',smtpPort:'smtp-port'}))$<HTMLInputElement>(id).value=String(result.content[key]??'');
       $<HTMLInputElement>('smtp-ssl').checked=result.content.smtpSsl===true;const starttls=document.querySelector<HTMLInputElement>('input[name="smtp-security"][value="starttls"]')!;starttls.checked=result.content.smtpSsl!==true;
