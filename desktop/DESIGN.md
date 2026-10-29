@@ -87,6 +87,7 @@ Server events are read-only; no create/task controls imply unavailable writes.
 Disconnect confirms removal of the local connection only. Native owner/epoch/profile
 checks guard commits and late results; cancellation closes the separate HTTP transport.
 All calendar URLs require HTTPS and the discovery origin; credentials never reach a
-redirect or another origin. The public profile contains names/IDs, origin and login,
+redirect to another origin. Same-origin redirects are followed within a bounded limit.
+The public profile contains names/IDs, origin and login,
 never a password or private collection URL. Frontend month queries contain calendar
 IDs, not credentials/paths. Native code resolves credentials and the collection URL.
