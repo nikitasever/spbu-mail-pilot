@@ -165,3 +165,26 @@ closing the preview. Cancel/logout clears row DOM, filenames and native preview;
 shared confirmations also clear their private text after dismissal. Native parser,
 file bounds, owner/token/selection and DPAPI batch/CAS tests plus fixture UI cover the
 flow. Real Windows file-picker interaction remains a manual acceptance check.
+
+
+Export extends the same LocalContacts controller and external close guard.
+The native contact_export service owns trusted snapshot selection, format encoding,
+OS destination choice and atomic file replacement. UI passes epoch/revision/format/
+part only. Entire book means the complete native snapshot, independently of query,
+loaded list batches or scroll position. A native select offers all or 500-row parts
+so files fit the existing import limit. vCard 3 defaults to lossless portability;
+CSV is the spreadsheet variant with formula protection and a documented reversible
+marker for this application's parser. UTF-8 folding/escaping is verified by native
+roundtrip tests rather than mirrored frontend serialization.
+The export dialog reuses contact-editor, native radio/select semantics and existing
+form feedback. Its description makes plain-file output and exact scope explicit.
+It does not auto-open a spreadsheet or expose file paths. Empty books disable the
+entry action. Cancel/failure retains format/scope. Pending disables controls and
+blocks native close; conflict/unknown outcomes freeze save and preserve recovery
+instructions. Closing the read-only format dialog requires no dirty-form prompt.
+Account/version checks repeat after the OS dialog. App-data destinations, wrong
+extensions and nonregular file targets are refused; the original encrypted book
+is never modified. Success returns basename/format/count only; logout clears modal
+state. Fixture E2E covers full versus filtered scope, parts, errors, no repeat,
+close protection and narrow layout; Windows unit tests own encoders/roundtrip and
+file safety. Native OS dialog interaction remains a manual acceptance check.

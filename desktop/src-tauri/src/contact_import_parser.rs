@@ -35,11 +35,12 @@ pub fn csv(text:&str)->Result<Vec<Row>,String>{
  if emails.is_empty(){return Err(format());}
  let find=|keys:&[&str]|names.iter().position(|v|keys.contains(&v.as_str()));
  let full=find(&["name","displayname","fullname","фио"]);let given=find(&["firstname","givenname","имя","имяконтакта"]);let family=find(&["lastname","familyname","фамилия"]);
- let get=|record:&Vec<String>,index:Option<usize>|index.and_then(|n|record.get(n)).map(String::as_str).unwrap_or("").trim().to_string();let mut rows=vec![];
+ let safe=find(&["spbusafecsv"]);
+ let get=|record:&Vec<String>,index:Option<usize>|{let value=index.and_then(|n|record.get(n)).map(String::as_str).unwrap_or("").trim();let protected=safe.and_then(|n|record.get(n)).map(|v|v.trim()=="1").unwrap_or(false);if protected{value.strip_prefix('\'').unwrap_or(value).to_string()}else{value.to_string()}};let mut rows=vec![];
  for (index,record) in records.iter().enumerate().skip(1){
   if record.len()!=head.len(){return Err(format());}
   let mut sender=get(record,full);if sender.is_empty(){sender=[get(record,given),get(record,family)].into_iter().filter(|s|!s.is_empty()).collect::<Vec<_>>().join(" ");}
-  let mut any=false;for email in &emails{let value=&record[*email];if !value.trim().is_empty(){push(&mut rows,&sender,value,index+1)?;any=true;}}
+  let mut any=false;for email in &emails{let value=get(record,Some(*email));if !value.trim().is_empty(){push(&mut rows,&sender,&value,index+1)?;any=true;}}
   if !any{push(&mut rows,&sender,"",index+1)?;}
  }
  if rows.is_empty(){return Err(format());}Ok(rows)
