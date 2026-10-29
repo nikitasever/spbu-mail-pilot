@@ -10,6 +10,7 @@ const client=new Client((command,args)=>invoke(command,args));
 const composer=new Composer(client);let replyMail:ReplyMail|null=null;
 const attachmentUI=new Attachments(client,$('transfers'));
 const connectLane=new Lane(client),folderLane=new Lane(client),listLane=new Lane(client),bodyLane=new Lane(client);
+let remembered:{host:string;port:number;user:string}|null=null;let canRemembered=false;
 let connected=false,account='',folder='INBOX',rows:Mail[]=[],page:Page|null=null,selected:Mail|null=null,query='',epoch=0;
 let listBusy=false,bodyBusy=false,listGeneration=0,bodyGeneration=0;
 const form=$<HTMLFormElement>('login-form'),user=$<HTMLInputElement>('user'),password=$<HTMLInputElement>('password'),host=$<HTMLInputElement>('host'),port=$<HTMLInputElement>('port'),search=$<HTMLInputElement>('query');
@@ -62,20 +63,21 @@ async function openMail(row:Mail){
   finally{if(ticket===epoch&&selected===row&&run===bodyGeneration){bodyBusy=false;show('cancel-body',false)}}
 }
 function hidePassword(){password.type='password';text('toggle-password','Показать');$('toggle-password').setAttribute('aria-pressed','false')}
-function loginBusy(busy:boolean){for(const input of [user,password,host,port])input.disabled=busy;$<HTMLButtonElement>('connect').disabled=busy;show('cancel-connect',busy)}
+function loginBusy(busy:boolean){for(const input of [user,password,host,port,$<HTMLInputElement>('remember-account')])input.disabled=busy;$<HTMLButtonElement>('saved-login').disabled=busy||!canRemembered;$<HTMLButtonElement>('forget-account').disabled=busy;$<HTMLButtonElement>('connect').disabled=busy;show('cancel-connect',busy)}
 form.addEventListener('submit',event=>{event.preventDefault();void connect()});
-async function connect(){
+async function connect(saved=false){
   for(const input of [user,password,host,port])input.removeAttribute('aria-invalid');show('login-error',false);
   let invalid:HTMLInputElement|null=null;let message='';
-  if(!user.value.trim()||/[\x00-\x1f\x7f]/.test(user.value)){invalid=user;message='Укажите логин почтового ящика.'}
-  else if(!password.value){invalid=password;message='Введите пароль почтового ящика.'}
-  else if(!host.value.trim()||/[\s/:\x00-\x1f\x7f]/.test(host.value)){invalid=host;message='Укажите адрес IMAP-сервера без https:// и пути.'}
-  else if(!/^\d{1,5}$/.test(port.value)||+port.value<1||+port.value>65535){invalid=port;message='Порт должен быть числом от 1 до 65535.'}
+  if(!saved&&(!user.value.trim()||/[\x00-\x1f\x7f]/.test(user.value))){invalid=user;message='Укажите логин почтового ящика.'}
+  else if(!saved&&!password.value){invalid=password;message='Введите пароль почтового ящика.'}
+  else if(!saved&&(!host.value.trim()||/[\s/:\x00-\x1f\x7f]/.test(host.value))){invalid=host;message='Укажите адрес IMAP-сервера без https:// и пути.'}
+  else if(!saved&&(!/^\d{1,5}$/.test(port.value)||+port.value<1||+port.value>65535)){invalid=port;message='Порт должен быть числом от 1 до 65535.'}
   if(invalid){text('login-error',message);show('login-error',true);invalid.setAttribute('aria-invalid','true');if(invalid===host||invalid===port)form.querySelector('details')!.open=true;invalid.focus();return}
+  if(saved&&(!remembered||!canRemembered))return;
   const ticket=++epoch;loginBusy(true);text('login-status','Подключаемся к почтовому серверу…');
-  const args={host:host.value.trim(),port:Number(port.value),user:user.value.trim(),password:password.value};password.value='';hidePassword();
+  const args={host:saved?remembered!.host:host.value.trim(),port:saved?remembered!.port:Number(port.value),user:saved?remembered!.user:user.value.trim(),password:saved?'':password.value,remember:!saved&&$<HTMLInputElement>('remember-account').checked};password.value='';hidePassword();
   try{
-    await connectLane.run('connect',args);args.password='';if(ticket!==epoch)return;connected=true;account=args.user;composer.setup(account,args.host);show('login-screen',false);show('workspace',true);text('account-name',account);text('account-avatar',avatar(account));folder='INBOX';query='';rows=[];page=null;renderFolders(['INBOX']);text('folder-title','Входящие');await loadFolders();if(ticket===epoch)await loadPage(false);
+    const result=await connectLane.run<{account?:string;host?:string;remembered?:boolean}>(saved?'connectSaved':'connect',saved?{}:args);args.password='';if(ticket!==epoch)return;connected=true;account=result.account??args.user;composer.setup(account,result.host??args.host);void composer.restore();text('account-note',result.remembered===false?'Не удалось запомнить аккаунт. Текущий вход работает; пароль потребуется после закрытия.':'');show('account-note',result.remembered===false);if(args.remember)void rememberedStatus();show('login-screen',false);show('workspace',true);text('account-name',account);text('account-avatar',avatar(account));folder='INBOX';query='';rows=[];page=null;renderFolders(['INBOX']);text('folder-title','Входящие');await loadFolders();if(ticket===epoch)await loadPage(false);
   }catch(error){if(!(error instanceof StaleReply)&&ticket===epoch){text('login-error',failure(error));show('login-error',true);password.focus()}}
   finally{args.password='';if(ticket===epoch){loginBusy(false);text('login-status','')}}
 }
@@ -89,5 +91,11 @@ search.addEventListener('input',()=>show('clear-search',search.value.length>0));
 $('search-form').addEventListener('submit',event=>{event.preventDefault();query=search.value.trim();void loadPage(false)});
 $('clear-search').addEventListener('click',()=>{search.value='';query='';show('clear-search',false);search.focus();void loadPage(false)});
 $('new-mail').addEventListener('click',()=>void composer.open());$('reply-mail').addEventListener('click',()=>{if(replyMail)void composer.open(replyMail)});
-$('logout').addEventListener('click',()=>composer.guard(()=>{void composer.reset();attachmentUI.reset();epoch++;connectLane.cancel();folderLane.cancel();listLane.cancel();bodyLane.cancel();connected=false;account='';rows=[];page=null;resetReader();folders.replaceChildren();text('account-name','');password.value='';hidePassword();search.value='';query='';show('clear-search',false);text('account-avatar','');text('folder-title','');show('workspace',false);show('login-screen',true);void client.start('disconnect').promise.catch(()=>{});user.focus()}));
+$('logout').addEventListener('click',()=>void composer.leave(()=>{void composer.reset();attachmentUI.reset();epoch++;connectLane.cancel();folderLane.cancel();listLane.cancel();bodyLane.cancel();connected=false;account='';rows=[];page=null;resetReader();folders.replaceChildren();text('account-name','');password.value='';hidePassword();search.value='';query='';show('clear-search',false);text('account-avatar','');text('folder-title','');show('workspace',false);show('login-screen',true);void client.start('disconnect').promise.catch(()=>{});user.focus()}));
+async function rememberedStatus(){
+  try{remembered=await invoke('account_status');canRemembered=Boolean(remembered);show('saved-account',canRemembered);if(remembered)text('saved-account-name',`${remembered.user} · ${remembered.host}`);$<HTMLButtonElement>('saved-login').disabled=!canRemembered}
+  catch{remembered=null;canRemembered=false;show('saved-account',true);text('saved-account-name','Не удалось открыть сохранённый аккаунт. Можно войти вручную или забыть сохранённый пароль.');$<HTMLButtonElement>('saved-login').disabled=true}
+}
+$('saved-login').addEventListener('click',()=>void connect(true));$('forget-account').addEventListener('click',async()=>{try{await invoke('account_forget');remembered=null;canRemembered=false;show('saved-account',false);$<HTMLInputElement>('remember-account').checked=false;void rememberedStatus()}catch{text('login-error','Не удалось удалить сохранённый пароль. Повторите попытку.');show('login-error',true)}});
+if('__TAURI_INTERNALS__' in window)void rememberedStatus();
 if(!('__TAURI_INTERNALS__' in window)){text('login-error','Это предпросмотр интерфейса. Для подключения почты откройте установленное приложение Windows.');show('login-error',true);$<HTMLButtonElement>('connect').disabled=true}

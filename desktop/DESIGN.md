@@ -40,11 +40,10 @@ message content and invalidates outstanding requests. Body HTML/images/scripts
 are never executed or requested by the frontend.
 
 Production CSP permits local assets and IPC only; no external-page capabilities,
-filesystem, shell or HTTP plugin are granted to the web window. OS keychain,
-offline store, calendar and account switching are future work.
+filesystem, shell or HTTP plugin are granted to the web window. Offline store, calendar and account switching are future work.
 
 Composer is the shared native-backed non-modal editor (compose.ts, compose.rs).
-It preserves one in-memory draft through folder/message navigation. Windows owns
+It preserves one active local draft per authenticated server/port/user through navigation and restarts. Windows owns
 file selection; selected files become private snapshots, never WebView paths.
 Reply uses the server Reply-To and Message-ID/References, not subject inference.
 There is a 10-second reversible grace period before SMTP. Progress separates
@@ -56,4 +55,13 @@ to send again. Unknown outcomes keep text available for copying but freeze send.
 Discard/logout/close use the shared app-owned confirmation with Keep as initial
 focus; Escape preserves the draft. Window destroy permission applies only to the
 main local window so this close guard can finish an explicit user close. SMTP
-settings use native radio semantics. Draft text is not persisted to disk.
+settings use native radio semantics. Draft text/SMTP settings and file snapshots persist encrypted with Windows DPAPI.
+The saved-account checkbox is opt-in; one saved account is shown without exposing
+its password, and reconnect is an explicit action. Forgetting credentials leaves
+an encrypted draft intact. Owners are SHA-256 identities of server/port/user.
+Autosave revisions are monotonic and writes atomic; pending SMTP state is durable
+before transmission. Restore never auto-sends and preserves terminal send locks.
+Close/minimize saves and hides the editor; deletion has its own confirmation.
+Normal window close/logout flushes autosave first; failures retain edits and offer
+Keep before an explicit close without saving. Failed decryption is visible and
+never silently replaced. The native persistence owners are vault.rs and compose.rs.

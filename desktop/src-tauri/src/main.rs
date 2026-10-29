@@ -7,12 +7,13 @@ use tauri::{Manager, Emitter};
 use std::sync::atomic::{AtomicU64,Ordering};
 mod attachments;
 mod compose;
+mod vault;
 
 #[derive(Deserialize)]
 struct Request { id: String, method: String, args: Value }
 type Reply = Result<Value, String>;
 type Pending = Arc<Mutex<HashMap<String, mpsc::Sender<Reply>>>>;
-struct Engine { child: Mutex<Option<Child>>, stdin: Mutex<ChildStdin>, pending: Pending, saved: Mutex<HashMap<String,PathBuf>>, epoch:AtomicU64, drafts:Mutex<HashMap<String,Arc<Mutex<compose::Draft>>>> }
+struct Engine { child: Mutex<Option<Child>>, stdin: Mutex<ChildStdin>, pending: Pending, saved: Mutex<HashMap<String,PathBuf>>, epoch:AtomicU64, owner:Mutex<Option<String>>,drafts:Mutex<HashMap<String,Arc<Mutex<compose::Draft>>>> }
 // Older Windows Java launchers may resolve their DLLs through the active ANSI code page.
 // Use an existing filesystem short alias when available; never change system locale or 8.3 policy.
 #[cfg(windows)]
@@ -66,7 +67,7 @@ impl Engine {
             }
             if let Ok(mut map) = waiting.lock() { for (_, sender) in map.drain() { let _ = sender.send(Err("ENGINE_UNAVAILABLE".into())); } }
         });
-        Ok(Arc::new(Self { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), pending, saved:Mutex::new(HashMap::new()),epoch:AtomicU64::new(0),drafts:Mutex::new(HashMap::new()) }))
+        Ok(Arc::new(Self { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), pending, saved:Mutex::new(HashMap::new()),epoch:AtomicU64::new(0),owner:Mutex::new(None),drafts:Mutex::new(HashMap::new()) }))
     }
     fn request(&self, request: Request) -> Reply {
         const METHODS: &[&str] = &["capabilities", "connect", "disconnect", "folders", "page", "body", "cancel", "attachment", "send"];
@@ -88,15 +89,28 @@ impl Engine {
 }
 impl Drop for Engine { fn drop(&mut self) { self.stop(); } }
 
+fn connect(mut request:Request,app:&tauri::AppHandle,engine:&Arc<Engine>,remember:bool)->Reply{
+    compose::clear(engine)?;
+    *engine.owner.lock().map_err(|_|"NO_SESSION")?=None;
+    if let Ok(mut saved)=engine.saved.lock(){engine.epoch.fetch_add(1,Ordering::SeqCst);saved.clear();}
+    request.method="connect".into();let auth=request.args.clone();
+    let mut reply=engine.request(request)?;
+    if reply["result"]["connected"]==true{
+        *engine.owner.lock().map_err(|_|"NO_SESSION")?=Some(vault::owner(&auth)?);
+        reply["result"]["host"]=auth["host"].clone();reply["result"]["port"]=auth["port"].clone();
+        if remember{reply["result"]["remembered"]=json!(vault::remember(app,&auth).is_ok());}
+    }Ok(reply)
+}
 #[tauri::command]
 async fn mail_request(request: Request, app:tauri::AppHandle, state: tauri::State<'_, Arc<Engine>>) -> Reply {
     let engine = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         if request.method == "attachment" { return attachments::save(request,&app,&engine); }
         if request.method == "send" {return compose::send(request,&app,&engine);}
-        // A WebView cannot inject a file destination or request arbitrary OS paths.
-        if request.method == "connect" || request.method == "disconnect" {
-            compose::clear(&engine)?;
+        if request.method == "connectSaved" {return vault::connect_saved(request,&app,&engine);}
+        if request.method == "connect" {let remember=request.args["remember"].as_bool()==Some(true);return connect(request,&app,&engine,remember);}
+        if request.method == "disconnect" {
+            compose::clear(&engine)?;*engine.owner.lock().map_err(|_|"NO_SESSION")?=None;
             if let Ok(mut saved)=engine.saved.lock(){engine.epoch.fetch_add(1,Ordering::SeqCst);saved.clear();}
         }
         engine.request(request)
@@ -123,10 +137,10 @@ fn main() {
         let reply = engine.request(Request { id: "probe".into(), method: "capabilities".into(), args: json!({}) }).expect("Engine probe failed");
         assert_eq!(reply["result"]["sending"], true);engine.stop();return;
     }
-    tauri::Builder::default().plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_opener::init()).setup(|app| { let root = root_for(app)?;let engine = Engine::start(&root,Some(app.handle().clone())).map_err(std::io::Error::other)?;let ready=engine.request(Request{id:"startup".into(),method:"capabilities".into(),args:json!({})}).map_err(std::io::Error::other)?;
+    tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app,_,_|{if let Some(window)=app.get_webview_window("main"){let _=window.show();let _=window.set_focus();}})).plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_opener::init()).setup(|app| { let root = root_for(app)?;let engine = Engine::start(&root,Some(app.handle().clone())).map_err(std::io::Error::other)?;let ready=engine.request(Request{id:"startup".into(),method:"capabilities".into(),args:json!({})}).map_err(std::io::Error::other)?;
             if ready["result"]["sending"]!=true {return Err(std::io::Error::other("Engine handshake failed").into());}
             app.manage(engine);Ok(()) })
-        .invoke_handler(tauri::generate_handler![mail_request,open_saved,compose::draft_begin,compose::draft_attach,compose::draft_remove,compose::draft_discard])
+        .invoke_handler(tauri::generate_handler![mail_request,open_saved,compose::draft_begin,compose::draft_attach,compose::draft_remove,compose::draft_discard,compose::draft_save,compose::draft_restore,compose::draft_forget,vault::account_status,vault::account_forget])
         .on_window_event(|window, event| { if matches!(event, tauri::WindowEvent::Destroyed) { if let Some(engine) = window.try_state::<Arc<Engine>>() { engine.stop(); } } })
         .run(tauri::generate_context!()).expect("Desktop window failed to start");
 }

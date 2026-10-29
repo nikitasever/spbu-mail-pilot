@@ -7,6 +7,8 @@ const path=require('node:path'),fs=require('node:fs');const output=path.join(__d
  await page.addInitScript(()=>{
   const callbacks=new Map();let callbackSerial=0,progressCallback,activeDownload;
   window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main',windowLabel:'main'}},transformCallback:handler=>{const id=++callbackSerial;callbacks.set(id,handler);return id},invoke:async(command,params)=>{
+   if(command==='account_status'||command==='draft_restore')return null;
+   if(command==='draft_save')return {saved:true,revision:params.revision};
    if(command==='plugin:event|listen'){if(params.event==='attachment-progress')progressCallback=callbacks.get(params.handler);return 1}
    if(command==='open_saved'){window.openedToken=params.token;return}
    const {request}=params;
