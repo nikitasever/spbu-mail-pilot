@@ -6,12 +6,13 @@ use std::{collections::HashMap, io::{BufRead, BufReader, Write}, path::{Path, Pa
 use tauri::{Manager, Emitter};
 use std::sync::atomic::{AtomicU64,Ordering};
 mod attachments;
+mod compose;
 
 #[derive(Deserialize)]
 struct Request { id: String, method: String, args: Value }
 type Reply = Result<Value, String>;
 type Pending = Arc<Mutex<HashMap<String, mpsc::Sender<Reply>>>>;
-struct Engine { child: Mutex<Option<Child>>, stdin: Mutex<ChildStdin>, pending: Pending, saved: Mutex<HashMap<String,PathBuf>>, epoch:AtomicU64 }
+struct Engine { child: Mutex<Option<Child>>, stdin: Mutex<ChildStdin>, pending: Pending, saved: Mutex<HashMap<String,PathBuf>>, epoch:AtomicU64, drafts:Mutex<HashMap<String,Arc<Mutex<compose::Draft>>>> }
 // Older Windows Java launchers may resolve their DLLs through the active ANSI code page.
 // Use an existing filesystem short alias when available; never change system locale or 8.3 policy.
 #[cfg(windows)]
@@ -51,10 +52,12 @@ impl Engine {
                 if line.len() > 8 * 1024 * 1024 { break; }
                 let Ok(value) = serde_json::from_str::<Value>(&line) else { break };
                 let Some(id) = value.get("id").and_then(Value::as_str) else { continue };
-                if value["event"] == "attachmentProgress" {
+                if value["event"] == "attachmentProgress" || value["event"] == "sendProgress" {
                     if waiting.lock().map(|map| map.contains_key(id)).unwrap_or(false) {
                         if let (Some(app),Some(bytes),Some(total)) = (&events,value["bytes"].as_u64(),value["total"].as_i64()) {
-                            if bytes <= 209715200 && (-1..=209715200).contains(&total) { let _ = app.emit("attachment-progress", json!({"id":id,"bytes":bytes,"total":total})); }
+                            if bytes <= 209715200 && (-1..=209715200).contains(&total) { let sending=value["event"]=="sendProgress";
+                                let stage=value["stage"].as_str().filter(|s|["connecting","uploading","confirming","complete","accepted"].contains(s)).unwrap_or("connecting");
+                                let _ = app.emit(if sending{"send-progress"}else{"attachment-progress"}, json!({"id":id,"bytes":bytes,"total":total,"stage":stage})); }
                         }
                     }
                     continue;
@@ -63,21 +66,21 @@ impl Engine {
             }
             if let Ok(mut map) = waiting.lock() { for (_, sender) in map.drain() { let _ = sender.send(Err("ENGINE_UNAVAILABLE".into())); } }
         });
-        Ok(Arc::new(Self { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), pending, saved:Mutex::new(HashMap::new()),epoch:AtomicU64::new(0) }))
+        Ok(Arc::new(Self { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), pending, saved:Mutex::new(HashMap::new()),epoch:AtomicU64::new(0),drafts:Mutex::new(HashMap::new()) }))
     }
     fn request(&self, request: Request) -> Reply {
-        const METHODS: &[&str] = &["capabilities", "connect", "disconnect", "folders", "page", "body", "cancel", "attachment"];
+        const METHODS: &[&str] = &["capabilities", "connect", "disconnect", "folders", "page", "body", "cancel", "attachment", "send"];
         if request.id.is_empty() || request.id.len() > 64 || !request.id.bytes().all(|c| c.is_ascii_alphanumeric() || b"._-".contains(&c)) || !METHODS.contains(&request.method.as_str()) || !request.args.is_object() { return Err("BAD_REQUEST".into()); }
         let id = request.id.clone();
         let line = json!({"id": request.id, "method": request.method, "args": request.args}).to_string();
-        if line.len() > 65536 { return Err("BAD_REQUEST".into()); }
+        if line.len() > 1048576 { return Err("BAD_REQUEST".into()); }
         let (sender, receiver) = mpsc::channel();
         { let mut map = self.pending.lock().map_err(|_| "ENGINE_UNAVAILABLE")?;
           if map.len() >= 16 || map.contains_key(&id) { return Err("BUSY".into()); }
           map.insert(id.clone(), sender); }
         let written = self.stdin.lock().map_err(|_| "ENGINE_UNAVAILABLE").and_then(|mut stream| writeln!(stream, "{}", line).and_then(|_| stream.flush()).map_err(|_| "ENGINE_UNAVAILABLE"));
         if written.is_err() { if let Ok(mut map) = self.pending.lock() { map.remove(&id); } return Err("ENGINE_UNAVAILABLE".into()); }
-        let result = receiver.recv_timeout(Duration::from_secs(if request.method == "attachment" {600} else {90})).unwrap_or_else(|_| Err("ENGINE_UNAVAILABLE".into()));
+        let result = receiver.recv_timeout(Duration::from_secs(if matches!(request.method.as_str(),"attachment"|"send") {600} else {90})).unwrap_or_else(|_| Err("ENGINE_UNAVAILABLE".into()));
         if let Ok(mut map) = self.pending.lock() { map.remove(&id); }
         result
     }
@@ -90,8 +93,10 @@ async fn mail_request(request: Request, app:tauri::AppHandle, state: tauri::Stat
     let engine = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         if request.method == "attachment" { return attachments::save(request,&app,&engine); }
+        if request.method == "send" {return compose::send(request,&app,&engine);}
         // A WebView cannot inject a file destination or request arbitrary OS paths.
         if request.method == "connect" || request.method == "disconnect" {
+            compose::clear(&engine)?;
             if let Ok(mut saved)=engine.saved.lock(){engine.epoch.fetch_add(1,Ordering::SeqCst);saved.clear();}
         }
         engine.request(request)
@@ -116,12 +121,12 @@ fn main() {
         let root=root.canonicalize().expect("Canonical executable location missing");
         let engine = Engine::start(&root,None).expect("Bundled engine unavailable");
         let reply = engine.request(Request { id: "probe".into(), method: "capabilities".into(), args: json!({}) }).expect("Engine probe failed");
-        assert_eq!(reply["result"]["readOnly"], true);engine.stop();return;
+        assert_eq!(reply["result"]["sending"], true);engine.stop();return;
     }
     tauri::Builder::default().plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_opener::init()).setup(|app| { let root = root_for(app)?;let engine = Engine::start(&root,Some(app.handle().clone())).map_err(std::io::Error::other)?;let ready=engine.request(Request{id:"startup".into(),method:"capabilities".into(),args:json!({})}).map_err(std::io::Error::other)?;
-            if ready["result"]["readOnly"]!=true {return Err(std::io::Error::other("Engine handshake failed").into());}
+            if ready["result"]["sending"]!=true {return Err(std::io::Error::other("Engine handshake failed").into());}
             app.manage(engine);Ok(()) })
-        .invoke_handler(tauri::generate_handler![mail_request,open_saved])
+        .invoke_handler(tauri::generate_handler![mail_request,open_saved,compose::draft_begin,compose::draft_attach,compose::draft_remove,compose::draft_discard])
         .on_window_event(|window, event| { if matches!(event, tauri::WindowEvent::Destroyed) { if let Some(engine) = window.try_state::<Arc<Engine>>() { engine.stop(); } } })
         .run(tauri::generate_context!()).expect("Desktop window failed to start");
 }

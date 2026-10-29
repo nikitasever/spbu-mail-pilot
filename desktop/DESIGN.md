@@ -1,7 +1,7 @@
 # Desktop design context
 
 Scope: local Windows 10/11 application, Russian interface. First vertical slice:
-connect → real folders → paged messages → plain-text reading. No demonstration
+connect → real folders → paged messages → reading → new mail/reply/send. No demonstration
 messages ship in the product. Existing Android UI stays unchanged.
 
 Canonical project context: ../DESIGN.md and ../UX-CONTRACT.md. The existing violet
@@ -41,4 +41,19 @@ are never executed or requested by the frontend.
 
 Production CSP permits local assets and IPC only; no external-page capabilities,
 filesystem, shell or HTTP plugin are granted to the web window. OS keychain,
-offline store, SMTP, calendar and account switching are future work.
+offline store, calendar and account switching are future work.
+
+Composer is the shared native-backed non-modal editor (compose.ts, compose.rs).
+It preserves one in-memory draft through folder/message navigation. Windows owns
+file selection; selected files become private snapshots, never WebView paths.
+Reply uses the server Reply-To and Message-ID/References, not subject inference.
+There is a 10-second reversible grace period before SMTP. Progress separates
+connection, upload, server confirmation, acceptance and independent Sent copy.
+After handoff, no cancellation/delivery guarantee or automatic retry is implied.
+Content-free durable receipts and native draft state lock ambiguous attempts.
+Failure to append the Sent copy is a warning on an accepted send, never a reason
+to send again. Unknown outcomes keep text available for copying but freeze send.
+Discard/logout/close use the shared app-owned confirmation with Keep as initial
+focus; Escape preserves the draft. Window destroy permission applies only to the
+main local window so this close guard can finish an explicit user close. SMTP
+settings use native radio semantics. Draft text is not persisted to disk.
