@@ -36,7 +36,7 @@ jobs:
           if (-not $binary) { throw 'Installed executable missing' }
           python .github/scripts/probe-installed-engine.py $binary.FullName
           if ($LASTEXITCODE -ne 0) { throw 'Installed JVM/IPC probe failed' }
-          $app = Start-Process -FilePath $binary.FullName -PassThru
+          $app = Start-Process -FilePath $binary.FullName -PassThru -RedirectStandardError 'verified/startup-error.log' -RedirectStandardOutput 'verified/startup-output.log'
           $engine = $null
           try {
             $deadline = (Get-Date).AddSeconds(45)
@@ -55,7 +55,13 @@ jobs:
               $app.Refresh()
               if ($app.HasExited) { throw 'App exited while starting its JVM' }
             } while (-not $engine -and (Get-Date) -lt $engineDeadline)
-            if (-not $engine) { throw 'Window did not start its private JVM' }
+            if (-not $engine) {
+              Write-Output "Window title: $($app.MainWindowTitle)"
+              Get-Content verified/startup-error.log -ErrorAction SilentlyContinue
+              Get-Content verified/startup-output.log -ErrorAction SilentlyContinue
+              Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $app.Id } | Select-Object Name,ProcessId,ParentProcessId | Format-Table
+              throw 'Window did not start its private JVM'
+            }
             Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public static class DesktopWindow{[DllImport("user32.dll")]public static extern bool ShowWindowAsync(IntPtr h,int command);}'
             [DesktopWindow]::ShowWindowAsync($app.MainWindowHandle,3) | Out-Null
             Start-Sleep -Seconds 3
