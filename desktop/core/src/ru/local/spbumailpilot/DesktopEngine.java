@@ -65,7 +65,7 @@ public final class DesktopEngine implements AutoCloseable {
         sink.write(message);
     }
     private void closeLater(AutoCloseable gateway){if(gateway!=null){Runnable cleanup=()->{try{gateway.close();}catch(Exception ignored){}};try{closer.execute(cleanup);}catch(RejectedExecutionException stopped){Thread late=new Thread(cleanup,"desktop-late-close");late.setDaemon(true);late.start();}}}
-    private boolean stop(Operation operation){synchronized(operation){if(operation.write&&operation.started)return false;operation.stopped.set(true);}closeLater(operation.active);closeLater(operation.resource);return true;}
+    private boolean stop(Operation operation){synchronized(operation){if(operation.write&&operation.started)return false;operation.stopped.set(true);}closeLater(operation.active);if(operation.resource instanceof DesktopContacts)((DesktopContacts)operation.resource).cancel();closeLater(operation.resource);return true;}
     void accept(JSONObject request){
         String id=null;
         try {

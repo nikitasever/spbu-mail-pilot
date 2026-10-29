@@ -25,13 +25,13 @@ public final class DesktopContactsTest{
   }
   for(String invalid:new String[]{"^:bad","line\nbreak"})try{DesktopContacts.validate("company",invalid,"");throw new AssertionError();}catch(DesktopContacts.Fault expected){}
   CountDownLatch entered=new CountDownLatch(1);OkHttpClient blocked=new OkHttpClient.Builder().addInterceptor(chain->{entered.countDown();long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);while(!chain.call().isCanceled()&&System.nanoTime()<end)try{Thread.sleep(5);}catch(InterruptedException error){throw new IOException(error);}throw new IOException("fixture private error");}).build();
-  BlockingQueue<JSONObject> replies=new LinkedBlockingQueue<>();
-  try(DesktopEngine engine=new DesktopEngine((h,p,u,pw,r)->{DesktopEngineTest.Mailbox box=new DesktopEngineTest.Mailbox();r.attach(box);return box;},replies::add,DesktopCalendars::create,()->new DesktopContacts(blocked))){
+  BlockingQueue<JSONObject> replies=new LinkedBlockingQueue<>();java.util.concurrent.atomic.AtomicReference<DesktopContacts> live=new java.util.concurrent.atomic.AtomicReference<>();
+  try(DesktopEngine engine=new DesktopEngine((h,p,u,pw,r)->{DesktopEngineTest.Mailbox box=new DesktopEngineTest.Mailbox();r.attach(box);return box;},replies::add,DesktopCalendars::create,()->{DesktopContacts source=new DesktopContacts(blocked);live.set(source);return source;})){
    engine.accept(DesktopEngineTest.request("login","connect",DesktopEngineTest.login().put("host","mail.spbu.ru")));DesktopEngineTest.result(replies);
    engine.accept(DesktopEngineTest.request("wrong","contactsPage",query("personal","").put("_owner","another-account")));check(DesktopEngineTest.result(replies).getJSONObject("error").getString("code").equals("NO_SESSION"));
    engine.accept(DesktopEngineTest.request("slow","contactsPage",query("personal","")));check(entered.await(2,TimeUnit.SECONDS));
    engine.accept(DesktopEngineTest.request("mail","folders",new JSONObject()));check(DesktopEngineTest.result(replies).getJSONArray("result").length()==3);
-   engine.accept(DesktopEngineTest.request("stop","cancel",new JSONObject().put("requestId","slow")));JSONObject a=DesktopEngineTest.result(replies),b=DesktopEngineTest.result(replies);check(a.toString().contains("CANCELLED")||b.toString().contains("CANCELLED"));check(!a.toString().contains("private")&&!b.toString().contains("private"));
+   engine.accept(DesktopEngineTest.request("stop","cancel",new JSONObject().put("requestId","slow")));check(live.get().closed());JSONObject a=DesktopEngineTest.result(replies),b=DesktopEngineTest.result(replies);check(a.toString().contains("CANCELLED")||b.toString().contains("CANCELLED"));check(!a.toString().contains("private")&&!b.toString().contains("private"));
    engine.accept(DesktopEngineTest.request("mail-again","folders",new JSONObject()));check(DesktopEngineTest.result(replies).has("result"));
   }
   OkHttpClient denied=new OkHttpClient.Builder().addInterceptor(chain->new Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(401).message("Denied").body(ResponseBody.create(MediaType.parse("text/plain"),"fixture private response")).build()).build();

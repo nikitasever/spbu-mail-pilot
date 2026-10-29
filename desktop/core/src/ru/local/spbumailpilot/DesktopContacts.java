@@ -55,5 +55,6 @@ final class DesktopContacts implements AutoCloseable {
             }
         }finally{active.compareAndSet(call,null);}
     }
-    public void close(){closed.set(true);Call call=active.get();if(call!=null)call.cancel();client.dispatcher().cancelAll();client.connectionPool().evictAll();client.dispatcher().executorService().shutdown();}
+    void cancel(){closed.set(true);Call call=active.get();if(call!=null)call.cancel();}
+    public void close(){cancel();client.dispatcher().cancelAll();client.connectionPool().evictAll();client.dispatcher().executorService().shutdown();}
 }
