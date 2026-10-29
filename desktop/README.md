@@ -181,7 +181,7 @@ CurrentUser с контекстом владельца и атомарной з�
 несохранённая контактная форма не является автоматически сохраняемым черновиком.
 
 
-Актуальный предварительный Windows-выпуск с импортом: [desktop-v0.1.0-preview.8](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/desktop-v0.1.0-preview.8).
+Предварительный Windows-выпуск с импортом: [desktop-v0.1.0-preview.8](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/desktop-v0.1.0-preview.8).
 
 ## Импорт CSV / vCard
 
@@ -224,6 +224,8 @@ quoted-printable/base64 не поддержаны: преобразуйте эк
 перечитайте книгу и выберите файл заново. Отмена/выход очищает предпросмотр.
 Экспорт описан ниже; синхронизации с телефонной/серверной книгой пока нет.
 
+
+Актуальный предварительный Windows-выпуск с экспортом: [desktop-v0.1.0-preview.9](https://github.com/nikitasever/spbu-mail-pilot-updates/releases/tag/desktop-v0.1.0-preview.9).
 
 ## Экспорт локальных контактов
 
