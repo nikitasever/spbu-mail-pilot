@@ -1,10 +1,12 @@
 import './styles.css';
+import {Attachments,parseAttachments} from './attachments';
 import {invoke} from '@tauri-apps/api/core';
 import {Client,Lane,StaleReply,MailFault,failure,parsePage,folderLabel,type Mail,type Page} from './protocol';
 const $=<T extends HTMLElement>(id:string)=>document.getElementById(id) as T;
 const text=(id:string,value:string)=>{$(id).textContent=value};
 const show=(id:string,visible:boolean)=>{$(id).hidden=!visible};
 const client=new Client((command,args)=>invoke(command,args));
+const attachmentUI=new Attachments(client,$('transfers'));
 const connectLane=new Lane(client),folderLane=new Lane(client),listLane=new Lane(client),bodyLane=new Lane(client);
 let connected=false,account='',folder='INBOX',rows:Mail[]=[],page:Page|null=null,selected:Mail|null=null,query='',epoch=0;
 let listBusy=false,bodyBusy=false,listGeneration=0,bodyGeneration=0;
@@ -51,7 +53,7 @@ async function openMail(row:Mail){
   try{
     const raw=await bodyLane.run<{text?:unknown;attachments?:unknown}>('body',{folder:currentFolder,uid:row.uid,validity:row.validity});if(ticket!==epoch||folder!==currentFolder||selected!==row||run!==bodyGeneration)return;
     if(typeof raw?.text!=='string')throw new MailFault('BAD_RESPONSE');text('body',raw.text);
-    const attachments=Array.isArray(raw.attachments)?raw.attachments:[];$('attachment-list').replaceChildren();for(const item of attachments.slice(0,500)){const li=document.createElement('li');li.textContent=typeof item?.name==='string'?item.name:'Вложение';$('attachment-list').append(li)}show('attachments',attachments.length>0);text('reader-status','Статус прочтения не изменён');
+    const attachments=parseAttachments(raw.attachments??[]);attachmentUI.render($('attachment-list'),attachments,{folder:currentFolder,uid:row.uid,validity:row.validity});show('attachments',attachments.length>0);text('reader-status','Статус прочтения не изменён');
   }catch(error){if(!(error instanceof StaleReply)&&ticket===epoch&&selected===row&&run===bodyGeneration){text('body-error',failure(error));show('body-error',true);text('reader-status','Не удалось загрузить письмо')}}
   finally{if(ticket===epoch&&selected===row&&run===bodyGeneration){bodyBusy=false;show('cancel-body',false)}}
 }
@@ -82,5 +84,5 @@ $('close-reader').addEventListener('click',resetReader);
 search.addEventListener('input',()=>show('clear-search',search.value.length>0));
 $('search-form').addEventListener('submit',event=>{event.preventDefault();query=search.value.trim();void loadPage(false)});
 $('clear-search').addEventListener('click',()=>{search.value='';query='';show('clear-search',false);search.focus();void loadPage(false)});
-$('logout').addEventListener('click',()=>{epoch++;connectLane.cancel();folderLane.cancel();listLane.cancel();bodyLane.cancel();connected=false;account='';rows=[];page=null;resetReader();folders.replaceChildren();text('account-name','');password.value='';hidePassword();search.value='';query='';show('clear-search',false);text('account-avatar','');text('folder-title','');show('workspace',false);show('login-screen',true);void client.start('disconnect').promise.catch(()=>{});user.focus()});
+$('logout').addEventListener('click',()=>{attachmentUI.reset();epoch++;connectLane.cancel();folderLane.cancel();listLane.cancel();bodyLane.cancel();connected=false;account='';rows=[];page=null;resetReader();folders.replaceChildren();text('account-name','');password.value='';hidePassword();search.value='';query='';show('clear-search',false);text('account-avatar','');text('folder-title','');show('workspace',false);show('login-screen',true);void client.start('disconnect').promise.catch(()=>{});user.focus()});
 if(!('__TAURI_INTERNALS__' in window)){text('login-error','Это предпросмотр интерфейса. Для подключения почты откройте установленное приложение Windows.');show('login-error',true);$<HTMLButtonElement>('connect').disabled=true}

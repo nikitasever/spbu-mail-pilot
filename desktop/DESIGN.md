@@ -27,11 +27,18 @@ submission; its text stays in session memory, not URLs/history/localStorage.
 
 Pending operations have text and cancellation; stale replies cannot update a
 new route. Loading and errors do not delete the displayed list during pagination.
-Readonly status does not pretend that reading changed Seen. Attachments are named
-metadata with an explicit limitation, not fake download buttons. Logout clears
+Readonly status does not pretend that reading changed Seen. Attachment rows precede
+body text; native save dialogs own destination choice. The shared Attachments
+controller owns per-file progress, duplicate suppression, cancellation, retry,
+completion/open actions and logout cleanup. A persistent sidebar queue stays visible
+while folders/messages change. Unknown transfer sizes remain indeterminate;
+MIME transfer bytes are not presented as decoded file sizes. Saves use private
+transfer directories and atomic destination replacement; cancellation does not
+mark a partial file as saved. Only explicitly saved document tokens can reach the
+native opener; executable/active-content types are save-only. Logout clears
 message content and invalidates outstanding requests. Body HTML/images/scripts
 are never executed or requested by the frontend.
 
 Production CSP permits local assets and IPC only; no external-page capabilities,
 filesystem, shell or HTTP plugin are granted to the web window. OS keychain,
-offline store, attachments, SMTP, calendar and account switching are future work.
+offline store, SMTP, calendar and account switching are future work.

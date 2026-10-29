@@ -3,13 +3,15 @@
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{collections::HashMap, io::{BufRead, BufReader, Write}, path::{Path, PathBuf}, process::{Child, ChildStdin, Command, Stdio}, sync::{mpsc, Arc, Mutex}, time::Duration};
-use tauri::Manager;
+use tauri::{Manager, Emitter};
+use std::sync::atomic::{AtomicU64,Ordering};
+mod attachments;
 
 #[derive(Deserialize)]
 struct Request { id: String, method: String, args: Value }
 type Reply = Result<Value, String>;
 type Pending = Arc<Mutex<HashMap<String, mpsc::Sender<Reply>>>>;
-struct Engine { child: Mutex<Option<Child>>, stdin: Mutex<ChildStdin>, pending: Pending }
+struct Engine { child: Mutex<Option<Child>>, stdin: Mutex<ChildStdin>, pending: Pending, saved: Mutex<HashMap<String,PathBuf>>, epoch:AtomicU64 }
 // Older Windows Java launchers may resolve their DLLs through the active ANSI code page.
 // Use an existing filesystem short alias when available; never change system locale or 8.3 policy.
 #[cfg(windows)]
@@ -29,7 +31,7 @@ fn java_root(root: &Path) -> PathBuf {
 fn java_root(root: &Path) -> PathBuf { root.to_path_buf() }
 
 impl Engine {
-    fn start(root: &Path) -> Result<Arc<Self>, String> {
+    fn start(root: &Path, events: Option<tauri::AppHandle>) -> Result<Arc<Self>, String> {
         let root = java_root(root);
         let java = root.join("runtime/bin").join(if cfg!(windows) { "java.exe" } else { "java" });
         let separator = if cfg!(windows) { ";" } else { ":" };
@@ -48,14 +50,22 @@ impl Engine {
                 if line.len() > 8 * 1024 * 1024 { break; }
                 let Ok(value) = serde_json::from_str::<Value>(&line) else { break };
                 let Some(id) = value.get("id").and_then(Value::as_str) else { continue };
+                if value["event"] == "attachmentProgress" {
+                    if waiting.lock().map(|map| map.contains_key(id)).unwrap_or(false) {
+                        if let (Some(app),Some(bytes),Some(total)) = (&events,value["bytes"].as_u64(),value["total"].as_i64()) {
+                            if bytes <= 209715200 && (-1..=209715200).contains(&total) { let _ = app.emit("attachment-progress", json!({"id":id,"bytes":bytes,"total":total})); }
+                        }
+                    }
+                    continue;
+                }
                 if let Ok(mut map) = waiting.lock() { if let Some(sender) = map.remove(id) { let _ = sender.send(Ok(value)); } }
             }
             if let Ok(mut map) = waiting.lock() { for (_, sender) in map.drain() { let _ = sender.send(Err("ENGINE_UNAVAILABLE".into())); } }
         });
-        Ok(Arc::new(Self { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), pending }))
+        Ok(Arc::new(Self { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), pending, saved:Mutex::new(HashMap::new()),epoch:AtomicU64::new(0) }))
     }
     fn request(&self, request: Request) -> Reply {
-        const METHODS: &[&str] = &["capabilities", "connect", "disconnect", "folders", "page", "body", "cancel"];
+        const METHODS: &[&str] = &["capabilities", "connect", "disconnect", "folders", "page", "body", "cancel", "attachment"];
         if request.id.is_empty() || request.id.len() > 64 || !request.id.bytes().all(|c| c.is_ascii_alphanumeric() || b"._-".contains(&c)) || !METHODS.contains(&request.method.as_str()) || !request.args.is_object() { return Err("BAD_REQUEST".into()); }
         let id = request.id.clone();
         let line = json!({"id": request.id, "method": request.method, "args": request.args}).to_string();
@@ -66,7 +76,7 @@ impl Engine {
           map.insert(id.clone(), sender); }
         let written = self.stdin.lock().map_err(|_| "ENGINE_UNAVAILABLE").and_then(|mut stream| writeln!(stream, "{}", line).and_then(|_| stream.flush()).map_err(|_| "ENGINE_UNAVAILABLE"));
         if written.is_err() { if let Ok(mut map) = self.pending.lock() { map.remove(&id); } return Err("ENGINE_UNAVAILABLE".into()); }
-        let result = receiver.recv_timeout(Duration::from_secs(90)).unwrap_or_else(|_| Err("ENGINE_UNAVAILABLE".into()));
+        let result = receiver.recv_timeout(Duration::from_secs(if request.method == "attachment" {600} else {90})).unwrap_or_else(|_| Err("ENGINE_UNAVAILABLE".into()));
         if let Ok(mut map) = self.pending.lock() { map.remove(&id); }
         result
     }
@@ -75,9 +85,23 @@ impl Engine {
 impl Drop for Engine { fn drop(&mut self) { self.stop(); } }
 
 #[tauri::command]
-async fn mail_request(request: Request, state: tauri::State<'_, Arc<Engine>>) -> Reply {
+async fn mail_request(request: Request, app:tauri::AppHandle, state: tauri::State<'_, Arc<Engine>>) -> Reply {
     let engine = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || engine.request(request)).await.map_err(|_| "ENGINE_UNAVAILABLE".to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        if request.method == "attachment" { return attachments::save(request,&app,&engine); }
+        // A WebView cannot inject a file destination or request arbitrary OS paths.
+        if request.method == "connect" || request.method == "disconnect" {
+            if let Ok(mut saved)=engine.saved.lock(){engine.epoch.fetch_add(1,Ordering::SeqCst);saved.clear();}
+        }
+        engine.request(request)
+    }).await.map_err(|_| "ENGINE_UNAVAILABLE".to_string())?
+}
+#[tauri::command]
+async fn open_saved(token:String,app:tauri::AppHandle,state:tauri::State<'_,Arc<Engine>>)->Result<(),String>{
+    let path=state.saved.lock().map_err(|_| "FILE_UNAVAILABLE")?.get(&token).cloned().ok_or("FILE_UNAVAILABLE")?;
+    if !attachments::openable(&path)||!path.is_file(){return Err("FILE_UNAVAILABLE".into());}
+    use tauri_plugin_opener::OpenerExt;
+    app.opener().open_path(path.to_string_lossy().into_owned(),None::<&str>).map_err(|_| "OPEN_FAILED".into())
 }
 fn root_for(app: &tauri::App) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let resources = app.path().resource_dir()?;
@@ -88,12 +112,12 @@ fn root_for(app: &tauri::App) -> Result<PathBuf, Box<dyn std::error::Error>> {
 fn main() {
     if std::env::args().any(|arg| arg == "--verify-engine") {
         let root = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).expect("Executable location missing");
-        let engine = Engine::start(&root).expect("Bundled engine unavailable");
+        let engine = Engine::start(&root,None).expect("Bundled engine unavailable");
         let reply = engine.request(Request { id: "probe".into(), method: "capabilities".into(), args: json!({}) }).expect("Engine probe failed");
         assert_eq!(reply["result"]["readOnly"], true);engine.stop();return;
     }
-    tauri::Builder::default().setup(|app| { let root = root_for(app)?;let engine = Engine::start(&root).map_err(std::io::Error::other)?;app.manage(engine);Ok(()) })
-        .invoke_handler(tauri::generate_handler![mail_request])
+    tauri::Builder::default().plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_opener::init()).setup(|app| { let root = root_for(app)?;let engine = Engine::start(&root,Some(app.handle().clone())).map_err(std::io::Error::other)?;app.manage(engine);Ok(()) })
+        .invoke_handler(tauri::generate_handler![mail_request,open_saved])
         .on_window_event(|window, event| { if matches!(event, tauri::WindowEvent::Destroyed) { if let Some(engine) = window.try_state::<Arc<Engine>>() { engine.stop(); } } })
         .run(tauri::generate_context!()).expect("Desktop window failed to start");
 }

@@ -43,6 +43,33 @@ public class DesktopEngineTest {
             engine.accept(request("stop","cancel",new JSONObject().put("requestId","connect")));
             JSONObject one=result(next),two=result(next);check(one.has("error")||two.has("error"));
         }
+        // Attachments use a private connection/worker; cancellation must not close the inbox session.
+        java.nio.file.Path directory=java.nio.file.Files.createTempDirectory("desktop-attachment-test-");
+        CountDownLatch downloading=new CountDownLatch(1),release=new CountDownLatch(1);
+        LinkedBlockingQueue<JSONObject> downloads=new LinkedBlockingQueue<>();
+        DesktopEngine.Gateway transfer=new DesktopEngine.Gateway(){
+            public JSONArray folders(){throw new AssertionError("Transfer connection used for inbox");}
+            public JSONObject page(String f,int o,String s,String q){throw new AssertionError();}
+            public JSONObject body(String f,String u,String v){throw new AssertionError();}
+            public JSONObject attachment(String f,String u,String v,String path,java.io.File dir,java.util.function.BooleanSupplier cancelled,AttachmentTransfer.Progress progress)throws Exception{
+                check(f.equals("INBOX")&&u.equals("42")&&v.equals("7")&&path.equals("1"));
+                downloading.countDown();progress.update(25,100);release.await(3,TimeUnit.SECONDS);
+                check(cancelled.getAsBoolean());throw new java.io.IOException("not-a-real-secret");
+            }
+            public void close(){release.countDown();}
+        };
+        java.util.concurrent.atomic.AtomicInteger connections=new java.util.concurrent.atomic.AtomicInteger();
+        try(DesktopEngine engine=new DesktopEngine((h,p,u,pw,register)->{DesktopEngine.Gateway gateway=connections.getAndIncrement()==0?new Mailbox():transfer;register.attach(gateway);return gateway;},message->{if(!message.has("event"))downloads.add(message);})){
+            engine.accept(request("login","connect",login()));result(downloads);
+            JSONObject fileArgs=new JSONObject().put("folder","INBOX").put("uid","42").put("validity","7").put("path","1").put("directory",directory.toString());
+            engine.accept(request("file","attachment",fileArgs));check(downloading.await(2,TimeUnit.SECONDS));
+            engine.accept(request("inbox","folders",new JSONObject()));check(result(downloads).getJSONArray("result").length()==3);
+            engine.accept(request("cancel-file","cancel",new JSONObject().put("requestId","file")));
+            JSONObject a=result(downloads),b=result(downloads);check(a.has("error")||b.has("error"));
+            engine.accept(request("inbox-after","folders",new JSONObject()));check(result(downloads).getJSONArray("result").length()==3);
+            engine.accept(request("bad-file","attachment",new JSONObject(fileArgs.toString()).put("path","../../secret")));
+            check(result(downloads).getJSONObject("error").getString("code").equals("BAD_REQUEST"));
+        }finally{java.nio.file.Files.delete(directory);}
         System.out.println("PASS desktop engine: isolated protocol, real folder/UID DTOs, cancellation during connect/read, session invalidation, method allowlist, secret-free failures and HTML text adapter.");
     }
 }

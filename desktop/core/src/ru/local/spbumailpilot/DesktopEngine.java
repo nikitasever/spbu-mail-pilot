@@ -12,22 +12,24 @@ public final class DesktopEngine implements AutoCloseable {
         JSONArray folders()throws Exception;
         JSONObject page(String folder,int offset,String snapshot,String query)throws Exception;
         JSONObject body(String folder,String uid,String validity)throws Exception;
+        default JSONObject attachment(String folder,String uid,String validity,String path,File directory,java.util.function.BooleanSupplier cancelled,AttachmentTransfer.Progress progress)throws Exception{throw new IOException("Unsupported attachment");}
     }
     interface Register {void attach(Gateway gateway)throws Exception;}
     interface Factory {Gateway connect(String host,int port,String user,String password,Register register)throws Exception;}
     interface Sink {void write(JSONObject message);}
     private static final class Failure extends Exception {final String code;Failure(String code){this.code=code;}}
     private static final class Operation {
-        final AtomicBoolean stopped=new AtomicBoolean();volatile Gateway active;
+        final AtomicBoolean stopped=new AtomicBoolean();volatile Gateway active;boolean transfer;
         void check()throws Failure{if(stopped.get())throw new Failure("CANCELLED");}
     }
     private final Factory factory;
     private final Sink sink;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
+    private final ExecutorService transfers=Executors.newSingleThreadExecutor();
     private final ExecutorService closer=Executors.newCachedThreadPool();
     private final ConcurrentHashMap<String,Operation> pending=new ConcurrentHashMap<>();
     private volatile boolean closed;
-    private SavedAccounts.Login credentials; // session memory only; never serialized
+    private volatile SavedAccounts.Login credentials; // session memory only; never serialized
     private volatile Gateway session; // worker only; a cancelled connection is never reused
     DesktopEngine(Factory factory,Sink sink){this.factory=factory;this.sink=sink;}
     private static String string(JSONObject args,String key,int max,boolean empty)throws Failure {
@@ -62,17 +64,19 @@ public final class DesktopEngine implements AutoCloseable {
             Object raw=request.opt("args");if(raw!=null&&!(raw instanceof JSONObject))throw new Failure("BAD_REQUEST");
             JSONObject args=raw==null?new JSONObject():(JSONObject)raw;
             if(closed)throw new Failure("CLOSED");
-            if(method.equals("capabilities")){response(id,new JSONObject().put("version","desktop-0.1.0-dev").put("readOnly",true).put("persistentCredentials",false),null);return;}
+            if(method.equals("capabilities")){response(id,new JSONObject().put("version","desktop-0.1.0-dev").put("readOnly",true).put("persistentCredentials",false).put("attachments",true),null);return;}
             if(method.equals("cancel")){
                 String target=string(args,"requestId",64,false);Operation old=pending.get(target);if(old!=null)stop(old);
                 response(id,new JSONObject().put("cancelled",old!=null),null);return;
             }
-            if(!java.util.Arrays.asList("connect","disconnect","folders","page","body").contains(method))throw new Failure("BAD_REQUEST");
-            Operation operation=new Operation();
+            if(!java.util.Arrays.asList("connect","disconnect","folders","page","body","attachment").contains(method))throw new Failure("BAD_REQUEST");
+            if(method.equals("connect")||method.equals("disconnect"))for(Operation task:pending.values())if(task.transfer)stop(task);
+            Operation operation=new Operation();operation.transfer=method.equals("attachment");
             if(pending.size()>=16)throw new Failure("BUSY");
             if(pending.putIfAbsent(id,operation)!=null){response(null,null,"DUPLICATE_REQUEST");return;}
             final String key=id;
-            worker.execute(()->{
+            if(operation.transfer)sink.write(new JSONObject().put("id",key).put("event","attachmentProgress").put("bytes",0).put("total",-1));
+            (operation.transfer?transfers:worker).execute(()->{
                 try{
                     operation.check();Object result;
                     switch(method){
@@ -84,6 +88,25 @@ public final class DesktopEngine implements AutoCloseable {
                             Gateway next=factory.connect(host,port,user,password,gateway->{operation.active=gateway;if(operation.stopped.get())closeLater(gateway);operation.check();});
                             operation.active=next;operation.check();session=next;credentials=new SavedAccounts.Login(host,port,user,password);
                             result=new JSONObject().put("account",user).put("connected",true);break;
+                        }
+                        case "attachment":{
+                            SavedAccounts.Login auth=credentials;if(auth==null)throw new Failure("NO_SESSION");
+                            String name=folder(args),messageUid=uid(args,"uid"),validity=uid(args,"validity"),path=string(args,"path",160,false);
+                            if(!path.matches("root|(?:[0-9]{1,5}|m)(?:\\.(?:[0-9]{1,5}|m)){0,12}"))throw new Failure("BAD_REQUEST");
+                            // Directory is injected by the native shell, never selected by WebView code.
+                            File directory=new File(string(args,"directory",32768,false));
+                            if(!directory.isDirectory())throw new Failure("BAD_REQUEST");
+                            Gateway transfer=factory.connect(auth.host,auth.port,auth.user,auth.password,gateway->{operation.active=gateway;if(operation.stopped.get())closeLater(gateway);operation.check();});
+                            operation.active=transfer;
+                            final long[] last={0};
+                            try{
+                                operation.check();
+                                result=transfer.attachment(name,messageUid,validity,path,directory,operation.stopped::get,(bytes,total)->{
+                                    long now=System.nanoTime();if(last[0]==0||now-last[0]>=150000000L){last[0]=now;sink.write(new JSONObject().put("id",key).put("event","attachmentProgress").put("bytes",bytes).put("total",total));}
+                                });
+                                operation.check();
+                            }finally{closeLater(transfer);}
+                            break;
                         }
                         case "disconnect":closeLater(session);session=null;credentials=null;result=new JSONObject().put("connected",false);break;
                         default:{
@@ -114,12 +137,13 @@ public final class DesktopEngine implements AutoCloseable {
             if(current instanceof javax.mail.AuthenticationFailedException)return "AUTH";
             if(current instanceof java.net.SocketTimeoutException||current instanceof java.net.ConnectException||current instanceof java.net.UnknownHostException)return "NETWORK";
             String message=current.getMessage();
+            if("Attachment too large".equals(message)||"Attachment transfer too large".equals(message))return "TOO_LARGE";
             if("UID validity changed".equals(message)||"Message unavailable".equals(message))return "STALE_MAIL";
             Throwable cause=current.getCause();if(cause==null&&current instanceof javax.mail.MessagingException)cause=((javax.mail.MessagingException)current).getNextException();current=cause;
         }
         return "UNAVAILABLE";
     }
-    @Override public void close(){closed=true;for(Operation operation:pending.values())stop(operation);worker.shutdownNow();closeLater(session);session=null;credentials=null;closer.shutdown();}
+    @Override public void close(){closed=true;for(Operation operation:pending.values())stop(operation);worker.shutdownNow();transfers.shutdownNow();closeLater(session);session=null;credentials=null;closer.shutdown();}
     private static String line(Reader input)throws IOException{
         StringBuilder result=new StringBuilder();int c;
         while((c=input.read())!=-1){if(c=='\n')return result.toString();if(result.length()>=65536)throw new IOException("Protocol line limit");if(c!='\r')result.append((char)c);}
@@ -133,6 +157,7 @@ public final class DesktopEngine implements AutoCloseable {
                 public JSONArray folders()throws Exception{return reader.folders();}
                 public JSONObject page(String folder,int offset,String snapshot,String query)throws Exception{return reader.page(folder,offset,snapshot,query);}
                 public JSONObject body(String folder,String uid,String validity)throws Exception{return reader.body(folder,uid,validity);}
+                public JSONObject attachment(String folder,String uid,String validity,String path,File directory,java.util.function.BooleanSupplier cancelled,AttachmentTransfer.Progress progress)throws Exception{return reader.attachmentMeasured(folder,uid,validity,path,directory,cancelled,progress);}
                 public void close(){reader.close();}
             };
             register.attach(gateway);
