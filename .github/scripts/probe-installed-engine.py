@@ -11,7 +11,7 @@ cp=str(classes)+';'+str(libraries/'*')
 reply=subprocess.run([str(java),'-Djava.awt.headless=true','-cp',cp,'ru.local.spbumailpilot.DesktopEngine'],input='{"id":"probe","method":"capabilities","args":{}}\n',text=True,encoding='utf-8',capture_output=True,timeout=15)
 print('Installed Java exit:',reply.returncode)
 if reply.returncode: print(reply.stderr)
-assert reply.returncode==0 and json.loads(reply.stdout)['result']['readOnly'] is True,'Installed Java protocol failed'
+assert reply.returncode==0 and json.loads(reply.stdout)['result']['sending'] is True,'Installed Java protocol failed'
 probe=subprocess.run([str(binary),'--verify-engine'],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=110)
 print('Installed shell probe exit:',probe.returncode)
 if probe.returncode:print(probe.stderr)
