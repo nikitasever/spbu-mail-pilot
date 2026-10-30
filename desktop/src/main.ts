@@ -25,9 +25,9 @@ function avatar(name:string){const words=name.trim().split(/[\s@._-]+/).filter(B
 function tone(name:string){let hash=0;for(const c of name)hash=(hash*31+c.charCodeAt(0))|0;return String(Math.abs(hash)%5)}
 function span(className:string,value:string){const node=document.createElement('span');node.className=className;node.textContent=value;return node}
 function date(value:string,full=false){const parsed=new Date(value);return Number.isNaN(parsed.getTime())?'':new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',...(full?{dateStyle:'long',timeStyle:'short'}:{day:'numeric',month:'short'})}).format(parsed)}
-function listState(){show('cancel-list',listBusy);show('more',Boolean(page?.hasMore)&&!listBusy);$<HTMLButtonElement>('refresh').disabled=listBusy;text('list-status',listBusy?'Загрузка…':'');text('list-count',page?`${rows.length} из ${page.total} писем`:listBusy?'Получаем письма…':'Писем пока нет')}
+function listState(){seenControl();show('cancel-list',listBusy);show('more',Boolean(page?.hasMore)&&!listBusy);$<HTMLButtonElement>('refresh').disabled=listBusy;text('list-status',listBusy?'Загрузка…':'');text('list-count',page?`${rows.length} из ${page.total} писем`:listBusy?'Получаем письма…':'Писем пока нет')}
 function seenKey(name:string,row:Mail){return JSON.stringify([name,row.validity,row.uid])}
-function seenControl(){const button=$<HTMLButtonElement>('toggle-seen');button.hidden=!selected||bodyBusy;button.disabled=seenPending||Boolean(selected&&uncertainSeen.has(seenKey(folder,selected)));button.textContent=selected?.seen?'Отметить непрочитанным':'Отметить прочитанным';button.setAttribute('aria-busy',String(seenPending))}
+function seenControl(){const button=$<HTMLButtonElement>('toggle-seen');button.hidden=!selected||bodyBusy;button.disabled=seenPending||listBusy||Boolean(selected&&uncertainSeen.has(seenKey(folder,selected)));button.textContent=selected?.seen?'Отметить непрочитанным':'Отметить прочитанным';button.setAttribute('aria-busy',String(seenPending))}
 function resetReader(){replyMail=null;show('reply-mail',false);bodyGeneration++;bodyLane.cancel();selected=null;bodyBusy=false;seenControl();show('message',false);show('reader-empty',true);$('workspace').classList.remove('reading');$('body').replaceChildren();$('sender').replaceChildren();$('attachment-list').replaceChildren();text('subject','');text('reader-folder','');show('body-error',false);renderRows()}
 function renderRows(){
   list.replaceChildren();
@@ -72,7 +72,7 @@ async function openMail(row:Mail){
   finally{if(ticket===epoch&&selected===row&&run===bodyGeneration){bodyBusy=false;show('cancel-body',false);seenControl()}}
 }
 async function toggleSeen(){
-  const row=selected;if(!connected||!row||bodyBusy||seenPending||uncertainSeen.has(seenKey(folder,row)))return;
+  const row=selected;if(!connected||!row||bodyBusy||listBusy||seenPending||uncertainSeen.has(seenKey(folder,row)))return;
   const ticket=epoch,currentFolder=folder,key=seenKey(folder,row),seen=!row.seen;
   let release!:()=>void;seenWait=new Promise<void>(resolve=>{release=resolve});
   seenPending=true;seenControl();text('reader-status','Сохраняем статус на сервере…');show('body-error',false);

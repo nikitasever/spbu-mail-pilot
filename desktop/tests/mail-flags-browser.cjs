@@ -6,7 +6,7 @@ const path=require('node:path');
  const page=await browser.newPage({viewport:{width:1360,height:860}});
  try{
  await page.addInitScript(()=>{
-  let serial=0;window.flagRequests=[];window.flagMode='success';window.flags={};window.flagDelay=10;
+  let serial=0;window.flagRequests=[];window.flagMode='success';window.flags={};window.flagDelay=10;window.pageDelay=0;window.hasMore=false;
   window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:'main'},currentWebview:{label:'main',windowLabel:'main'}},transformCallback:()=>++serial,invoke:async(command,params)=>{
    if(command==='account_status'||command==='draft_restore')return null;
    if(command==='plugin:event|listen')return 1;
@@ -14,7 +14,7 @@ const path=require('node:path');
    const rows=[{uid:'42',validity:'7',sender:'Учебный отдел',email:'office@example.invalid',subject:'Материалы к заседанию',date:'2026-10-28T07:10:00Z',seen:window.flags[args.folder]??false},{uid:'43',validity:'7',sender:'Коллега',email:'person@example.invalid',subject:'Второе письмо',date:'2026-10-28T07:00:00Z',seen:true}];
    if(method==='connect')result={connected:true,epoch:17};
    else if(method==='folders')result=['INBOX','Sent'];
-   else if(method==='page')result={folder:args.folder,messages:rows,snapshot:'one',nextOffset:2,total:2,hasMore:false};
+   else if(method==='page'){await new Promise(r=>setTimeout(r,window.pageDelay));result={folder:args.folder,messages:args.offset?[]:rows,snapshot:'one',nextOffset:args.offset?3:2,total:window.hasMore?3:2,hasMore:window.hasMore&&!args.offset};}
    else if(method==='body')result={text:'Текст письма без автоматического изменения статуса.',attachments:[]};
    else if(method==='setSeen'){
     window.flagRequests.push(args);const mode=window.flagMode;await new Promise(r=>setTimeout(r,window.flagDelay));
@@ -53,6 +53,12 @@ const path=require('node:path');
  await open();await page.locator('#toggle-seen').click();await page.locator('#refresh').click();
  await page.locator('#list-status').filter({hasText:'Загрузка'}).waitFor();await page.waitForTimeout(350);
  assert(await page.locator('.letter').first().evaluate(b=>b.classList.contains('unread')));
+ // Loading another page cannot race a flag write for the still-open reader.
+ await page.evaluate(()=>window.hasMore=true);await page.locator('#refresh').click();await open();
+ await page.evaluate(()=>window.pageDelay=250);await page.locator('#more').click();
+ assert(await page.locator('#toggle-seen').isDisabled());const before=await page.evaluate(()=>window.flagRequests.length);
+ await page.locator('#toggle-seen').evaluate(b=>b.click());assert.equal(await page.evaluate(()=>window.flagRequests.length),before);
+ await waitLabel('Отметить прочитанным');await page.evaluate(()=>{window.pageDelay=0;window.hasMore=false});
  // Wrong UIDVALIDITY in the reply is never accepted.
  await open();await page.evaluate(()=>window.flagMode='wrong');await page.locator('#toggle-seen').click();await page.locator('#body-error').waitFor();
  assert(await page.locator('#toggle-seen').isDisabled());assert(await page.locator('.letter').first().evaluate(b=>b.classList.contains('unread')));
