@@ -225,3 +225,12 @@ AtomicFile/Keystore и Android-диалог пока требуют устрой
 общего JSON задач/заметок/событий используют CAS и SharedStateMerge для согласования
 с открытым WebView. Полная матрица функций и следующие блоки:
 [native-feature-status.md](native-feature-status.md).
+
+#### Следующий Windows-блок после preview 9: read/unread
+
+Реализовано явное изменение Seen из панели чтения, с отдельным IMAP-соединением,
+защитой epoch/owner/UIDVALIDITY, обновлением списка после подтверждения и запретом
+автоповтора при неизвестном результате. BODY.PEEK при простом чтении сохранён.
+Браузерная регрессия: `desktop/tests/mail-flags-browser.cjs`; протокольные проверки:
+`DesktopEngineTest` и общий `ReadFlagTest`. Это исходники следующей сборки;
+опубликованный preview 9 не изменён. Перемещение/удаление писем остаются впереди.

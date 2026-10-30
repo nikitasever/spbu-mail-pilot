@@ -188,3 +188,13 @@ is never modified. Success returns basename/format/count only; logout clears mod
 state. Fixture E2E covers full versus filtered scope, parts, errors, no repeat,
 close protection and narrow layout; Windows unit tests own encoders/roundtrip and
 file safety. Native OS dialog interaction remains a manual acceptance check.
+
+Server read flags use the existing reader toolbar and inline status/error regions.
+Opening a body stays BODY.PEEK/read-only. The explicit read/unread button is disabled
+while its write is pending; the list changes only after an identity-matched server
+acknowledgement. Ambiguous failures keep the old visible flag and freeze that
+message's button until a fresh folder read. Folder reads wait for a pending flag
+write, preventing an earlier snapshot from overwriting its acknowledgement.
+A separate JVM worker/IMAP connection owns flag writes; body and attachment jobs
+remain independent. Native session epoch and injected account owner bind the write;
+UIDVALIDITY and UID bind the target. Disconnect stops outstanding mutation jobs.

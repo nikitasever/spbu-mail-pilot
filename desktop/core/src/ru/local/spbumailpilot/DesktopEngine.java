@@ -12,6 +12,7 @@ public final class DesktopEngine implements AutoCloseable {
         JSONArray folders()throws Exception;
         JSONObject page(String folder,int offset,String snapshot,String query)throws Exception;
         JSONObject body(String folder,String uid,String validity)throws Exception;
+        default JSONObject seen(String folder,String uid,String validity,boolean seen)throws Exception{throw new IOException("Unsupported flags");}
         default JSONObject attachment(String folder,String uid,String validity,String path,File directory,java.util.function.BooleanSupplier cancelled,AttachmentTransfer.Progress progress)throws Exception{throw new IOException("Unsupported attachment");}
     }
     interface Register {void attach(Gateway gateway)throws Exception;}
@@ -19,7 +20,7 @@ public final class DesktopEngine implements AutoCloseable {
     interface Sink {void write(JSONObject message);}
     private static final class Failure extends Exception {final String code;Failure(String code){this.code=code;}}
     private static final class Operation {
-        final AtomicBoolean stopped=new AtomicBoolean();volatile Gateway active;volatile AutoCloseable resource;boolean transfer,write,started,calendar,contacts;
+        final AtomicBoolean stopped=new AtomicBoolean();volatile Gateway active;volatile AutoCloseable resource;boolean transfer,write,started,calendar,contacts,mutation;
         synchronized void beginSend()throws Failure{check();started=true;}
         void check()throws Failure{if(stopped.get())throw new Failure("CANCELLED");}
     }
@@ -33,6 +34,7 @@ public final class DesktopEngine implements AutoCloseable {
     private final DesktopOutgoing outgoing=new DesktopOutgoing();
     private final ExecutorService sends=Executors.newSingleThreadExecutor();
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
+    private final ExecutorService mutations=Executors.newSingleThreadExecutor();
     private final ExecutorService transfers=Executors.newSingleThreadExecutor();
     private final ExecutorService closer=Executors.newCachedThreadPool();
     private final ConcurrentHashMap<String,Operation> pending=new ConcurrentHashMap<>();
@@ -79,17 +81,17 @@ public final class DesktopEngine implements AutoCloseable {
                 String target=string(args,"requestId",64,false);Operation old=pending.get(target);boolean stopped=old!=null&&stop(old);
                 response(id,new JSONObject().put("cancelled",stopped),null);return;
             }
-            if(!java.util.Arrays.asList("connect","disconnect","folders","page","body","attachment","send","calendarDiscover","calendarMonth","contactsPage").contains(method))throw new Failure("BAD_REQUEST");
+            if(!java.util.Arrays.asList("connect","disconnect","folders","page","body","setSeen","attachment","send","calendarDiscover","calendarMonth","contactsPage").contains(method))throw new Failure("BAD_REQUEST");
             if(method.equals("connect")||method.equals("disconnect")){
-                credentials=null;for(Operation task:pending.values())if(task.transfer||task.calendar||task.contacts)stop(task);closeLater(contacts);contacts=null;
+                credentials=null;for(Operation task:pending.values())if(task.transfer||task.calendar||task.contacts||task.mutation)stop(task);closeLater(contacts);contacts=null;
             }
             SavedAccounts.Login contactAuth=credentials;
-            Operation operation=new Operation();operation.contacts=method.equals("contactsPage");operation.transfer=method.equals("attachment");operation.write=method.equals("send");operation.calendar=method.equals("calendarDiscover")||method.equals("calendarMonth");
+            Operation operation=new Operation();operation.mutation=method.equals("setSeen");operation.contacts=method.equals("contactsPage");operation.transfer=method.equals("attachment");operation.write=method.equals("send");operation.calendar=method.equals("calendarDiscover")||method.equals("calendarMonth");
             if(pending.size()>=16)throw new Failure("BUSY");
             if(pending.putIfAbsent(id,operation)!=null){response(null,null,"DUPLICATE_REQUEST");return;}
             final String key=id;
             if(operation.transfer)sink.write(new JSONObject().put("id",key).put("event","attachmentProgress").put("bytes",0).put("total",-1));
-            (operation.contacts?contactsWorker:operation.calendar?calendarWorker:operation.write?sends:operation.transfer?transfers:worker).execute(()->{
+            (operation.mutation?mutations:operation.contacts?contactsWorker:operation.calendar?calendarWorker:operation.write?sends:operation.transfer?transfers:worker).execute(()->{
                 try{
                     operation.check();Object result;
                     switch(method){
@@ -101,6 +103,22 @@ public final class DesktopEngine implements AutoCloseable {
                             Gateway next=factory.connect(host,port,user,password,gateway->{operation.active=gateway;if(operation.stopped.get())closeLater(gateway);operation.check();});
                             operation.active=next;operation.check();session=next;credentials=new SavedAccounts.Login(host,port,user,password);
                             result=new JSONObject().put("account",user).put("connected",true);break;
+                        }
+                        case "setSeen":{
+                            if(contactAuth==null||contactAuth!=credentials||!DesktopContacts.owner(contactAuth).equals(args.optString("_owner")))throw new Failure("NO_SESSION");
+                            String name=folder(args),messageUid=uid(args,"uid"),validity=uid(args,"validity");
+                            if(!(args.opt("seen") instanceof Boolean))throw new Failure("BAD_REQUEST");
+                            boolean seen=args.getBoolean("seen");
+                            // A private connection keeps flag writes independent of inbox reads/cancellation.
+                            Gateway target=factory.connect(contactAuth.host,contactAuth.port,contactAuth.user,contactAuth.password,gateway->{operation.active=gateway;if(operation.stopped.get())closeLater(gateway);operation.check();});
+                            operation.active=target;
+                            try{
+                                operation.check();if(contactAuth!=credentials)throw new Failure("NO_SESSION");
+                                JSONObject changed=target.seen(name,messageUid,validity,seen);
+                                operation.check();if(contactAuth!=credentials)throw new Failure("NO_SESSION");
+                                if(!(changed.opt("seen") instanceof Boolean)||changed.getBoolean("seen")!=seen)throw new Failure("FLAG_REJECTED");
+                                result=new JSONObject().put("folder",name).put("uid",messageUid).put("validity",validity).put("seen",seen);
+                            }finally{closeLater(target);}break;
                         }
                         case "contactsPage":{
                             if(contactAuth==null||contactAuth!=credentials||!DesktopContacts.owner(contactAuth).equals(args.optString("_owner")))throw new Failure("NO_SESSION");
@@ -177,7 +195,7 @@ public final class DesktopEngine implements AutoCloseable {
         }
         return "UNAVAILABLE";
     }
-    @Override public void close(){closed=true;for(Operation operation:pending.values())stop(operation);worker.shutdownNow();transfers.shutdownNow();sends.shutdownNow();calendarWorker.shutdownNow();contactsWorker.shutdownNow();closeLater(contacts);closeLater(session);session=null;credentials=null;closer.shutdown();}
+    @Override public void close(){closed=true;for(Operation operation:pending.values())stop(operation);worker.shutdownNow();mutations.shutdownNow();transfers.shutdownNow();sends.shutdownNow();calendarWorker.shutdownNow();contactsWorker.shutdownNow();closeLater(contacts);closeLater(session);session=null;credentials=null;closer.shutdown();}
     private static String line(Reader input)throws IOException{
         StringBuilder result=new StringBuilder();int c;
         while((c=input.read())!=-1){if(c=='\n')return result.toString();if(result.length()>=1048576)throw new IOException("Protocol line limit");if(c!='\r')result.append((char)c);}
@@ -191,6 +209,7 @@ public final class DesktopEngine implements AutoCloseable {
                 public JSONArray folders()throws Exception{return reader.folders();}
                 public JSONObject page(String folder,int offset,String snapshot,String query)throws Exception{return reader.page(folder,offset,snapshot,query);}
                 public JSONObject body(String folder,String uid,String validity)throws Exception{return reader.body(folder,uid,validity);}
+                public JSONObject seen(String folder,String uid,String validity,boolean seen)throws Exception{return reader.seen(folder,uid,validity,seen);}
                 public JSONObject attachment(String folder,String uid,String validity,String path,File directory,java.util.function.BooleanSupplier cancelled,AttachmentTransfer.Progress progress)throws Exception{return reader.attachmentMeasured(folder,uid,validity,path,directory,cancelled,progress);}
                 public void close(){reader.close();}
             };

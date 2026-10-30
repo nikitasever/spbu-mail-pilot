@@ -70,6 +70,39 @@ public class DesktopEngineTest {
             engine.accept(request("bad-file","attachment",new JSONObject(fileArgs.toString()).put("path","../../secret")));
             check(result(downloads).getJSONObject("error").getString("code").equals("BAD_REQUEST"));
         }finally{java.nio.file.Files.delete(directory);}
+        // Flag writes have their own connection; validate identity/boolean before connecting.
+        LinkedBlockingQueue<JSONObject> flags=new LinkedBlockingQueue<>();
+        java.util.concurrent.atomic.AtomicInteger opened=new java.util.concurrent.atomic.AtomicInteger(),writes=new java.util.concurrent.atomic.AtomicInteger();
+        CountDownLatch flagEntered=new CountDownLatch(1),flagRelease=new CountDownLatch(1);
+        DesktopEngine.Gateway flagGateway=new DesktopEngine.Gateway(){
+            public JSONArray folders(){throw new AssertionError();}
+            public JSONObject page(String f,int o,String s,String q){throw new AssertionError();}
+            public JSONObject body(String f,String u,String v){throw new AssertionError();}
+            public JSONObject seen(String f,String u,String v,boolean seen)throws Exception{
+                check(f.equals("INBOX")&&u.equals("42"));writes.incrementAndGet();
+                if(v.equals("9"))return new JSONObject().put("seen",!seen);
+                if(!v.equals("7"))throw new javax.mail.MessagingException("UID validity changed");
+                if(seen){flagEntered.countDown();flagRelease.await(3,TimeUnit.SECONDS);}
+                return new JSONObject().put("seen",seen);
+            }
+            public void close(){flagRelease.countDown();}
+        };
+        try(DesktopEngine engine=new DesktopEngine((h,p,u,pw,register)->{DesktopEngine.Gateway g=opened.getAndIncrement()==0?new Mailbox():flagGateway;register.attach(g);return g;},flags::add)){
+            engine.accept(request("login","connect",login()));result(flags);
+            JSONObject a=new JSONObject().put("folder","INBOX").put("uid","42").put("validity","7").put("seen",true)
+                .put("_owner",DesktopContacts.owner(new SavedAccounts.Login("fixture.invalid",993,"fixture","not-a-real-secret")));
+            engine.accept(request("wrong-owner","setSeen",new JSONObject(a.toString()).put("_owner","wrong")));
+            check(result(flags).getJSONObject("error").getString("code").equals("NO_SESSION"));
+            engine.accept(request("wrong-type","setSeen",new JSONObject(a.toString()).put("seen","true")));
+            check(result(flags).getJSONObject("error").getString("code").equals("BAD_REQUEST"));check(opened.get()==1);
+            engine.accept(request("flags","setSeen",a));check(flagEntered.await(2,TimeUnit.SECONDS));
+            engine.accept(request("read-during-flags","folders",new JSONObject()));check(result(flags).getJSONArray("result").length()==3);
+            flagRelease.countDown();JSONObject changed=result(flags).getJSONObject("result");check(changed.getBoolean("seen")&&changed.getString("uid").equals("42")&&changed.getString("validity").equals("7"));
+            engine.accept(request("unread","setSeen",new JSONObject(a.toString()).put("seen",false)));check(!result(flags).getJSONObject("result").getBoolean("seen"));
+            engine.accept(request("stale","setSeen",new JSONObject(a.toString()).put("validity","8")));check(result(flags).getJSONObject("error").getString("code").equals("STALE_MAIL"));
+            engine.accept(request("rejected","setSeen",new JSONObject(a.toString()).put("validity","9")));check(result(flags).getJSONObject("error").getString("code").equals("FLAG_REJECTED"));
+            check(writes.get()==4);
+        }
         System.out.println("PASS desktop engine: isolated protocol, real folder/UID DTOs, cancellation during connect/read, session invalidation, method allowlist, secret-free failures and HTML text adapter.");
     }
 }
