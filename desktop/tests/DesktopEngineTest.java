@@ -76,7 +76,7 @@ public class DesktopEngineTest {
         CountDownLatch flagEntered=new CountDownLatch(1),flagRelease=new CountDownLatch(1);
         DesktopEngine.Gateway flagGateway=new DesktopEngine.Gateway(){
             public JSONArray folders(){throw new AssertionError();}
-            public JSONObject page(String f,int o,String s,String q){throw new AssertionError();}
+            public JSONObject page(String f,int o,String s,String q){return new JSONObject().put("freshFlags",true);}
             public JSONObject body(String f,String u,String v){throw new AssertionError();}
             public JSONObject seen(String f,String u,String v,boolean seen)throws Exception{
                 check(f.equals("INBOX")&&u.equals("42"));writes.incrementAndGet();
@@ -102,6 +102,9 @@ public class DesktopEngineTest {
             engine.accept(request("stale","setSeen",new JSONObject(a.toString()).put("validity","8")));check(result(flags).getJSONObject("error").getString("code").equals("STALE_MAIL"));
             engine.accept(request("rejected","setSeen",new JSONObject(a.toString()).put("validity","9")));check(result(flags).getJSONObject("error").getString("code").equals("FLAG_REJECTED"));
             check(writes.get()==4);
+            int beforeRefresh=opened.get();
+            engine.accept(request("refresh-flags","page",new JSONObject().put("folder","INBOX").put("offset",0).put("snapshot","").put("query","")));
+            check(result(flags).getJSONObject("result").getBoolean("freshFlags"));check(opened.get()==beforeRefresh+1);
         }
         System.out.println("PASS desktop engine: isolated protocol, real folder/UID DTOs, cancellation during connect/read, session invalidation, method allowlist, secret-free failures and HTML text adapter.");
     }

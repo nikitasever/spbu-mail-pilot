@@ -198,3 +198,5 @@ write, preventing an earlier snapshot from overwriting its acknowledgement.
 A separate JVM worker/IMAP connection owns flag writes; body and attachment jobs
 remain independent. Native session epoch and injected account owner bind the write;
 UIDVALIDITY and UID bind the target. Disconnect stops outstanding mutation jobs.
+A full refresh after any attempted flag write also reopens the reading connection,
+so JavaMail's previously cached flags cannot masquerade as a fresh server result.

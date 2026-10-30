@@ -40,6 +40,8 @@ public final class DesktopEngine implements AutoCloseable {
     private final ConcurrentHashMap<String,Operation> pending=new ConcurrentHashMap<>();
     private volatile boolean closed;
     private volatile SavedAccounts.Login credentials; // session memory only; never serialized
+    private final java.util.concurrent.atomic.AtomicLong flagRevision=new java.util.concurrent.atomic.AtomicLong();
+    private long readFlagRevision; // inbox worker only
     private volatile Gateway session; // worker only; a cancelled connection is never reused
     DesktopEngine(Factory factory,Sink sink){this(factory,sink,DesktopCalendars::create);}
     DesktopEngine(Factory factory,Sink sink,DesktopCalendars.Factory calendars){this(factory,sink,calendars,DesktopContacts::new);}
@@ -118,7 +120,7 @@ public final class DesktopEngine implements AutoCloseable {
                                 operation.check();if(contactAuth!=credentials)throw new Failure("NO_SESSION");
                                 if(!(changed.opt("seen") instanceof Boolean)||changed.getBoolean("seen")!=seen)throw new Failure("FLAG_REJECTED");
                                 result=new JSONObject().put("folder",name).put("uid",messageUid).put("validity",validity).put("seen",seen);
-                            }finally{closeLater(target);}break;
+                            }finally{flagRevision.incrementAndGet();closeLater(target);}break;
                         }
                         case "contactsPage":{
                             if(contactAuth==null||contactAuth!=credentials||!DesktopContacts.owner(contactAuth).equals(args.optString("_owner")))throw new Failure("NO_SESSION");
@@ -159,6 +161,12 @@ public final class DesktopEngine implements AutoCloseable {
                         }
                         case "disconnect":closeLater(session);session=null;credentials=null;result=new JSONObject().put("connected",false);break;
                         default:{
+                            // JavaMail caches flags on an open folder. A full refresh after a
+                            // separate flag write (including ambiguous failure) must reopen it.
+                            long freshFlags=flagRevision.get();
+                            if(method.equals("page")&&args.optInt("offset",-1)==0&&freshFlags!=readFlagRevision){
+                                closeLater(session);session=null;readFlagRevision=freshFlags;
+                            }
                             Gateway active=session;
                             if(active==null){
                                 SavedAccounts.Login auth=credentials;if(auth==null)throw new Failure("NO_SESSION");
