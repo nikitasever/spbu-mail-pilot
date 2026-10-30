@@ -75,7 +75,7 @@ impl Engine {
         Ok(Arc::new(Self { child: Mutex::new(Some(child)), stdin: Mutex::new(stdin), pending, saved:Mutex::new(HashMap::new()),epoch:AtomicU64::new(0),owner:Mutex::new(None),contact_import:Mutex::new(None),calendar_serial:AtomicU64::new(0),calendar_jobs:Mutex::new(HashMap::new()),session_gate:Mutex::new(()),drafts:Mutex::new(HashMap::new()) }))
     }
     fn request(&self, request: Request) -> Reply {
-        const METHODS: &[&str] = &["capabilities", "connect", "disconnect", "folders", "page", "body", "setSeen", "cancel", "attachment", "send", "calendarDiscover", "calendarMonth", "contactsPage"];
+        const METHODS: &[&str] = &["capabilities", "connect", "disconnect", "folders", "page", "body", "setSeen", "moveMail", "cancel", "attachment", "send", "calendarDiscover", "calendarMonth", "contactsPage"];
         if request.id.is_empty() || request.id.len() > 64 || !request.id.bytes().all(|c| c.is_ascii_alphanumeric() || b"._-".contains(&c)) || !METHODS.contains(&request.method.as_str()) || !request.args.is_object() { return Err("BAD_REQUEST".into()); }
         let id = request.id.clone();
         let line = json!({"id": request.id, "method": request.method, "args": request.args}).to_string();
@@ -116,7 +116,7 @@ async fn mail_request(mut request: Request, app:tauri::AppHandle, state: tauri::
         if request.method=="localContactsExport"{return contact_export::execute(request,&app,&engine);}
         if ["localContactsPickImport","localContactsImport","localContactsDiscardImport"].contains(&request.method.as_str()){return contact_import::execute(request,&app,&engine);}
         if ["localContactsRead","localContactsSave","localContactsDelete"].contains(&request.method.as_str()){return contact_book::execute(request,&app,&engine);}
-        if request.method == "contactsPage" || request.method == "setSeen" {
+        if request.method == "contactsPage" || request.method == "setSeen" || request.method == "moveMail" {
             let epoch=request.args["epoch"].as_u64().ok_or("BAD_REQUEST")?;
             {let _gate=engine.session_gate.lock().map_err(|_|"NO_SESSION")?;
                 if engine.epoch.load(Ordering::SeqCst)!=epoch{return Err("NO_SESSION".into());}

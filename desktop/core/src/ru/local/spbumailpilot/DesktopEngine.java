@@ -12,6 +12,7 @@ public final class DesktopEngine implements AutoCloseable {
         JSONArray folders()throws Exception;
         JSONObject page(String folder,int offset,String snapshot,String query)throws Exception;
         JSONObject body(String folder,String uid,String validity)throws Exception;
+        default JSONObject move(String folder,String uid,String validity,String destination,java.util.function.BooleanSupplier allowed)throws Exception{throw new IOException("Unsupported move");}
         default JSONObject seen(String folder,String uid,String validity,boolean seen)throws Exception{throw new IOException("Unsupported flags");}
         default JSONObject attachment(String folder,String uid,String validity,String path,File directory,java.util.function.BooleanSupplier cancelled,AttachmentTransfer.Progress progress)throws Exception{throw new IOException("Unsupported attachment");}
     }
@@ -83,12 +84,12 @@ public final class DesktopEngine implements AutoCloseable {
                 String target=string(args,"requestId",64,false);Operation old=pending.get(target);boolean stopped=old!=null&&stop(old);
                 response(id,new JSONObject().put("cancelled",stopped),null);return;
             }
-            if(!java.util.Arrays.asList("connect","disconnect","folders","page","body","setSeen","attachment","send","calendarDiscover","calendarMonth","contactsPage").contains(method))throw new Failure("BAD_REQUEST");
+            if(!java.util.Arrays.asList("connect","disconnect","folders","page","body","setSeen","moveMail","attachment","send","calendarDiscover","calendarMonth","contactsPage").contains(method))throw new Failure("BAD_REQUEST");
             if(method.equals("connect")||method.equals("disconnect")){
                 credentials=null;for(Operation task:pending.values())if(task.transfer||task.calendar||task.contacts||task.mutation)stop(task);closeLater(contacts);contacts=null;
             }
             SavedAccounts.Login contactAuth=credentials;
-            Operation operation=new Operation();operation.mutation=method.equals("setSeen");operation.contacts=method.equals("contactsPage");operation.transfer=method.equals("attachment");operation.write=method.equals("send");operation.calendar=method.equals("calendarDiscover")||method.equals("calendarMonth");
+            Operation operation=new Operation();operation.mutation=method.equals("setSeen")||method.equals("moveMail");operation.contacts=method.equals("contactsPage");operation.transfer=method.equals("attachment");operation.write=method.equals("send");operation.calendar=method.equals("calendarDiscover")||method.equals("calendarMonth");
             if(pending.size()>=16)throw new Failure("BUSY");
             if(pending.putIfAbsent(id,operation)!=null){response(null,null,"DUPLICATE_REQUEST");return;}
             final String key=id;
@@ -106,20 +107,28 @@ public final class DesktopEngine implements AutoCloseable {
                             operation.active=next;operation.check();session=next;credentials=new SavedAccounts.Login(host,port,user,password);
                             result=new JSONObject().put("account",user).put("connected",true);break;
                         }
-                        case "setSeen":{
+                        case "setSeen":case "moveMail":{
                             if(contactAuth==null||contactAuth!=credentials||!DesktopContacts.owner(contactAuth).equals(args.optString("_owner")))throw new Failure("NO_SESSION");
                             String name=folder(args),messageUid=uid(args,"uid"),validity=uid(args,"validity");
-                            if(!(args.opt("seen") instanceof Boolean))throw new Failure("BAD_REQUEST");
-                            boolean seen=args.getBoolean("seen");
-                            // A private connection keeps flag writes independent of inbox reads/cancellation.
+                            boolean moving=method.equals("moveMail"),seen=false;
+                            String destination=null;
+                            if(moving){destination=string(args,"destination",1024,false);if(destination.equals(name)||destination.matches("(?s).*\\p{Cntrl}.*"))throw new Failure("BAD_REQUEST");}
+                            else{if(!(args.opt("seen") instanceof Boolean))throw new Failure("BAD_REQUEST");seen=args.getBoolean("seen");}
+                            // A private connection keeps mail writes independent of inbox reads/cancellation.
                             Gateway target=factory.connect(contactAuth.host,contactAuth.port,contactAuth.user,contactAuth.password,gateway->{operation.active=gateway;if(operation.stopped.get())closeLater(gateway);operation.check();});
                             operation.active=target;
                             try{
                                 operation.check();if(contactAuth!=credentials)throw new Failure("NO_SESSION");
-                                JSONObject changed=target.seen(name,messageUid,validity,seen);
+                                JSONObject changed=moving?target.move(name,messageUid,validity,destination,()->!operation.stopped.get()&&contactAuth==credentials):target.seen(name,messageUid,validity,seen);
                                 operation.check();if(contactAuth!=credentials)throw new Failure("NO_SESSION");
-                                if(!(changed.opt("seen") instanceof Boolean)||changed.getBoolean("seen")!=seen)throw new Failure("FLAG_REJECTED");
-                                result=new JSONObject().put("folder",name).put("uid",messageUid).put("validity",validity).put("seen",seen);
+                                result=new JSONObject().put("folder",name).put("uid",messageUid).put("validity",validity);
+                                if(moving){
+                                    if(!Boolean.TRUE.equals(changed.opt("moved"))||!destination.equals(changed.opt("destination")))throw new Failure("MOVE_UNKNOWN");
+                                    ((JSONObject)result).put("moved",true).put("destination",destination);
+                                }else{
+                                    if(!(changed.opt("seen") instanceof Boolean)||changed.getBoolean("seen")!=seen)throw new Failure("FLAG_REJECTED");
+                                    ((JSONObject)result).put("seen",seen);
+                                }
                             }finally{flagRevision.incrementAndGet();closeLater(target);}break;
                         }
                         case "contactsPage":{
@@ -162,7 +171,7 @@ public final class DesktopEngine implements AutoCloseable {
                         case "disconnect":closeLater(session);session=null;credentials=null;result=new JSONObject().put("connected",false);break;
                         default:{
                             // JavaMail caches flags on an open folder. A full refresh after a
-                            // separate flag write (including ambiguous failure) must reopen it.
+                            // separate mail write (including ambiguous failure) must reopen it.
                             long freshFlags=flagRevision.get();
                             if(method.equals("page")&&args.optInt("offset",-1)==0&&freshFlags!=readFlagRevision){
                                 closeLater(session);session=null;readFlagRevision=freshFlags;
@@ -197,6 +206,9 @@ public final class DesktopEngine implements AutoCloseable {
             if(current instanceof javax.mail.AuthenticationFailedException)return "AUTH";
             if(current instanceof java.net.SocketTimeoutException||current instanceof java.net.ConnectException||current instanceof java.net.UnknownHostException)return "NETWORK";
             String message=current.getMessage();
+            if("Сервер не поддерживает безопасное перемещение MOVE. Откройте веб-почту.".equals(message))return "MOVE_UNSUPPORTED";
+            if("Папка назначения не найдена или письмо уже в ней.".equals(message))return "MOVE_DESTINATION";
+            if("Папка изменилась. Обновите список.".equals(message)||"Письмо отсутствует. Обновите список.".equals(message)||"Письмо отсутствует.".equals(message))return "STALE_MAIL";
             if("Attachment too large".equals(message)||"Attachment transfer too large".equals(message))return "TOO_LARGE";
             if("UID validity changed".equals(message)||"Message unavailable".equals(message))return "STALE_MAIL";
             Throwable cause=current.getCause();if(cause==null&&current instanceof javax.mail.MessagingException)cause=((javax.mail.MessagingException)current).getNextException();current=cause;
@@ -218,6 +230,7 @@ public final class DesktopEngine implements AutoCloseable {
                 public JSONObject page(String folder,int offset,String snapshot,String query)throws Exception{return reader.page(folder,offset,snapshot,query);}
                 public JSONObject body(String folder,String uid,String validity)throws Exception{return reader.body(folder,uid,validity);}
                 public JSONObject seen(String folder,String uid,String validity,boolean seen)throws Exception{return reader.seen(folder,uid,validity,seen);}
+                public JSONObject move(String folder,String uid,String validity,String destination,java.util.function.BooleanSupplier allowed)throws Exception{return reader.moveMail(folder,uid,validity,"folder",destination,allowed);}
                 public JSONObject attachment(String folder,String uid,String validity,String path,File directory,java.util.function.BooleanSupplier cancelled,AttachmentTransfer.Progress progress)throws Exception{return reader.attachmentMeasured(folder,uid,validity,path,directory,cancelled,progress);}
                 public void close(){reader.close();}
             };

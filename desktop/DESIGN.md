@@ -200,3 +200,15 @@ remain independent. Native session epoch and injected account owner bind the wri
 UIDVALIDITY and UID bind the target. Disconnect stops outstanding mutation jobs.
 A full refresh after any attempted flag write also reopens the reading connection,
 so JavaMail's previously cached flags cannot masquerade as a fresh server result.
+
+
+Mail move reuses the native dialog / contact-editor surface and OS-owned select.
+The dialog itself confirms one named message, source and explicit destination;
+Cancel has initial focus and Escape sends nothing. No default destination is
+chosen. Shared mail action controls serialize flag writes and moves, wait before
+list refreshes, and freeze the exact message after an ambiguous result. Pending
+MOVE runs outside the modal with persistent sidebar status, so navigation remains
+available. Its completion refreshes actual server rows without replacing a different
+open reader. Native window close and logout wait for the result; no cancel button
+pretends to undo a transmitted MOVE. There is no COPY+DELETE fallback or automatic
+retry/Undo. The JVM session-bound mutation worker is the canonical write owner.
