@@ -11,8 +11,9 @@ final class AttachmentFiles {
         return name.length()>160?name.substring(name.length()-160):name;
     }
     static String mime(String filename,String suggested){
-        String name=filename.toLowerCase(Locale.ROOT);
-        String[][] types={{".pdf","application/pdf"},{".docx","application/vnd.openxmlformats-officedocument.wordprocessingml.document"},{".doc","application/msword"},{".xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},{".xls","application/vnd.ms-excel"},{".pptx","application/vnd.openxmlformats-officedocument.presentationml.presentation"},{".ppt","application/vnd.ms-powerpoint"},{".txt","text/plain"},{".jpg","image/jpeg"},{".jpeg","image/jpeg"},{".png","image/png"},{".zip","application/zip"}};
+        String name=filename==null?"":filename.toLowerCase(Locale.ROOT);
+        if("message/rfc822".equalsIgnoreCase(suggested)||"message/global".equalsIgnoreCase(suggested))return "message/rfc822";
+        String[][] types={{".pdf","application/pdf"},{".docx","application/vnd.openxmlformats-officedocument.wordprocessingml.document"},{".doc","application/msword"},{".xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},{".xls","application/vnd.ms-excel"},{".pptx","application/vnd.openxmlformats-officedocument.presentationml.presentation"},{".ppt","application/vnd.ms-powerpoint"},{".txt","text/plain"},{".jpg","image/jpeg"},{".jpeg","image/jpeg"},{".png","image/png"},{".zip","application/zip"},{".eml","message/rfc822"},{".msg","application/vnd.ms-outlook"},{".csv","text/csv"},{".json","application/json"},{".xml","application/xml"},{".html","text/html"},{".htm","text/html"},{".rtf","application/rtf"},{".gif","image/gif"},{".webp","image/webp"},{".bmp","image/bmp"},{".heic","image/heic"},{".heif","image/heif"},{".7z","application/x-7z-compressed"},{".rar","application/vnd.rar"},{".odt","application/vnd.oasis.opendocument.text"},{".ods","application/vnd.oasis.opendocument.spreadsheet"},{".odp","application/vnd.oasis.opendocument.presentation"},{".ics","text/calendar"},{".vcf","text/vcard"},{".mp3","audio/mpeg"},{".mp4","video/mp4"}};
         for(String[] type:types)if(name.endsWith(type[0]))return type[1];
         return suggested!=null&&suggested.matches("[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+")?suggested:"application/octet-stream";
     }

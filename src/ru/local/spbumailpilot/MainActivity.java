@@ -479,19 +479,7 @@ public final class MainActivity extends Activity {
         try{
             java.io.File file=new java.io.File(downloaded.getString("file"));
             java.io.File base=new java.io.File(getCacheDir(),"attachments").getCanonicalFile();if(!base.equals(file.getCanonicalFile().getParentFile()))throw new java.io.IOException("Invalid attachment location");
-            Uri uri=new Uri.Builder().scheme("content").authority(AttachmentProvider.AUTHORITY).appendPath(file.getName()).build();
-            if(PdfPreviewPolicy.pdf(downloaded.optString("name"),downloaded.optString("mime"))){
-                PdfPreviewPolicy.file(base,file.getName());startActivity(new android.content.Intent(this,PdfPreviewActivity.class).setData(uri).putExtra("name",downloaded.getString("name")).putExtra("appearance",appearanceMode));reply(request,new JSONObject().put("opened",true));return;
-            }
-            if(DocxReader.docx(downloaded.optString("name"),downloaded.optString("mime"))){
-                PdfPreviewPolicy.file(base,file.getName());startActivity(new android.content.Intent(this,DocxPreviewActivity.class).setData(uri).putExtra("name",downloaded.getString("name")).putExtra("appearance",appearanceMode));reply(request,new JSONObject().put("opened",true));return;
-            }
-            android.content.Intent intent=new android.content.Intent(android.content.Intent.ACTION_VIEW);
-            intent.setDataAndType(uri,downloaded.getString("mime"));intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            intent.setClipData(android.content.ClipData.newRawUri(downloaded.getString("name"),uri));
-            try{startActivity(intent);}catch(android.content.ActivityNotFoundException missing){
-                failure(request,"Файл скачан, но на телефоне нет приложения для этого формата. Установите просмотрщик PDF или документов Office и повторите открытие.");return;
-            }
+            AttachmentOpen.open(this,file,downloaded.getString("name"),downloaded.getString("mime"),appearanceMode);
             reply(request,new JSONObject().put("opened",true));
         }catch(Exception error){failure(request,"Не удалось открыть скачанный документ. Повторите попытку.");}
     }

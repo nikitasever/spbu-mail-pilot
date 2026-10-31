@@ -67,6 +67,13 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
     private val categories by lazy { ViewModelProvider(this)[NativeCategoriesModel::class.java] }
     private val workspace by lazy { ViewModelProvider(this)[NativeWorkspaceModel::class.java] }
 
+    private var notificationPermissionEpoch by mutableStateOf(0)
+    private var pendingTestNotification=false
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        notificationPermissionEpoch++
+        if(!granted)pendingTestNotification=false
+        if(!granted)android.widget.Toast.makeText(this,"Уведомления не разрешены. Их можно включить в настройках Android.",android.widget.Toast.LENGTH_LONG).show()
+    }
     private var nativeAppearanceMode="system"
     private var resumed by mutableStateOf(false)
     private var unlockEpoch by mutableStateOf(0)
@@ -96,12 +103,29 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
                     startActivity(next);finish()
                 }
             }
-            LaunchedEffect(settings.state.options,resumed){
+            val darkAppearance = LocalInboxDark.current
+            LaunchedEffect(settings.state.options,resumed,darkAppearance){
                 nativeAppearanceMode=settings.state.options.optString("theme","system")
-                val dark=AppearancePolicy.dark(nativeAppearanceMode,(resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES)
+                val dark=darkAppearance
                 val style=if(dark)androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT) else androidx.activity.SystemBarStyle.light(android.graphics.Color.TRANSPARENT,android.graphics.Color.TRANSPARENT)
                 enableEdgeToEdge(statusBarStyle=style,navigationBarStyle=style)
-                if(resumed&&!AppLock.locked(this@ComposeInboxActivity))BackgroundMailService.reconcile(this@ComposeInboxActivity,true)
+            }
+            // Retry after asynchronous account loading, unlock and permission results, not just a theme change.
+            LaunchedEffect(settings.state.ready,settings.state.owner,settings.state.options,resumed,unlockEpoch,notificationPermissionEpoch){
+                if(resumed&&!AppLock.locked(this@ComposeInboxActivity)&&settings.state.ready&&settings.state.owner.isNotBlank()){
+                    BackgroundMailService.reconcile(this@ComposeInboxActivity,true)
+                    if(pendingTestNotification&&NoticeCenter.allowed(this@ComposeInboxActivity)){
+                        pendingTestNotification=false
+                        NoticeCenter.test(this@ComposeInboxActivity)
+                    }
+                    val options=settings.state.options
+                    val prompt=getSharedPreferences("native-notification-permission",MODE_PRIVATE)
+                    if(android.os.Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED&&
+                        (options.optBoolean("mailNotifications",true)||options.optBoolean("taskNotifications",true))&&!prompt.getBoolean("asked",false)){
+                        prompt.edit().putBoolean("asked",true).apply()
+                        notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
             }
             LaunchedEffect(settings.state.owner,settings.state.options,inbox.state.owner){
                 if(settings.state.ready&&settings.state.owner==inbox.state.owner)inbox.threadPreference(settings.state.owner,settings.state.options.optBoolean("mailThreads",true))
@@ -115,8 +139,10 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
                     try{exportPicker.launch(null)}catch(_:Exception){exports.pickerFailed()}
                 }
             }
-            LaunchedEffect(inbox.state.openedFile,composer.state.open) {
-                if (!composer.state.open && inbox.state.openedFile != null) {
+            val mailScreenVisible=!exports.state.open&&extras.state.target==null&&!accounts.state.open&&(!composer.state.open||composer.state.minimized)&&!contacts.state.open&&!calendar.state.open&&!workspace.state.open&&!settings.state.open&&!files.state.open&&!drafts.state.open&&!serverDrafts.state.open&&!scheduled.state.open&&!digest.state.open&&!aiSettings.state.open&&!writingSettings.state.open&&!categories.state.open
+            LaunchedEffect(mailScreenVisible){if(!mailScreenVisible)inbox.cancelFileDownload()}
+            LaunchedEffect(inbox.state.openedFile,mailScreenVisible) {
+                if (mailScreenVisible && inbox.state.openedFile != null) {
                     while (inbox.state.openedFile != null) {
                         if (resumed && !AppLock.locked(this@ComposeInboxActivity)) {
                             inbox.takeFile()?.let { try { showFile(it) } catch (_: Exception) { inbox.fileError() } }
@@ -145,12 +171,12 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             }
             val fullClient = { startActivity(Intent(this, MainActivity::class.java)); Unit }
             val pending=navigation.pending
-            val navigationAllowed=!calls.state.open&&!files.state.open&&!serverDrafts.state.open&&!serverDrafts.state.busy&&!drafts.state.open&&!drafts.state.busy&&!scheduled.state.open&&!scheduled.state.busy&&!digest.state.open&&!aiSettings.state.open&&!aiSettings.state.busy&&!accounts.state.open&&!accounts.state.busy&&!settings.state.open&&!settings.state.busy&&!exports.state.open&&!composer.state.open&&!inbox.state.busy&&!inbox.state.foldersOpen&&!inbox.state.moveOpen&&
+            val navigationAllowed=!calls.state.open&&!files.state.open&&!serverDrafts.state.open&&!serverDrafts.state.busy&&!drafts.state.open&&!drafts.state.busy&&!scheduled.state.open&&!scheduled.state.busy&&!digest.state.open&&!aiSettings.state.open&&!aiSettings.state.busy&&!accounts.state.open&&!accounts.state.busy&&!settings.state.open&&!settings.state.busy&&!exports.state.open&&(!composer.state.open||composer.state.minimized)&&!inbox.state.busy&&!inbox.state.foldersOpen&&!inbox.state.moveOpen&&
                 !workspace.state.busy&&workspace.state.editor==null&&!workspace.state.leaveOpen&&!workspace.state.deleteOpen&&
                 !categories.state.busy&&categories.state.editor==null&&!categories.state.leaveOpen&&
                 !extras.state.busy&&extras.state.target==null&&contacts.canExternalNavigation()&&writingSettings.canExternalNavigation()
             val mailRouteVisible=!calls.state.open&&!files.state.open&&!serverDrafts.state.open&&!drafts.state.open&&!scheduled.state.open&&!digest.state.open&&
-                !aiSettings.state.open&&!accounts.state.open&&!settings.state.open&&!exports.state.open&&!composer.state.open&&
+                !aiSettings.state.open&&!accounts.state.open&&!settings.state.open&&!exports.state.open&&(!composer.state.open||composer.state.minimized)&&
                 !contacts.state.open&&!calendar.state.open&&!workspace.state.open&&!categories.state.open&&!extras.state.open&&!writingSettings.state.open
             LaunchedEffect(mailRouteVisible,resumed,unlockEpoch){
                 val visible=mailRouteVisible&&resumed&&!AppLock.locked(this@ComposeInboxActivity)
@@ -170,7 +196,18 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             LaunchedEffect(pending,navigationAllowed,resumed,inbox.state.owner,unlockEpoch) {
                 if(pending!=null&&navigationAllowed&&resumed&&!AppLock.locked(this@ComposeInboxActivity))openNavigation(pending)
             }
-            Column(Modifier.fillMaxSize()) {
+            val transferBannerVisible=!AppLock.locked(this@ComposeInboxActivity)&&((composer.state.open&&composer.state.minimized)||(!exports.state.open&&exports.state.notice.isNotBlank()))
+            Column(Modifier.fillMaxSize().then(if(transferBannerVisible)Modifier.statusBarsPadding().consumeWindowInsets(WindowInsets.statusBars) else Modifier)) {
+                if(composer.state.open&&composer.state.minimized&&!AppLock.locked(this@ComposeInboxActivity)){
+                    if(composer.state.owner==inbox.state.owner)NativeComposerTransfer(composer)
+                    else Text("Операция в другом ящике. Вернитесь в него, чтобы увидеть состояние письма.",Modifier.padding(12.dp),fontSize=12.sp)
+                }
+                if(!AppLock.locked(this@ComposeInboxActivity)&&!exports.state.open&&exports.state.notice.isNotBlank())Surface(tonalElevation=2.dp){
+                    Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
+                        Text(exports.state.notice+if(exports.state.phase=="result")" Сохранено: ${exports.state.saved} из ${exports.state.total}; ошибок: ${exports.state.failures}." else "",Modifier.weight(1f),fontSize=12.sp)
+                        if(exports.state.phase=="result")TextButton(onClick=exports::cancel){Text("Убрать")}
+                    }
+                }
                 if(pending!=null&&!AppLock.locked(this@ComposeInboxActivity))Surface(tonalElevation=3.dp) {
                     Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
                         Text("Переход из уведомления ждёт завершения текущего действия.",Modifier.weight(1f),fontSize=12.sp)
@@ -181,7 +218,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
 
             if(accounts.state.restart) Box(Modifier.fillMaxSize(),contentAlignment=androidx.compose.ui.Alignment.Center){CircularProgressIndicator()}
             else if(accounts.state.open) NativeAccountsScreen(accounts)
-            else if (composer.state.open) NativeComposer(composer, fullClient) {
+            else if (composer.state.open&&!composer.state.minimized) NativeComposer(composer, fullClient) {
                 composer.beginPick {
                     if (!isDestroyed && resumed) try { attachmentPicker.launch(arrayOf("*/*")) } catch (_: Exception) { composer.pickerFailed() }
                     else composer.pickerFailed()
@@ -221,7 +258,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
                     val owner=calendar.state.owner
                     calendar.close()
                     workspace.openCalendarTask(owner,event)
-                })
+                },newTask={day->workspace.openCalendarNewTask(calendar.state.owner,day)},tasksEnabled=settings.state.ready&&settings.state.owner==calendar.state.owner&&settings.state.options.optBoolean("showTasks",true))
             }
             else if(contacts.state.open) NativeContactsScreen(contacts,{email->
                 contacts.person(email)?.let {composer.open(contacts.state.owner,recipient=it.email)}
@@ -262,6 +299,15 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
             NativeMailExtrasDialogs(extras)
             NativeExportDialog(exports)
         } }
+    }
+    internal fun testNotifications(){
+        if(!resumed||AppLock.locked(this))return
+        if(android.os.Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+            pendingTestNotification=true
+            getSharedPreferences("native-notification-permission",MODE_PRIVATE).edit().putBoolean("asked",true).apply()
+            notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }else if(NoticeCenter.allowed(this))NoticeCenter.test(this)
+        else android.widget.Toast.makeText(this,"Разрешите уведомления в настройках Android.",android.widget.Toast.LENGTH_LONG).show()
     }
     override fun getNativeAppearanceMode():String = nativeAppearanceMode
     override fun onResume() {
@@ -338,14 +384,7 @@ class ComposeInboxActivity : ComponentActivity(),AppLockAware {
         require(file.parentFile == File(cacheDir, "attachments").canonicalFile && file.isFile)
         val name = value.getString("name"); val mime = value.getString("mime")
         if(value.optBoolean("_share")){ShareActions.file(this,file,mime,name);return}
-        val uri = Uri.Builder().scheme("content").authority(AttachmentProvider.AUTHORITY).appendPath(file.name).build()
-        val intent = when {
-            PdfPreviewPolicy.pdf(name, mime) -> Intent(this, PdfPreviewActivity::class.java).setData(uri)
-            DocxReader.docx(name, mime) -> Intent(this, DocxPreviewActivity::class.java).setData(uri)
-            else -> Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION).apply { clipData = ClipData.newRawUri(name, uri) }
-        }
-        startActivity(intent.putExtra("name", name).putExtra("appearance", settings.state.options.optString("theme","system")))
+        AttachmentOpen.open(this,file,name,mime,settings.state.options.optString("theme","system"))
     }
 
 }
@@ -356,11 +395,14 @@ internal fun mailSource(state: InboxState,mail: NativeMail):JSONObject=JSONObjec
 
 internal val LocalCompactInbox=staticCompositionLocalOf {false}
 @Composable internal fun InboxTheme(mode:String="system",large:Boolean=false,compact:Boolean=false,content: @Composable () -> Unit) {
-    val scheme = if (AppearancePolicy.dark(mode,isSystemInDarkTheme())) darkColorScheme(primary = Color(0xFFCEACF3), onPrimary = Color(0xFF28153A),
-        background = Color(0xFF13111A), surface = Color(0xFF1D1A27)) else lightColorScheme(primary = Color(0xFF70508F))
+    val dark = AppearancePolicy.dark(mode,isSystemInDarkTheme())
+    val scheme = inboxColorScheme(dark)
     val density=androidx.compose.ui.platform.LocalDensity.current
-    CompositionLocalProvider(LocalCompactInbox provides compact,androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density,density.fontScale*(if(large)1.15f else 1f))) {
-        MaterialTheme(colorScheme = scheme, content = content)
+    CompositionLocalProvider(LocalInboxDark provides dark,LocalCompactInbox provides compact,androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density,density.fontScale*(if(large)1.15f else 1f))) {
+        MaterialTheme(colorScheme = scheme) {
+            // MaterialTheme supplies tokens; Surface also paints the app window and text.
+            Surface(Modifier.fillMaxSize(), color=scheme.background, contentColor=scheme.onBackground) { content() }
+        }
     }
 }
 @Composable internal fun NativeInbox(model: NativeInboxModel, reply: () -> Unit, replyAll: () -> Unit, forwardText: () -> Unit, compose: () -> Unit, fullClient: () -> Unit, notice: String?, dismissNotice: () -> Unit, openContacts: ()->Unit = {}, openCalendar: ()->Unit = {}, openWorkspace: ()->Unit = {}, createTask: ()->Unit = {}, createEvent: ()->Unit = {}, linkMailToEvent: ()->Unit = {}, categoryRules: List<JSONObject> = emptyList(),categoryFilter: String="",selectCategory: (String)->Unit = {},openCategories: ()->Unit = {},labels: JSONObject=JSONObject(),responses: List<JSONObject> = emptyList(),setLabel: ()->Unit = {},setResponse: ()->Unit = {},openResponses: ()->Unit = {},extrasReady: Boolean=true,snoozed: List<JSONObject> = emptyList(),setSnooze: ()->Unit = {},setFollowup: ()->Unit = {},followups: List<JSONObject> = emptyList(),openWritingSettings: ()->Unit = {},openAccounts: ()->Unit = {},openSettings: ()->Unit = {},digestEnabled:Boolean=false,openDigest: ()->Unit = {},openScheduled: ()->Unit = {},openDrafts: ()->Unit = {},saveFiles: (String,MailRef,List<NativeFile>,Boolean)->Unit = {_,_,_,_->},forwardOriginal:()->Unit = {},openFiles:()->Unit = {},related:NativeRelatedSearchModel?=null,onSearchContact:(String)->Unit = {},onSearchEvent:(JSONObject)->Unit = {},openCalls:()->Unit = {},foreground:Boolean=true) {
@@ -583,7 +625,8 @@ internal val LocalCompactInbox=staticCompositionLocalOf {false}
                     }
                 }
             }
-            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if(state.fileTransfer.isNotBlank())NativeTransferCard(state.fileTransfer,state.fileStage,state.fileBytes,state.fileTotal,cancel=model::cancelFileDownload)
+                if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             state.error?.let { Text(it, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
             state.flagNotice?.let {Text(it,Modifier.padding(horizontal=16.dp,vertical=8.dp),fontSize=13.sp)}
             val mail = state.selected
@@ -710,14 +753,15 @@ private data class ThreadSummary(val count: Int, val unread: Int, val attachment
 private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,members.count {it.unread},members.any {it.hasAttachments==true})
 
 @Composable private fun MailRowBody(mail: NativeMail,rowColor: Color,chain: ThreadSummary?,owner: String,labels: JSONObject,responses: List<JSONObject>,snoozed: List<JSONObject>,followups: List<JSONObject>,categoryName: String?,categoryTint: Color?,selected: Boolean=false,onToggleSelect: (()->Unit)?=null,onToggleSeen: (()->Unit)?=null,enabled: Boolean=true) {
+    val avatar = senderAvatarColors(mail.email.ifBlank { mail.sender })
     Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=if(LocalCompactInbox.current)8.dp else 14.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
         if(onToggleSelect!=null) {
-            Surface(onClick=onToggleSelect,enabled=enabled,shape=CircleShape,color=if(selected)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha=.16f).compositeOver(rowColor),modifier=Modifier.size(40.dp).semantics {contentDescription=if(selected)"Снять выбор письма" else "Выбрать письмо"}) {
-                Box(contentAlignment=androidx.compose.ui.Alignment.Center) {Text(if(selected)"✓" else avatarLetters(mail.sender),fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=if(selected)MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary)}
+            Surface(onClick=onToggleSelect,enabled=enabled,shape=CircleShape,color=if(selected)MaterialTheme.colorScheme.primary else avatar.background,modifier=Modifier.size(40.dp).semantics {contentDescription=if(selected)"Снять выбор письма" else "Выбрать письмо"}) {
+                Box(contentAlignment=androidx.compose.ui.Alignment.Center) {Text(if(selected)"✓" else avatarLetters(mail.sender),fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=if(selected)MaterialTheme.colorScheme.onPrimary else avatar.foreground)}
             }
         } else {
-            Surface(shape=CircleShape,color=MaterialTheme.colorScheme.primary.copy(alpha=.16f).compositeOver(rowColor),modifier=Modifier.size(40.dp).clearAndSetSemantics {}) {
-                Box(contentAlignment=androidx.compose.ui.Alignment.Center) {Text(avatarLetters(mail.sender),fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.primary)}
+            Surface(shape=CircleShape,color=avatar.background,modifier=Modifier.size(40.dp).clearAndSetSemantics {}) {
+                Box(contentAlignment=androidx.compose.ui.Alignment.Center) {Text(avatarLetters(mail.sender),fontSize=14.sp,fontWeight=FontWeight.SemiBold,color=avatar.foreground)}
             }
         }
         Column(Modifier.weight(1f)) {
@@ -857,7 +901,7 @@ private fun summaryOf(members: List<NativeMail>)=ThreadSummary(members.size,memb
                 Text(title,Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)
                 TextButton(onClick=close){Text("Закрыть")}
             }
-            Text(if(online)"Список с сервера" else "Папки сохранённых писем",Modifier.padding(horizontal=16.dp,vertical=4.dp),fontSize=12.sp)
+            Text(if(busy)"Загружаем полный список с сервера…" else if(online)"Список с сервера" else "Сохранённый список. Письма могут быть не скачаны.",Modifier.padding(horizontal=16.dp,vertical=4.dp),fontSize=12.sp)
             if(busy)LinearProgressIndicator(Modifier.fillMaxWidth())
             error?.let {Text(it,Modifier.padding(16.dp),color=MaterialTheme.colorScheme.error,fontSize=13.sp)}
             LazyColumn(Modifier.weight(1f,fill=false)) {

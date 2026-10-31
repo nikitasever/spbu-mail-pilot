@@ -11,7 +11,8 @@ final class OfflineMailbox {
     static JSONObject copy(JSONObject value)throws Exception{return new JSONObject(value.toString());}
     static String key(String folder,String validity,String uid){return new JSONArray().put(folder).put(validity).put(uid).toString();}
     boolean available(){return data.optJSONObject("folders").length()>0;}
-    JSONArray folders(){JSONArray result=new JSONArray();Iterator<String> names=data.optJSONObject("folders").keys();while(names.hasNext())result.put(names.next());return result;}
+    void rememberFolders(JSONArray names)throws Exception{JSONArray checked=MailFolderCatalog.copy(names);data.put("folderCatalog",checked);}
+    JSONArray folders(){try{if(data.has("folderCatalog"))return MailFolderCatalog.copy(data.getJSONArray("folderCatalog"));}catch(Exception invalid){}JSONArray result=new JSONArray();Iterator<String> names=data.optJSONObject("folders").keys();while(names.hasNext())result.put(names.next());return result;}
     void page(String folder,int offset,JSONObject result)throws Exception{page(folder,offset,result,System.currentTimeMillis());}
     private void page(String folder,int offset,JSONObject result,long cachedAt)throws Exception{
         JSONArray incoming=result.getJSONArray("messages");String validity=result.optString("validity");if(validity.isEmpty()&&incoming.length()>0)validity=incoming.getJSONObject(0).getString("validity");if(!validity.matches("[1-9][0-9]{0,19}"))return;

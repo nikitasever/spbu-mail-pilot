@@ -1,0 +1,83 @@
+package ru.local.spbumailpilot;
+import java.io.*;
+import java.net.*;
+import java.security.*;
+import java.security.cert.*;
+import javax.net.ssl.*;
+import java.util.concurrent.*;
+
+public final class GeminiProxyTransportTest {
+ static void check(boolean value){if(!value)throw new AssertionError();}
+ public static void main(String[] args)throws Exception{
+  KeyStore keys=KeyStore.getInstance("PKCS12");try(InputStream in=new FileInputStream(args[0])){keys.load(in,"changeit".toCharArray());}
+  X509Certificate cert=(X509Certificate)keys.getCertificate("fixture");
+  StringBuilder pin=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(cert.getEncoded()))pin.append(String.format("%02x",b&255));
+  GeminiProxyTransport.verifyCertificate(new X509Certificate[]{cert},pin.toString());
+  try{GeminiProxyTransport.verifyCertificate(new X509Certificate[]{cert});throw new AssertionError("Foreign pin accepted");}catch(CertificateException expected){}
+  try{new GeminiProxyTransport("bad\r\npassword");throw new AssertionError();}catch(IllegalArgumentException expected){}
+  check(!new GeminiProxyTransport(new String(new char[48]).replace('\0','a')).toString().contains("aaaa"));
+  for(String value:new String[]{"fixture-Short9!","Fixture-Пароль:9!",new String(new char[48]).replace('\0','a')}){check(GeminiProxyTransport.validPassword(value));new GeminiProxyTransport(value);}
+  for(String value:new String[]{"","   ","bad\r\nheader","bad\u0000value",new String(new char[257]).replace('\0','a')})check(!GeminiProxyTransport.validPassword(value));
+  GeminiProxyTransport.Attempt attempt=new GeminiProxyTransport.Attempt();
+  check(attempt.failure(new ConnectException()).step==GeminiDigest.ConnectionStep.PROXY_CONNECT);
+  check(attempt.failure(new SocketTimeoutException()).step==GeminiDigest.ConnectionStep.PROXY_TIMEOUT);
+  check(attempt.failure(new SSLHandshakeException("fixture-private-value")).step==GeminiDigest.ConnectionStep.PROXY_TLS);
+  check(attempt.failure(new IOException("Unexpected response code for CONNECT: 403")).step==GeminiDigest.ConnectionStep.PROXY_DENIED);
+  check(attempt.failure(new IOException("Unexpected response code for CONNECT: 502")).step==GeminiDigest.ConnectionStep.PROXY_UPSTREAM);
+  attempt.authRejected=true;
+  check(attempt.failure(new IOException()).step==GeminiDigest.ConnectionStep.PROXY_AUTH);
+  attempt.authRejected=false;attempt.googleTlsStarted=true;
+  check(attempt.failure(new SSLHandshakeException("fixture-private-value")).step==GeminiDigest.ConnectionStep.GOOGLE_TLS);
+  check(attempt.failure(new SocketTimeoutException()).step==GeminiDigest.ConnectionStep.GOOGLE_TIMEOUT);
+  for(GeminiDigest.ConnectionStep step:GeminiDigest.ConnectionStep.values()){
+   String visible=GeminiDigest.safeFailure(new GeminiDigest.ConnectionFailure(step,new IOException("fixture-private-value")));
+   check(!visible.contains("fixture-private-value"));check(visible.contains("[P")||visible.contains("[G"));
+  }
+  attempt.googleStatus=200;
+  check(GeminiDigest.safeFailure(attempt.describe(new SocketTimeoutException())).contains("[G02]"));
+  check(GeminiDigest.safeFailure(attempt.describe(new IOException("unexpected end of stream"))).contains("[G03]"));
+  attempt.googleStatus=429;
+  IOException quota=new IOException(GeminiDigest.status(429));check(attempt.describe(quota)==quota);
+  check(GeminiDigest.safeFailure(attempt.describe(new SocketTimeoutException())).contains("[G02]"));
+  check(GeminiDigest.safeFailure(attempt.describe(new IOException(GeminiDigest.RESPONSE_TOO_LARGE))).equals(GeminiDigest.RESPONSE_TOO_LARGE));
+  okhttp3.Request probe=GeminiProxyTransport.connectionCheckRequest();
+  check(probe.method().equals("GET")&&probe.body()==null&&probe.url().query()==null);
+  check(probe.url().toString().equals("https://generativelanguage.googleapis.com/"));
+  check(probe.header("x-goog-api-key")==null&&probe.header("Authorization")==null&&probe.header("Proxy-Authorization")==null);
+  KeyManagerFactory km=KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());km.init(keys,"changeit".toCharArray());
+  SSLContext server=SSLContext.getInstance("TLS");server.init(km.getKeyManagers(),null,null);
+  for(boolean valid:new boolean[]{true,false}){
+   try(SSLServerSocket listener=(SSLServerSocket)server.getServerSocketFactory().createServerSocket(0,1,InetAddress.getLoopbackAddress())){
+    ExecutorService worker=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r);t.setDaemon(true);return t;});
+    Future<Boolean> received=worker.submit(()->{try(SSLSocket accepted=(SSLSocket)listener.accept()){
+     accepted.setSoTimeout(5000);int value=accepted.getInputStream().read();accepted.getOutputStream().write(43);accepted.getOutputStream().flush();return value==42;
+    }catch(IOException rejected){if(valid)throw rejected;return false;}});
+    try(Socket client=GeminiProxyTransport.proxySockets(valid?pin.toString():GeminiProxyTransport.CERT_SHA256).createSocket()){
+     client.connect(new InetSocketAddress(InetAddress.getLoopbackAddress(),listener.getLocalPort()),5000);client.setSoTimeout(5000);
+     try{client.getOutputStream().write(42);client.getOutputStream().flush();if(valid)check(client.getInputStream().read()==43);if(!valid)throw new AssertionError("Wrong pin sent data");}
+     catch(SSLException rejected){if(valid)throw rejected;}
+    }
+    check(received.get(7,TimeUnit.SECONDS)==valid);worker.shutdownNow();
+   }
+  }
+  // Exercise the actual OkHttp route: auth is inside proxy TLS, Google TLS starts after CONNECT.
+  try(SSLServerSocket listener=(SSLServerSocket)server.getServerSocketFactory().createServerSocket(0,1,InetAddress.getLoopbackAddress())){
+   ExecutorService worker=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r);t.setDaemon(true);return t;});
+   Future<Boolean> tunneled=worker.submit(()->{try(SSLSocket accepted=(SSLSocket)listener.accept()){
+    accepted.setSoTimeout(5000);InputStream in=accepted.getInputStream();ByteArrayOutputStream header=new ByteArrayOutputStream();
+    int value;while((value=in.read())!=-1){header.write(value);if(header.size()>8192)throw new AssertionError();if(header.toString("US-ASCII").endsWith("\r\n\r\n"))break;}
+    String text=header.toString("US-ASCII");check(text.startsWith("CONNECT generativelanguage.googleapis.com:443 HTTP/1.1"));
+    check(text.contains("Proxy-Authorization: Basic "+java.util.Base64.getEncoder().encodeToString("gemini:Fixture-Пароль:9!".getBytes(java.nio.charset.StandardCharsets.UTF_8))));check(!text.toLowerCase().contains("x-goog-api-key"));
+    accepted.getOutputStream().write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes("US-ASCII"));accepted.getOutputStream().flush();
+    return in.read()==22; // TLS handshake record for the independently verified Google connection.
+   }});
+   okhttp3.OkHttpClient client=GeminiProxyTransport.client("Fixture-Пароль:9!",new InetSocketAddress(InetAddress.getLoopbackAddress(),listener.getLocalPort()),pin.toString(),()->true);
+   okhttp3.Request origin=new okhttp3.Request.Builder().url("https://generativelanguage.googleapis.com/").build();
+   okhttp3.Response fake407=new okhttp3.Response.Builder().request(origin).protocol(okhttp3.Protocol.HTTP_1_1).code(407).message("fixture").build();
+   check(client.proxyAuthenticator().authenticate(null,fake407)==null);
+   try(okhttp3.Response response=client.newCall(new okhttp3.Request.Builder().url("https://generativelanguage.googleapis.com/").header("x-goog-api-key","fixture-not-a-secret").build()).execute()){throw new AssertionError("Unverified origin accepted");}catch(IOException expected){}
+   check(tunneled.get(7,TimeUnit.SECONDS));client.connectionPool().evictAll();client.dispatcher().executorService().shutdown();worker.shutdownNow();
+  }
+  System.out.println("GeminiProxyTransportTest passed: TLS accepted pinned certificate, rejected foreign certificate before application bytes.");
+ }
+}

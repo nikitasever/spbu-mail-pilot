@@ -100,12 +100,13 @@ internal class NativeDigestModel(app:Application):AndroidViewModel(app) {
             val login=permitted(snapshot.owner);val prefs=NoticeCenter.state(context,login);val model=AiConfiguration.model(JSONObject(options(login)))
             check(model==snapshot.model){"Model changed"}
             val key=AiVault(context).snapshot()
-            val current=java.util.function.BooleanSupplier {active(ticket,snapshot.owner)&&key.current()&&runCatching {val raw=prefs.getString("state","{}")!!;AiPolicy.enabled(raw)&&AiConfiguration.model(JSONObject(raw))==model}.getOrDefault(false)}
-            val result=gemini.analyze(key.value,items,login.user,current,model);check(current.asBoolean);this.login(snapshot.owner)
+            val proxy=GeminiProxyVault(context).snapshot()
+            val current=java.util.function.BooleanSupplier {active(ticket,snapshot.owner)&&key.current()&&proxy.current()&&runCatching {val raw=prefs.getString("state","{}")!!;AiPolicy.enabled(raw)&&AiConfiguration.model(JSONObject(raw))==model}.getOrDefault(false)}
+            val result=gemini.analyze(key.value,items,login.user,current,model,if(proxy.value.isEmpty()) null else GeminiProxyTransport(proxy.value));check(current.asBoolean);this.login(snapshot.owner)
             val points=result.getJSONArray("points");val typed=(0 until points.length()).map {index->val p=points.getJSONObject(index);val sources=p.getJSONArray("sources")
                 NativeDigestPoint(p.getString("kind"),p.getString("title"),p.getString("detail"),p.getString("deadline"),(0 until sources.length()).map {sources.getInt(it)})}
             post(ticket,snapshot.owner){state=if(current.asBoolean)state.copy(phase="result",overview=result.getString("overview"),points=typed) else state.copy(phase="preview",error="Настройки ИИ изменились. Запрос отменён; проверьте их перед повтором.")}
-        }catch(error:Exception){val message=listOf(400,403,404,429,500).map {GeminiDigest.status(it)}.firstOrNull {it==error.message} ?: "Сводка не получена. Проверьте ключ, модель, доступность Gemini и разрешение анализа. Автоматического повтора нет."
+        }catch(error:Exception){val message=GeminiDigest.safeFailure(error)
             post(ticket,snapshot.owner){state=state.copy(phase="preview",error=message)}}}
     }
     fun cancel(){if(closed)return;gate.next();closer.execute(gemini.cancellation());state=state.copy(phase=if(state.items.isEmpty())"choose" else "preview",notice="Запрос отменён. Уже отправленные данные нельзя отозвать.",error=null)}

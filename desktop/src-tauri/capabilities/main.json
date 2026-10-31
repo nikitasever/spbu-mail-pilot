@@ -1,0 +1,1 @@
+{"identifier": "main", "description": "Local mail window only; no filesystem, shell, HTTP or remote-page plugin permissions.", "windows": ["main"], "permissions": ["core:default", "core:window:allow-destroy"]}

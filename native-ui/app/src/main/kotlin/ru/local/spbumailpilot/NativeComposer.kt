@@ -36,14 +36,15 @@ import androidx.compose.ui.unit.sp
     if(state.aiOpen){NativeWritingAiScreen(model);return}
     BackHandler { if(state.serverDelete)model.cancelServerDelete() else if(state.discardOpen)model.cancelDiscard() else if(state.writingOpen)model.closeWritingTools() else if(model.recipients.state.request!=null)model.recipients.clear() else model.close() }
     Scaffold(modifier=Modifier.imePadding(), topBar={ TopAppBar(title={ Text(if(state.forwardTextOnly||state.forwardEml)"Пересылка" else "Черновик") },
-        navigationIcon={ TextButton(onClick=model::close,enabled=!state.busy) { Text("Назад") } },
+        navigationIcon={ TextButton(onClick=model::close,enabled=!state.busy||state.importing||state.sending||state.serverWorking) { Text("Назад") } },
         actions={ TextButton(onClick=model::requestDiscard,enabled=editable) {Text("Удалить") } }) },
         bottomBar={ Surface(tonalElevation=3.dp) {
             Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal=16.dp,vertical=8.dp)) {
+                NativeComposerTransfer(model)
                 when {
                     state.conflicted -> {
                         Text("Это окно больше не может изменять черновик. Показанный текст можно скопировать; затем откройте нужный черновик из списка.")
-                        OutlinedButton(onClick=model::close,enabled=!state.busy,modifier=Modifier.fillMaxWidth()){Text("Закрыть")}
+                        OutlinedButton(onClick=model::close,enabled=!state.busy||state.importing||state.sending||state.serverWorking,modifier=Modifier.fillMaxWidth()){Text("Закрыть")}
                     }
                     state.remaining > 0 -> {
                         Text("Отправим через ${state.remaining} с",fontSize=14.sp)
@@ -56,15 +57,15 @@ import androidx.compose.ui.unit.sp
                     }
                     state.status == NativeDraft.SCHEDULING -> {
                         Text("Планирование требует сверки с очередью. Закройте и снова откройте черновик; отправка из него заблокирована.")
-                        OutlinedButton(onClick=model::close,enabled=!state.busy,modifier=Modifier.fillMaxWidth()){Text("Закрыть для сверки")}
+                        OutlinedButton(onClick=model::close,enabled=!state.busy||state.importing||state.sending||state.serverWorking,modifier=Modifier.fillMaxWidth()){Text("Закрыть для сверки")}
                     }
                     state.status == NativeDraft.SCHEDULED -> {
                         Text("Письмо передано в очередь «По расписанию»")
-                        Button(onClick=model::close,enabled=!state.busy,modifier=Modifier.fillMaxWidth()){Text("Готово")}
+                        Button(onClick=model::close,enabled=!state.busy||state.importing||state.sending||state.serverWorking,modifier=Modifier.fillMaxWidth()){Text("Готово")}
                     }
                     state.status == NativeDraft.SENT -> {
                         Text("Письмо отправлено",color=MaterialTheme.colorScheme.primary)
-                        Button(onClick=model::close,enabled=!state.busy,modifier=Modifier.fillMaxWidth()) { Text("Готово") }
+                        Button(onClick=model::close,enabled=!state.busy||state.importing||state.sending||state.serverWorking,modifier=Modifier.fillMaxWidth()) { Text("Готово") }
                     }
                     else -> {
                         Text(if(state.importing) "Добавление файлов…" else if(state.busy) "Подготовка…" else if(state.saved) "Сохранено на телефоне" else "Сохранение…",fontSize=12.sp)
@@ -95,11 +96,7 @@ import androidx.compose.ui.unit.sp
             } else TextButton(onClick={copies=true},enabled=editable) { Text("Копия и скрытая копия") }
             ComposeField("Тема",state.subject,editable,{model.edit("subject",it)},focus={model.recipients.clear()})
             OutlinedButton(onClick=pickFiles,enabled=editable,modifier=Modifier.fillMaxWidth().padding(top=12.dp)) { Text("Прикрепить файл") }
-            if(state.importing) {
-                Text(state.transferName,Modifier.padding(top=8.dp))
-                Text(Formatter.formatShortFileSize(context,state.transferBytes),fontSize=12.sp)
-                TextButton(onClick=model::cancelImport) { Text("Отменить добавление") }
-            }
+
             if(state.files.isNotEmpty()) Text("Вложения · ${state.files.size}/10",Modifier.padding(top=12.dp))
             state.files.forEach { file ->
                 Surface(tonalElevation=2.dp,modifier=Modifier.fillMaxWidth().padding(top=8.dp)) {

@@ -3,6 +3,11 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 class NativeDigestPrivacyTest {
+    @Test fun proxyPasswordIsAbsentFromDiagnosticState(){
+        val password="a".repeat(48)
+        assertFalse(NativeAiState(proxyPassword=password,key="private-api-key").toString().contains(password))
+        assertFalse(NativeAiState(proxyPassword=password,key="private-api-key").toString().contains("private-api-key"))
+    }
     @Test fun diagnosticDoesNotExposeCandidateOrPreparedText(){
         val mail=NativeMail(MailRef("INBOX","1","7"),"private-sender","private-subject","private-preview","",false)
         val state=NativeDigestState(owner="private-owner",candidates=listOf(mail),selected=setOf(mail.ref),items=listOf(JSONObject().put("text","private-body")),overview="private-overview")

@@ -33,9 +33,11 @@ internal class NativeSettingsModel(app:Application):AndroidViewModel(app) {
         worker.execute {try {
             val login=CredentialVault(context).load();val owner=login?.let {NoticeCenter.scope(it)} ?: ""
             val options=if(login==null)JSONObject() else synchronized(ReplyReminderCenter::class.java){allowed(owner);NativeGeneralSettings.options(JSONObject(NoticeCenter.state(context,login).getString("state","{}")!!))}
+            // Restore persistent checks on every normal Compose entry/resume, even if settings were never edited.
+            val noticesScheduled=runCatching {NoticeCenter.schedule(context)}.isSuccess
             val bytes=login?.let {runCatching {OfflineMailStore.diskBytes(context,it)}.getOrNull()}
             val icon=LauncherIcons.selected(context)
-            main.post {if(!closed&&foreground&&generation==ticket&&!AppLock.locked(context))state=state.copy(owner=owner,ready=login!=null,busy=false,options=JSONObject(options.toString()),icon=icon,cacheBytes=bytes,error=null,cacheRevision=if(state.owner==owner)state.cacheRevision else 0)}
+            main.post {if(!closed&&foreground&&generation==ticket&&!AppLock.locked(context))state=state.copy(owner=owner,ready=login!=null,busy=false,options=JSONObject(options.toString()),icon=icon,cacheBytes=bytes,error=null,notice=if(noticesScheduled)null else "Фоновая проверка не настроена. Откройте приложение повторно.",cacheRevision=if(state.owner==owner)state.cacheRevision else 0)}
         }catch(_:Exception){main.post {if(!closed&&foreground&&generation==ticket)state=state.copy(busy=false,ready=false,error="Настройки не прочитаны. Повторите загрузку; данные не изменены.")}}}
     }
     fun change(key:String,value:Any){

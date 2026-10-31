@@ -1,0 +1,134 @@
+name: Verify and stage desktop Windows preview
+on:
+  push:
+    branches: [codex/desktop-web-start-20261028]
+    paths: [.github/workflows/desktop-verify.yml, .github/scripts/verify-desktop-artifact.py, .github/scripts/probe-installed-engine.py]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  install:
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: desktop-windows-readonly-prototype
+          run-id: 40934285528
+          github-token: ${{ github.token }}
+          path: candidate
+      - name: Verify immutable installer checksum
+        run: python .github/scripts/verify-desktop-artifact.py
+      - name: Install, start window and verify child shutdown
+        shell: powershell
+        run: |
+          $setup = Get-Item 'verified/spbu-mail-desktop-0.1.0-preview.9-windows-x64-setup.exe'
+          $install = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw 'Silent installation failed' }
+          $binary = Get-ChildItem -Path $env:LOCALAPPDATA -Filter 'spbu-mail-desktop.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $binary) { throw 'Installed executable missing' }
+          python .github/scripts/probe-installed-engine.py $binary.FullName
+          if ($LASTEXITCODE -ne 0) { throw 'Installed JVM/IPC probe failed' }
+          $app = Start-Process -FilePath $binary.FullName -PassThru -RedirectStandardError 'verified/startup-error.log' -RedirectStandardOutput 'verified/startup-output.log'
+          $engine = $null
+          try {
+            $deadline = (Get-Date).AddSeconds(45)
+            do {
+              Start-Sleep -Milliseconds 250
+              $app.Refresh()
+              if ($app.HasExited) { throw 'Desktop app exited during startup' }
+            } while ($app.MainWindowHandle -eq 0 -and (Get-Date) -lt $deadline)
+            if ($app.MainWindowHandle -eq 0) { throw 'Desktop window was not created' }
+            if (-not $app.Responding) { throw 'Desktop window not responding' }
+            # Tauri may create its window before setup() starts the engine.
+            $engineDeadline = (Get-Date).AddSeconds(60)
+            do {
+              $engine = Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $app.Id -and $_.Name -eq 'java.exe' } | Select-Object -First 1
+              if (-not $engine) { Start-Sleep -Milliseconds 250 }
+              $app.Refresh()
+              if ($app.HasExited) { throw 'App exited while starting its JVM' }
+            } while (-not $engine -and (Get-Date) -lt $engineDeadline)
+            if (-not $engine) {
+              Write-Output "Window title: $($app.MainWindowTitle)"
+              Get-Content verified/startup-error.log -ErrorAction SilentlyContinue
+              Get-Content verified/startup-output.log -ErrorAction SilentlyContinue
+              Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $app.Id } | Select-Object Name,ProcessId,ParentProcessId | Format-Table
+              throw 'Window did not start its private JVM'
+            }
+            Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public static class DesktopWindow{[DllImport("user32.dll")]public static extern bool ShowWindowAsync(IntPtr h,int command);}'
+            [DesktopWindow]::ShowWindowAsync($app.MainWindowHandle,3) | Out-Null
+            Start-Sleep -Seconds 3
+            Add-Type -AssemblyName System.Windows.Forms
+            Add-Type -AssemblyName System.Drawing
+            $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bitmap = New-Object System.Drawing.Bitmap($bounds.Width,$bounds.Height)
+            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+            $graphics.CopyFromScreen($bounds.Location,[System.Drawing.Point]::Empty,$bounds.Size)
+            $bitmap.Save((Join-Path (Get-Location) 'verified/windows-login.png'),[System.Drawing.Imaging.ImageFormat]::Png)
+            $graphics.Dispose()
+            $bitmap.Dispose()
+            $app.CloseMainWindow() | Out-Null
+            if (-not $app.WaitForExit(10000)) { throw 'App did not exit after window close' }
+            Start-Sleep -Seconds 2
+            if (Get-Process -Id $engine.ProcessId -ErrorAction SilentlyContinue) { throw 'JVM remained after app exit' }
+            '{"installed":true,"windowOpened":true,"jvmStoppedOnExit":true,"buildRun":40934285528}' | Set-Content -Encoding utf8 verified/install-proof.json
+          } finally {
+            if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue }
+            if ($engine) { Stop-Process -Id $engine.ProcessId -Force -ErrorAction SilentlyContinue }
+          }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: desktop-windows-verified-preview
+          path: verified/
+          if-no-files-found: error
+          retention-days: 14
+  stage:
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: desktop-windows-verified-preview
+          path: verified
+      - name: Stage separate desktop candidate
+        env:
+          UPDATE_DEPLOY_KEY: ${{ secrets.UPDATE_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$UPDATE_DEPLOY_KEY"
+          umask 077
+          python3 - <<'PYTHON'
+          import os,pathlib
+          key=pathlib.Path(os.environ['RUNNER_TEMP'])/'update-deploy-key'
+          key.write_text(os.environ['UPDATE_DEPLOY_KEY'].replace('\r','').strip()+'\n')
+          key.chmod(0o600)
+          PYTHON
+          ssh-keyscan github.com > "$RUNNER_TEMP/update-known-hosts" 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/update-deploy-key -o UserKnownHostsFile=$RUNNER_TEMP/update-known-hosts -o StrictHostKeyChecking=yes"
+          git clone --single-branch --branch codex/desktop-0.1.0-preview.9 git@github.com:nikitasever/spbu-mail-pilot-updates.git updates
+          python3 - <<'PYTHON'
+          import pathlib,shutil,json,hashlib
+          source=pathlib.Path('verified');target=pathlib.Path('updates/candidates/desktop-0.1.0-preview.9')
+          proof=json.loads((source/'install-proof.json').read_text(encoding='utf-8-sig'))
+          assert proof['installed'] and proof['windowOpened'] and proof['jvmStoppedOnExit']
+          for path in source.iterdir():
+              if path.is_file() and path.suffix != ".log":shutil.copy2(path,target/path.name)
+          (target/'install-proof.json').write_text(json.dumps(proof,indent=2)+'\n')
+          names=sorted(path.name for path in target.iterdir() if path.is_file() and path.name not in ['SHA256SUMS.txt','release-notes.md'])
+          (target/'SHA256SUMS.txt').write_text(''.join(hashlib.sha256((target/name).read_bytes()).hexdigest()+'  '+name+'\n' for name in names))
+          PYTHON
+          cd updates
+          git config user.name 'Desktop preview builder'
+          git config user.email 'desktop-preview@users.noreply.github.com'
+          git add candidates/desktop-0.1.0-preview.9
+          git commit -m 'Stage verified Windows desktop installer and installation proof'
+          git push origin HEAD:refs/heads/codex/desktop-0.1.0-preview.9
+          rm -f "$RUNNER_TEMP/update-deploy-key"

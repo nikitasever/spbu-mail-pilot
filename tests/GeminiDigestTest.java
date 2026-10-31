@@ -8,7 +8,7 @@ public class GeminiDigestTest {
   java.io.ByteArrayOutputStream sent=new java.io.ByteArrayOutputStream();byte[] response;int code;boolean closed;
   Transport(int code,String response)throws Exception{super(new java.net.URL("https://fixture.invalid/"));this.code=code;this.response=response.getBytes(java.nio.charset.StandardCharsets.UTF_8);}
   public void connect(){} public void disconnect(){closed=true;}public boolean usingProxy(){return false;}public String getCipherSuite(){return "fixture";}public java.security.cert.Certificate[] getLocalCertificates(){return null;}public java.security.cert.Certificate[] getServerCertificates(){return null;}
-  public java.io.OutputStream getOutputStream(){return sent;}public int getResponseCode(){return code;}public java.io.InputStream getInputStream(){return new java.io.ByteArrayInputStream(response);}
+  public java.io.OutputStream getOutputStream(){return sent;}public int getResponseCode(){return code;}public java.io.InputStream getInputStream(){return new java.io.ByteArrayInputStream(response);}public java.io.InputStream getErrorStream(){return new java.io.ByteArrayInputStream(response);}
  }
  public static void main(String[] args)throws Exception{
   JSONObject result=new JSONObject().put("overview","Есть одна просьба").put("points",new JSONArray().put(point(new JSONArray().put(1).put(1))));
@@ -19,7 +19,20 @@ public class GeminiDigestTest {
   JSONObject valid=new JSONObject().put("overview","Сводка").put("points",new JSONArray().put(point(new JSONArray().put(1))));Transport transport=new Transport(200,response(valid,"STOP"));new GeminiDigest().exchange(transport,"fixture-key",items,"fixture@example.invalid",()->true);if(!transport.closed||transport.getInstanceFollowRedirects()||!"fixture-key".equals(transport.getRequestProperty("x-goog-api-key"))||transport.sent.toString("UTF-8").contains("fixture-key"))throw new AssertionError("HTTP secret boundary");
   transport=new Transport(401,"fixture-key echoed by server");try{new GeminiDigest().exchange(transport,"fixture-key",items,"fixture@example.invalid",()->true);throw new AssertionError();}catch(java.io.IOException expected){if(expected.getMessage().contains("fixture-key"))throw new AssertionError("Error leak");}if(!transport.closed)throw new AssertionError("Unclosed connection");
   transport=new Transport(200,new String(new char[262145]).replace('\0','x'));try{new GeminiDigest().exchange(transport,"fixture-key",items,"fixture@example.invalid",()->true);throw new AssertionError();}catch(java.io.IOException expected){}
+  transport=new Transport(400,"{\"error\":{\"message\":\"User location is not supported for the API. fixture-key\"}}");
+  try{new GeminiDigest().exchange(transport,"fixture-key",items,"fixture@example.invalid",()->true);throw new AssertionError();}catch(java.io.IOException expected){if(!GeminiDigest.REGION_ERROR.equals(GeminiDigest.safeFailure(expected))||expected.getMessage().contains("fixture-key"))throw new AssertionError("Region diagnostic must be fixed and sanitized");}
+  if(!transport.closed)throw new AssertionError();
+  if(!GeminiDigest.status(400).equals(GeminiDigest.remoteError(400,new java.io.ByteArrayInputStream(new byte[16385]),()->true)))throw new AssertionError("Bounded error response");
+  if(!GeminiDigest.safeFailure(new java.net.UnknownHostException("fixture-key")).contains("DNS"))throw new AssertionError();
+  if(GeminiDigest.safeFailure(new java.net.SocketTimeoutException("fixture-key")).contains("fixture-key"))throw new AssertionError();
   if(!GeminiDigest.status(429).contains("Лимит")||!GeminiDigest.status(403).contains("регион"))throw new AssertionError();
+  GeminiDigest proxied=new GeminiDigest();java.util.concurrent.atomic.AtomicBoolean proxyCancelled=new java.util.concurrent.atomic.AtomicBoolean();
+  try{proxied.analyze("fixture-key",items,"fixture@example.invalid",()->true,AiConfiguration.DEFAULT_MODEL,(endpoint,apiKey,body,current,cancel)->{
+   cancel.accept(()->proxyCancelled.set(true));proxied.cancel();if(current.getAsBoolean())throw new AssertionError("Stale proxy generation");return response(valid,"STOP");
+  });throw new AssertionError("Cancelled proxy result accepted");}catch(java.io.IOException expected){}
+  if(!proxyCancelled.get())throw new AssertionError("Proxy call not closed on cancellation");
+  final int[] calls={0};try{new GeminiDigest().analyze("fixture-key",items,"fixture@example.invalid",()->true,AiConfiguration.DEFAULT_MODEL,(endpoint,apiKey,body,current,cancel)->{calls[0]++;throw new java.io.IOException("fixture proxy failure");});throw new AssertionError();}catch(java.io.IOException expected){}
+  if(calls[0]!=1)throw new AssertionError("Proxy failure retried");
   System.out.println("PASS: Gemini prompt isolates untrusted mail, excludes credentials/attachments; incomplete, invalid and invented source responses rejected; sources deduplicated and errors sanitized.");
  }
 }

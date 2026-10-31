@@ -1,0 +1,55 @@
+export type Invoke = (command:string,args:{request:Request})=>Promise<unknown>;
+export type Request = {id:string;method:string;args:Record<string,unknown>};
+export class MailFault extends Error {code:string;constructor(code:string){super(code);this.code=code}}
+export class StaleReply extends Error {}
+export class Client {
+  private serial=0;
+  private invoke:Invoke;
+  constructor(invoke:Invoke){this.invoke=invoke}
+  start<T>(method:string,args:Record<string,unknown>={}){
+    const id=`r${++this.serial}`;
+    const promise=this.invoke('mail_request',{request:{id,method,args}}).then(raw=>{
+      if(!raw||typeof raw!=='object')throw new MailFault('BAD_RESPONSE');
+      const reply=raw as {id?:unknown;result?:unknown;error?:{code?:unknown}};
+      if(reply.id!==id)throw new MailFault('BAD_RESPONSE');
+      if(reply.error)throw new MailFault(typeof reply.error.code==='string'?reply.error.code:'UNAVAILABLE');
+      return reply.result as T;
+    },error=>{throw new MailFault(typeof error==='string'&&['CONTACTS_EXPORT_SAVE','CONTACTS_EXPORT_TYPE','CONTACTS_EXPORT_EMPTY','CONTACTS_IMPORT_FILE','CONTACTS_IMPORT_LIMIT','CONTACTS_IMPORT_ENCODING','CONTACTS_IMPORT_FORMAT','CONTACTS_IMPORT_EXPIRED','CONTACTS_STORE','CONTACTS_CONFLICT','CONTACTS_EXISTS','BAD_CONTACT','BAD_REQUEST','BUSY','ENGINE_UNAVAILABLE','SEND_BUSY','SEND_LOCKED','DRAFT_UNAVAILABLE','VAULT_UNAVAILABLE','DRAFT_SAVE_FAILED','DRAFT_RESTORE_FAILED','DRAFT_EXISTS','DRAFT_CONFLICT','CONTACTS_UNSUPPORTED','CONTACTS_NETWORK','CONTACTS_AUTH','CONTACTS_LIMIT','CONTACTS_CURSOR','CALENDAR_STORE','CALENDAR_MISSING','CALENDAR_CHANGED','CALENDAR_DATA','CALENDAR_NETWORK','CALENDAR_AUTH','CALENDAR_ORIGIN','NO_SESSION','CANCELLED'].includes(error)?error:'ENGINE_UNAVAILABLE')});
+    return {id,promise};
+  }
+  cancel(id:string){void this.start('cancel',{requestId:id}).promise.catch(()=>{})}
+}
+export class Lane {
+  private generation=0;
+  private id:string|null=null;
+  private client:Client;
+  constructor(client:Client){this.client=client}
+  cancel(){this.generation++;if(this.id)this.client.cancel(this.id);this.id=null}
+  async run<T>(method:string,args:Record<string,unknown>={}):Promise<T>{
+    this.cancel();const ticket=this.generation;const task=this.client.start<T>(method,args);this.id=task.id;
+    try{const value=await task.promise;if(ticket!==this.generation)throw new StaleReply();return value}
+    catch(error){if(ticket!==this.generation)throw new StaleReply();throw error}
+    finally{if(ticket===this.generation)this.id=null}
+  }
+}
+export function failure(error:unknown):string {
+  const code=error instanceof MailFault?error.code:'';
+  const messages:Record<string,string>={MOVE_UNSUPPORTED:'Сервер не поддерживает безопасное перемещение. Используйте веб-почту.',MOVE_DESTINATION:'Папка назначения недоступна или письмо уже в ней. Обновите список папок.',MOVE_UNKNOWN:'Сервер не подтвердил перемещение. Проверьте исходную папку и папку назначения.',FLAG_REJECTED:'Сервер не подтвердил изменение статуса письма.',CONTACTS_EXPORT_SAVE:'Не удалось сохранить файл контактов. Выберите доступную папку вне данных приложения и проверьте свободное место.',CONTACTS_EXPORT_TYPE:'Расширение файла должно соответствовать формату: .csv или .vcf. Выберите файл заново.',CONTACTS_EXPORT_EMPTY:'В локальной книге пока нет контактов для экспорта.',CONTACTS_IMPORT_FILE:'Не удалось прочитать выбранный файл. Выберите обычный CSV или VCF на компьютере.',CONTACTS_IMPORT_LIMIT:'Импорт ограничен файлом до 1 МиБ и 500 адресами. Разделите файл на части.',CONTACTS_IMPORT_ENCODING:'Не поддерживается кодировка или файл содержит двоичные данные. Сохраните CSV/VCF в UTF-8 или UTF-16 с BOM.',CONTACTS_IMPORT_FORMAT:'Не поддерживается формат файла. Нужен CSV с заголовками Name/Email (или Имя/Почта) либо текстовый vCard 3.0/4.0 без кодирования полей.',CONTACTS_IMPORT_EXPIRED:'Предпросмотр импорта устарел или уже использован. Выберите файл заново.',CONTACTS_STORE:'Не удалось прочитать или сохранить локальную книгу. Проверьте профиль Windows, место на диске и повторите загрузку. Данные не заменены пустой книгой.',CONTACTS_CONFLICT:'Локальная книга изменилась. Перечитайте её перед следующим изменением.',CONTACTS_EXISTS:'Такой адрес уже есть в локальной книге. Измените существующий контакт.',BAD_CONTACT:'Проверьте имя и полный адрес контакта.',CONTACTS_UNSUPPORTED:'Справочник доступен только для аккаунтов mail.spbu.ru.',CONTACTS_NETWORK:'Не удалось получить контакты. Проверьте сеть и доступ к адресной книге; затем нажмите «Загрузить».',CONTACTS_AUTH:'Сервер отклонил вход в справочник или требует дополнительную авторизацию. Почтовый сеанс не изменён.',CONTACTS_CURSOR:'Страница справочника устарела. Нажмите «Загрузить», чтобы начать заново.',CONTACTS_LIMIT:'Загружено слишком много контактов. Уточните поиск или выберите первую букву.',CALENDAR_STORE:'Не удалось прочитать или сохранить защищённое подключение календаря. Проверьте профиль Windows и место на диске.',CALENDAR_MISSING:'Подключите календарь заново.',CALENDAR_CHANGED:'Подключение календаря изменилось. Откройте его заново.',CALENDAR_DATA:'Сервер не предоставил поддерживаемые данные CalDAV. Проверьте адрес или используйте прямую ссылку на календарь.',CALENDAR_NETWORK:'Не удалось связаться с календарём. Проверьте сеть, HTTPS-сертификат и доступность сервера.',CALENDAR_AUTH:'Календарь отклонил вход. Проверьте логин, пароль внешнего приложения и права доступа.',CALENDAR_ORIGIN:'CalDAV перенаправляет на другой сервер. Пароль туда не передан; укажите нужный сервер отдельно.',VAULT_UNAVAILABLE:'Не удалось открыть защищённые данные Windows. Войдите вручную или удалите сохранённый пароль.',DRAFT_SAVE_FAILED:'Не удалось сохранить черновик на компьютере. Письмо не передано.',DRAFT_RESTORE_FAILED:'Не удалось восстановить сохранённый черновик.',DRAFT_EXISTS:'Сначала откройте сохранённый черновик.',DRAFT_CONFLICT:'Сохранённый черновик изменился. Откройте его заново.',SEND_BUSY:'Дождитесь результата отправки письма.',SEND_LOCKED:'Повтор этой отправки заблокирован. Проверьте её результат.',DRAFT_UNAVAILABLE:'Черновик недоступен. Скопируйте текст и создайте новое письмо.',BAD_DRAFT:'Проверьте адреса и параметры отправки.',SEND_UNKNOWN:'Результат отправки неизвестен. Повтор заблокирован.',SAVE_FAILED:'Не удалось сохранить файл. Проверьте место на диске и доступ к выбранной папке.',FILE_UNAVAILABLE:'Файл недоступен. Сохраните вложение повторно.',TOO_LARGE:'Размер вложения превышает 100 МБ.',AUTH:'Сервер отклонил вход. Проверьте логин и пароль.',NETWORK:'Не удалось связаться с сервером. Проверьте сеть и настройки подключения.',NO_SESSION:'Подключитесь к ящику заново.',STALE_MAIL:'Письмо изменилось или удалено. Обновите список.',CANCELLED:'Операция остановлена.',BAD_REQUEST:'Проверьте введённые данные.',BUSY:'Дождитесь завершения текущего запроса.',ENGINE_UNAVAILABLE:'Почтовый движок недоступен. Закройте и откройте приложение.',RESPONSE_TOO_LARGE:'Ответ сервера слишком большой для отображения.',BAD_RESPONSE:'Не удалось прочитать ответ. Обновите список.'};
+  return messages[code]??'Не удалось выполнить запрос. Проверьте подключение и повторите.';
+}
+export type Mail={uid:string;validity:string;sender:string;email:string;subject:string;preview:string;date:string;seen:boolean;hasAttachments:boolean};
+export type Page={folder:string;messages:Mail[];snapshot:string;nextOffset:number;total:number;hasMore:boolean};
+export function parsePage(value:unknown,folder:string,offset:number):Page {
+  if(!value||typeof value!=='object')throw new MailFault('BAD_RESPONSE');const page=value as Page;
+  if(page.folder!==folder||!Array.isArray(page.messages)||page.messages.length>50||typeof page.snapshot!=='string'||page.snapshot.length>4096||!Number.isSafeInteger(page.nextOffset)||page.nextOffset<offset||!Number.isSafeInteger(page.total)||page.total<0||typeof page.hasMore!=='boolean'||page.hasMore&&page.nextOffset<=offset)throw new MailFault('BAD_RESPONSE');
+  const messages=page.messages.map(row=>{
+    if(!row||!/^[1-9][0-9]{0,19}$/.test(String(row.uid))||!/^[1-9][0-9]{0,19}$/.test(String(row.validity)))throw new MailFault('BAD_RESPONSE');
+    const text=(value:unknown,max:number)=>typeof value==='string'?value.slice(0,max):'';
+    return {uid:String(row.uid),validity:String(row.validity),sender:text(row.sender,500),email:text(row.email,320),subject:text(row.subject,2000),preview:text(row.preview,500),date:text(row.date,100),seen:row.seen===true,hasAttachments:row.hasAttachments===true};
+  });
+  return {...page,messages};
+}
+export function folderLabel(name:string):string {
+  const labels:Record<string,string>={inbox:'Входящие',sent:'Отправленные','sent items':'Отправленные','sent messages':'Отправленные',drafts:'Черновики на сервере',trash:'Корзина','deleted items':'Корзина',junk:'Спам',spam:'Спам',archive:'Архив',archives:'Архив'};
+  return labels[name.toLowerCase()]??name;
+}

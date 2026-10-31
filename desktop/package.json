@@ -1,0 +1,22 @@
+{
+  "name": "spbu-mail-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "tauri": "tauri",
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "node tests/browser.cjs && node tests/compose-browser.cjs && node tests/persistence-browser.cjs && node tests/calendar-browser.cjs && node tests/contacts-browser.cjs && node tests/local-contacts-browser.cjs && node tests/contact-import-browser.cjs && node tests/contact-export-browser.cjs && node tests/mail-flags-browser.cjs && node tests/mail-move-browser.cjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.12.4"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4",
+    "vite": "8.3.5",
+    "typescript": "5.9.3",
+    "playwright": "1.56.1"
+  }
+}

@@ -18,7 +18,7 @@ import java.util.Locale
 @Composable internal fun NativeWorkspaceScreen(model: NativeWorkspaceModel,openCalendarDay: (String)->Unit = {},openMail: (String)->Unit = {}) {
     val state=model.state;val editor=state.editor
     BackHandler {model.back()}
-    Scaffold(topBar={TopAppBar(title={Text(if(editor!=null)when(state.kind){"tasks"->"Задача";"events"->"Своё событие";else->"Заметка"} else if(state.eventRoute)"Своё событие" else "Личные записи")},navigationIcon={TextButton(onClick=model::back,enabled=!state.busy){Text("Назад")}},actions={
+    Scaffold(topBar={TopAppBar(title={Text(if(editor!=null)when(state.kind){"tasks"->"Задача";"events"->"Своё событие";else->"Заметка"} else if(state.eventRoute)if(state.kind=="tasks")"Задача" else "Своё событие" else "Личные записи")},navigationIcon={TextButton(onClick=model::back,enabled=!state.busy){Text("Назад")}},actions={
         if(editor==null)TextButton(onClick=model::load,enabled=!state.busy){Text("Обновить")}
     })},bottomBar={Surface(tonalElevation=2.dp){Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal=16.dp,vertical=8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
         if(editor==null&&!state.eventRoute&&state.taskMail==null&&state.eventMail==null)Button(onClick={model.edit()},enabled=!state.busy,modifier=Modifier.fillMaxWidth()){Text(if(state.kind=="tasks")"Добавить задачу" else "Добавить заметку")}
