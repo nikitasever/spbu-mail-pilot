@@ -212,3 +212,12 @@ available. Its completion refreshes actual server rows without replacing a diffe
 open reader. Native window close and logout wait for the result; no cancel button
 pretends to undo a transmitted MOVE. There is no COPY+DELETE fallback or automatic
 retry/Undo. The JVM session-bound mutation worker is the canonical write owner.
+
+Archive/trash/spam are named variants of the canonical MOVE flow. A native details
+menu keeps the reader toolbar quiet; Escape/outside click close it. Every shortcut
+opens the same confirmation dialog, focuses Cancel, and restores focus to the
+summary when cancelled. A native action select switches between server roles and
+explicit folder choice. Quick roles never send a guessed destination, never
+perform hard delete, and show the actual server-resolved folder only after ACK.
+The shared JVM reader resolves SPECIAL-USE and its established fallback names;
+frontend roles and returned roles are validated rather than inferred from labels.

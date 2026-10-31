@@ -13,6 +13,7 @@ public final class DesktopEngine implements AutoCloseable {
         JSONObject page(String folder,int offset,String snapshot,String query)throws Exception;
         JSONObject body(String folder,String uid,String validity)throws Exception;
         default JSONObject move(String folder,String uid,String validity,String destination,java.util.function.BooleanSupplier allowed)throws Exception{throw new IOException("Unsupported move");}
+        default JSONObject moveKind(String folder,String uid,String validity,String kind,String destination,java.util.function.BooleanSupplier allowed)throws Exception{if(!kind.equals("folder"))throw new IOException("Unsupported move kind");return move(folder,uid,validity,destination,allowed);}
         default JSONObject seen(String folder,String uid,String validity,boolean seen)throws Exception{throw new IOException("Unsupported flags");}
         default JSONObject attachment(String folder,String uid,String validity,String path,File directory,java.util.function.BooleanSupplier cancelled,AttachmentTransfer.Progress progress)throws Exception{throw new IOException("Unsupported attachment");}
     }
@@ -111,20 +112,26 @@ public final class DesktopEngine implements AutoCloseable {
                             if(contactAuth==null||contactAuth!=credentials||!DesktopContacts.owner(contactAuth).equals(args.optString("_owner")))throw new Failure("NO_SESSION");
                             String name=folder(args),messageUid=uid(args,"uid"),validity=uid(args,"validity");
                             boolean moving=method.equals("moveMail"),seen=false;
-                            String destination=null;
-                            if(moving){destination=string(args,"destination",1024,false);if(destination.equals(name)||destination.matches("(?s).*\\p{Cntrl}.*"))throw new Failure("BAD_REQUEST");}
+                            String destination=null,kind="folder";
+                            if(moving){
+                                kind=args.has("kind")?string(args,"kind",16,false):"folder";
+                                if(!java.util.Arrays.asList("folder","archive","trash","spam").contains(kind))throw new Failure("BAD_REQUEST");
+                                if(kind.equals("folder")){destination=string(args,"destination",1024,false);if(destination.equals(name)||destination.matches("(?s).*\\p{Cntrl}.*"))throw new Failure("BAD_REQUEST");}
+                                else if(args.has("destination"))throw new Failure("BAD_REQUEST");
+                            }
                             else{if(!(args.opt("seen") instanceof Boolean))throw new Failure("BAD_REQUEST");seen=args.getBoolean("seen");}
                             // A private connection keeps mail writes independent of inbox reads/cancellation.
                             Gateway target=factory.connect(contactAuth.host,contactAuth.port,contactAuth.user,contactAuth.password,gateway->{operation.active=gateway;if(operation.stopped.get())closeLater(gateway);operation.check();});
                             operation.active=target;
                             try{
                                 operation.check();if(contactAuth!=credentials)throw new Failure("NO_SESSION");
-                                JSONObject changed=moving?target.move(name,messageUid,validity,destination,()->!operation.stopped.get()&&contactAuth==credentials):target.seen(name,messageUid,validity,seen);
+                                JSONObject changed=moving?target.moveKind(name,messageUid,validity,kind,destination,()->!operation.stopped.get()&&contactAuth==credentials):target.seen(name,messageUid,validity,seen);
                                 operation.check();if(contactAuth!=credentials)throw new Failure("NO_SESSION");
                                 result=new JSONObject().put("folder",name).put("uid",messageUid).put("validity",validity);
                                 if(moving){
-                                    if(!Boolean.TRUE.equals(changed.opt("moved"))||!destination.equals(changed.opt("destination")))throw new Failure("MOVE_UNKNOWN");
-                                    ((JSONObject)result).put("moved",true).put("destination",destination);
+                                    String actual=changed.optString("destination","");
+                                    if(!Boolean.TRUE.equals(changed.opt("moved"))||actual.isEmpty()||actual.length()>1024||actual.equals(name)||actual.matches("(?s).*\\p{Cntrl}.*")||kind.equals("folder")&&!actual.equals(destination))throw new Failure("MOVE_UNKNOWN");
+                                    ((JSONObject)result).put("moved",true).put("kind",kind).put("destination",actual);
                                 }else{
                                     if(!(changed.opt("seen") instanceof Boolean)||changed.getBoolean("seen")!=seen)throw new Failure("FLAG_REJECTED");
                                     ((JSONObject)result).put("seen",seen);
@@ -230,7 +237,7 @@ public final class DesktopEngine implements AutoCloseable {
                 public JSONObject page(String folder,int offset,String snapshot,String query)throws Exception{return reader.page(folder,offset,snapshot,query);}
                 public JSONObject body(String folder,String uid,String validity)throws Exception{return reader.body(folder,uid,validity);}
                 public JSONObject seen(String folder,String uid,String validity,boolean seen)throws Exception{return reader.seen(folder,uid,validity,seen);}
-                public JSONObject move(String folder,String uid,String validity,String destination,java.util.function.BooleanSupplier allowed)throws Exception{return reader.moveMail(folder,uid,validity,"folder",destination,allowed);}
+                public JSONObject moveKind(String folder,String uid,String validity,String kind,String destination,java.util.function.BooleanSupplier allowed)throws Exception{return reader.moveMail(folder,uid,validity,kind,destination,allowed);}
                 public JSONObject attachment(String folder,String uid,String validity,String path,File directory,java.util.function.BooleanSupplier cancelled,AttachmentTransfer.Progress progress)throws Exception{return reader.attachmentMeasured(folder,uid,validity,path,directory,cancelled,progress);}
                 public void close(){reader.close();}
             };

@@ -14,7 +14,7 @@ const assert=require('node:assert/strict'),path=require('node:path');
    if(command!=='mail_request')return null;
    const {id,method,args}=params.request;let result;
    if(method==='connect')result={connected:true,epoch:23};
-   else if(method==='folders')result=['INBOX','Sent','Проекты/2026','<img src=x onerror="window.pwned=1">'];
+   else if(method==='folders')result=['INBOX','Sent','Проекты/2026','University/Old letters','University/Removed','University/Unwanted','<img src=x onerror="window.pwned=1">'];
    else if(method==='page'){
     const rows=[];
     if(args.folder===window.locationOfMail)rows.push({uid:'42',validity:'7',sender:'Учебный отдел',email:'office@example.invalid',subject:'Материалы к заседанию',seen:false});
@@ -25,8 +25,8 @@ const assert=require('node:assert/strict'),path=require('node:path');
     window.moves.push(args);const mode=window.moveMode;if(mode==='error')await new Promise(resolve=>{window.releaseMove=resolve});else await new Promise(r=>setTimeout(r,window.moveDelay));
     if(mode==='unsupported')return {id,error:{code:'MOVE_UNSUPPORTED'}};
     if(mode==='error')return {id,error:{code:'NETWORK'}};
-    window.locationOfMail=args.destination;
-    result={folder:args.folder,uid:args.uid,validity:mode==='wrong'?'99':args.validity,moved:true,destination:args.destination};
+    const actual=args.kind?{archive:'University/Old letters',trash:'University/Removed',spam:'University/Unwanted'}[args.kind]:args.destination;window.locationOfMail=actual;
+    result={folder:args.folder,uid:args.uid,validity:mode==='wrong'?'99':args.validity,moved:true,destination:actual,kind:mode==='wrong-kind'?'trash':args.kind??'folder'};
    }else result={connected:false};
    return {id,result};
   }};
@@ -66,6 +66,27 @@ const assert=require('node:assert/strict'),path=require('node:path');
  await page.locator('#move-mail').click();await page.locator('#mail-move-destination').selectOption('INBOX');await page.evaluate(()=>window.moveMode='wrong');await page.locator('#mail-move-submit').click();await done();assert(await page.locator('#move-mail').isDisabled());
  assert((await page.locator('#mail-action-status').textContent()).includes('не подтверждено'));
  await page.locator('#logout').click();await page.locator('#login-screen').waitFor();assert.equal(await page.locator('#mail-action-status').textContent(),'');assert.equal(await page.locator('#mail-move-description').textContent(),'');assert.equal(await page.locator('#mail-move-destination option').count(),0);
+ // Quick actions choose server roles and show the actual, possibly nonstandard path after ACK.
+ await page.setViewportSize({width:1360,height:860});await page.evaluate(()=>{window.locationOfMail='INBOX';window.moveMode='success';window.moveDelay=80});
+ await page.locator('#user').fill('fixture@example.invalid');await page.locator('#password').fill('fixture');await page.locator('#connect').click();await page.locator('.letter').first().waitFor();
+ for(const [kind,label,actual] of [['archive','В архив','University/Old letters'],['trash','В корзину','University/Removed'],['spam','В спам','University/Unwanted']]){
+  await page.evaluate(()=>window.locationOfMail='INBOX');await page.locator('#refresh').click();await open();
+  await page.locator('#mail-quick-actions summary').click();await page.keyboard.press('Escape');assert.equal(await page.locator('#mail-quick-actions').evaluate(el=>el.open),false);
+  await page.locator('#mail-quick-actions summary').click();await page.locator('#mail-'+kind).click();
+  assert.equal(await page.locator('#mail-move-kind').inputValue(),kind);assert(await page.locator('#mail-move-destination').isHidden());assert.equal(await page.locator('#mail-move-submit').textContent(),label);assert(await page.locator('#mail-move-cancel').evaluate(b=>b===document.activeElement));
+  await page.keyboard.press('Escape');assert(await page.locator('#mail-quick-actions summary').evaluate(el=>el===document.activeElement));
+  await page.locator('#mail-quick-actions summary').click();await page.locator('#mail-'+kind).click();
+  if(kind==='trash'){await page.setViewportSize({width:760,height:600});await page.screenshot({path:path.join(__dirname,'../build/screenshots/mail-quick-trash.png')});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false)}
+  await page.locator('#mail-move-submit').click();await page.waitForFunction(actual=>document.getElementById('mail-action-status').textContent===`Письмо перемещено в «${actual}».`,actual);
+  const last=await page.evaluate(()=>window.moves.at(-1));assert.equal(last.kind,kind);assert.equal(Object.hasOwn(last,'destination'),false);assert.equal(last.epoch,23);
+  await page.setViewportSize({width:1360,height:860});await page.waitForFunction(()=>document.querySelectorAll('.letter').length===1);
+ }
+ // Switching from an explicit folder to a role must not send both targets; mismatched kind is unknown.
+ await page.evaluate(()=>{window.locationOfMail='INBOX';window.moveMode='wrong-kind'});await page.locator('#refresh').click();await open();await choose();
+ await page.locator('#mail-move-kind').selectOption('spam');await page.locator('#mail-move-submit').click();await done();assert(await page.locator('#move-mail').isDisabled());assert((await page.locator('#mail-action-status').textContent()).includes('не подтверждено'));
+ assert.equal(Object.hasOwn(await page.evaluate(()=>window.moves.at(-1)),'destination'),false);
+ await page.locator('#logout').click();await page.locator('#login-screen').waitFor();assert.equal(await page.locator('#mail-quick-actions').evaluate(el=>el.open),false);
+
  }finally{await browser.close()}
- console.log('PASS mail move UI: server folders, explicit destination/confirmation, focus/Escape, pending close/logout/duplicate guards, failure freezes, capability errors, navigation preserves another reader, fresh source/destination, identity checks, narrow dialog and logout cleanup (fixture).');
+ console.log('PASS mail move UI: server folders/SPECIAL-USE quick actions, explicit destination/confirmation, focus/Escape, pending close/logout/duplicate guards, failure freezes, capability errors, navigation preserves another reader, fresh source/destination, identity checks, narrow dialog and logout cleanup (fixture).');
 })().catch(error=>{console.error(error);process.exitCode=1});

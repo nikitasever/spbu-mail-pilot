@@ -29,6 +29,11 @@ public class DesktopMoveTest {
                     if(mode.get().equals("lost"))throw new java.io.IOException("fixture-secret: lost acknowledgement");
                     return new JSONObject().put("moved",true).put("destination",mode.get().equals("wrong")?"Wrong":destination);
                 }
+                public JSONObject moveKind(String f,String u,String v,String kind,String destination,java.util.function.BooleanSupplier allowed)throws Exception{
+                    if(kind.equals("folder"))return move(f,u,v,destination,allowed);
+                    check(!inbox&&destination==null&&allowed.getAsBoolean());writes.incrementAndGet();
+                    return new JSONObject().put("moved",true).put("destination","University/"+kind);
+                }
                 public void close(){release.countDown();}
             };register.attach(gateway);return gateway;
         },out::add)){
@@ -46,6 +51,15 @@ public class DesktopMoveTest {
             check(writes.get()==3); // one success, wrong acknowledgement, lost acknowledgement; no automatic retry
             engine.accept(request("stale","moveMail",new JSONObject(args.toString()).put("validity","8")));check(next(out).getJSONObject("error").getString("code").equals("STALE_MAIL"));check(writes.get()==3);
             int before=connects.get();engine.accept(request("refresh","page",new JSONObject().put("folder","INBOX").put("offset",0).put("snapshot","").put("query","")));check(next(out).getJSONObject("result").getBoolean("fresh"));check(connects.get()==before+1);
+            JSONObject quick=new JSONObject(args.toString());quick.remove("destination");
+            int beforeInvalid=connects.get();
+            engine.accept(request("delete-refused","moveMail",new JSONObject(quick.toString()).put("kind","delete")));check(next(out).getJSONObject("error").getString("code").equals("BAD_REQUEST"));
+            engine.accept(request("ambiguous-target","moveMail",new JSONObject(args.toString()).put("kind","trash")));check(next(out).getJSONObject("error").getString("code").equals("BAD_REQUEST"));check(connects.get()==beforeInvalid);
+            for(String kind:new String[]{"archive","trash","spam"}){
+                engine.accept(request("quick-"+kind,"moveMail",new JSONObject(quick.toString()).put("kind",kind)));
+                JSONObject changed=next(out).getJSONObject("result");check(changed.getString("kind").equals(kind)&&changed.getString("destination").equals("University/"+kind)&&changed.getBoolean("moved"));
+            }
+            check(writes.get()==6);
             engine.accept(request("logout","disconnect",new JSONObject()));next(out);
             engine.accept(request("old","moveMail",args));check(next(out).getJSONObject("error").getString("code").equals("NO_SESSION"));
         }

@@ -28,7 +28,7 @@ function span(className:string,value:string){const node=document.createElement('
 function date(value:string,full=false){const parsed=new Date(value);return Number.isNaN(parsed.getTime())?'':new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',...(full?{dateStyle:'long',timeStyle:'short'}:{day:'numeric',month:'short'})}).format(parsed)}
 function listState(){mailActionControls();show('cancel-list',listBusy);show('more',Boolean(page?.hasMore)&&!listBusy);$<HTMLButtonElement>('refresh').disabled=listBusy;text('list-status',listBusy?'Загрузка…':'');text('list-count',page?`${rows.length} из ${page.total} писем`:listBusy?'Получаем письма…':'Писем пока нет')}
 function mailKey(name:string,row:Mail){return JSON.stringify([name,row.validity,row.uid])}
-function mailActionControls(){const button=$<HTMLButtonElement>('toggle-seen');button.hidden=!selected||bodyBusy;button.disabled=mailWritePending||listBusy||Boolean(selected&&uncertainMail.has(mailKey(folder,selected)));button.textContent=selected?.seen?'Отметить непрочитанным':'Отметить прочитанным';button.setAttribute('aria-busy',String(mailWritePending));const move=$<HTMLButtonElement>('move-mail');move.hidden=button.hidden;move.disabled=button.disabled||folderNames.every(name=>name===folder);move.setAttribute('aria-busy',String(movePending))}
+function mailActionControls(){const button=$<HTMLButtonElement>('toggle-seen');button.hidden=!selected||bodyBusy;button.disabled=mailWritePending||listBusy||Boolean(selected&&uncertainMail.has(mailKey(folder,selected)));button.textContent=selected?.seen?'Отметить непрочитанным':'Отметить прочитанным';button.setAttribute('aria-busy',String(mailWritePending));const move=$<HTMLButtonElement>('move-mail');move.hidden=button.hidden;move.disabled=button.disabled||folderNames.every(name=>name===folder);move.setAttribute('aria-busy',String(movePending));show('mail-quick-actions',!button.hidden);if(button.hidden)$<HTMLDetailsElement>('mail-quick-actions').open=false;for(const id of ['mail-archive','mail-trash','mail-spam'])$<HTMLButtonElement>(id).disabled=button.disabled}
 function resetReader(){replyMail=null;show('reply-mail',false);bodyGeneration++;bodyLane.cancel();selected=null;bodyBusy=false;mailActionControls();show('message',false);show('reader-empty',true);$('workspace').classList.remove('reading');$('body').replaceChildren();$('sender').replaceChildren();$('attachment-list').replaceChildren();text('subject','');text('reader-folder','');show('body-error',false);renderRows()}
 function renderRows(){
   list.replaceChildren();
@@ -93,31 +93,43 @@ async function toggleSeen(){
 $('toggle-seen').addEventListener('click',()=>void toggleSeen());
 function mailActionStatus(message:string){text('mail-action-status',message);show('mail-action-status',Boolean(message))}
 async function mayLeaveMail(){if(movePending){mailActionStatus('Дождитесь результата перемещения, прежде чем закрывать окно или выходить из ящика.');return false}return contacts.mayClose()}
+type MoveKind='folder'|'archive'|'trash'|'spam';
+const moveLabels:Record<MoveKind,string>={folder:'Переместить',archive:'В архив',trash:'В корзину',spam:'В спам'};
+let moveTrigger:HTMLElement|null=null;
+const moveKind=$<HTMLSelectElement>('mail-move-kind');
 const moveDialog=$<HTMLDialogElement>('mail-move-dialog'),moveDestination=$<HTMLSelectElement>('mail-move-destination');
-function closeMove(){moveDialog.close();moveTarget=null;moveDestination.replaceChildren();text('mail-move-description','');$('move-mail').focus()}
-$('move-mail').addEventListener('click',()=>{
+function closeMove(){moveDialog.close();moveTarget=null;moveDestination.replaceChildren();text('mail-move-description','');moveKind.value='folder';text('mail-move-title','Переместить письмо');const trigger=moveTrigger;moveTrigger=null;trigger?.focus()}
+function openMove(kind:MoveKind='folder'){
  if(!connected||!selected||bodyBusy||listBusy||mailWritePending||uncertainMail.has(mailKey(folder,selected)))return;
- moveTarget={row:selected,folder,epoch};moveDestination.replaceChildren();
+ moveTrigger=kind==='folder'?$('move-mail'):$('mail-quick-actions').querySelector('summary');moveTarget={row:selected,folder,epoch};moveDestination.replaceChildren();
  const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Выберите папку';moveDestination.append(placeholder);
  for(const name of folderNames){if(name===folder)continue;const option=document.createElement('option');option.value=name;option.textContent=folderLabel(name)===name?name:`${folderLabel(name)} · ${name}`;moveDestination.append(option)}
- text('mail-move-description',`${selected.subject||'Без темы'} · из папки «${folderLabel(folder)}»`);moveDestination.removeAttribute('aria-invalid');$<HTMLButtonElement>('mail-move-submit').disabled=true;moveDialog.showModal();$('mail-move-cancel').focus();
-});
-moveDestination.addEventListener('change',()=>{moveDestination.removeAttribute('aria-invalid');$<HTMLButtonElement>('mail-move-submit').disabled=!moveDestination.value});
+ text('mail-move-description',`${selected.subject||'Без темы'} · из папки «${folderLabel(folder)}»`);moveDestination.removeAttribute('aria-invalid');moveKind.value=kind;updateMoveKind();$<HTMLDetailsElement>('mail-quick-actions').open=false;moveDialog.showModal();$('mail-move-cancel').focus();
+}
+$('move-mail').addEventListener('click',()=>openMove());
+const quickActions=$<HTMLDetailsElement>('mail-quick-actions');
+document.addEventListener('pointerdown',event=>{if(event.target instanceof Node&&!quickActions.contains(event.target))quickActions.open=false});
+quickActions.addEventListener('keydown',event=>{if(event.key==='Escape'&&quickActions.open){event.preventDefault();quickActions.open=false;quickActions.querySelector('summary')!.focus()}});
+for(const kind of ['archive','trash','spam'] as const)$('mail-'+kind).addEventListener('click',()=>openMove(kind));
+function updateMoveKind(){const kind=moveKind.value as MoveKind;const custom=kind==='folder';moveDestination.hidden=!custom;show('mail-move-destination-label',custom);text('mail-move-title',custom?'Переместить письмо':`${moveLabels[kind]}?`);text('mail-move-submit',moveLabels[kind]);$<HTMLButtonElement>('mail-move-submit').disabled=custom&&!moveDestination.value}
+moveKind.addEventListener('change',updateMoveKind);
+moveDestination.addEventListener('change',()=>{moveDestination.removeAttribute('aria-invalid');updateMoveKind()});
 $('mail-move-cancel').addEventListener('click',closeMove);moveDialog.addEventListener('cancel',event=>{event.preventDefault();closeMove()});
 $('mail-move-form').addEventListener('submit',event=>{event.preventDefault();void moveMail()});
 async function moveMail(){
- const target=moveTarget,destination=moveDestination.value;
+ const target=moveTarget,destination=moveDestination.value,kind=moveKind.value as MoveKind;
  if(!target||!connected||target.epoch!==epoch||target.folder!==folder||target.row!==selected||bodyBusy||listBusy||mailWritePending||uncertainMail.has(mailKey(folder,target.row)))return;
- if(!destination||destination===folder||!folderNames.includes(destination)){moveDestination.setAttribute('aria-invalid','true');moveDestination.focus();return}
+ if(!['folder','archive','trash','spam'].includes(kind))return;
+ if(kind==='folder'&&(!destination||destination===folder||!folderNames.includes(destination))){moveDestination.setAttribute('aria-invalid','true');moveDestination.focus();return}
  const row=target.row,currentFolder=target.folder,ticket=epoch,key=mailKey(currentFolder,row);
- let release!:()=>void;mailWriteWait=new Promise<void>(resolve=>{release=resolve});movePending=true;mailWritePending=true;closeMove();mailActionControls();mailActionStatus(`Перемещаем письмо в «${folderLabel(destination)}»…`);let refresh=false;
+ let release!:()=>void;mailWriteWait=new Promise<void>(resolve=>{release=resolve});movePending=true;mailWritePending=true;closeMove();mailActionControls();mailActionStatus(kind==='folder'?`Перемещаем письмо в «${folderLabel(destination)}»…`:`Перемещаем письмо: ${moveLabels[kind].toLowerCase()}…`);let refresh=false;
  try{
-  const result=await client.start<{folder?:unknown;uid?:unknown;validity?:unknown;moved?:unknown;destination?:unknown}>('moveMail',{epoch:nativeEpoch,folder:currentFolder,uid:row.uid,validity:row.validity,destination}).promise;
+  const result=await client.start<{folder?:unknown;uid?:unknown;validity?:unknown;moved?:unknown;destination?:unknown;kind?:unknown}>('moveMail',{epoch:nativeEpoch,folder:currentFolder,uid:row.uid,validity:row.validity,...(kind==='folder'?{destination}:{kind})}).promise;
   if(ticket!==epoch||!connected)return;
-  if(result?.folder!==currentFolder||result.uid!==row.uid||result.validity!==row.validity||result.moved!==true||result.destination!==destination)throw new MailFault('BAD_RESPONSE');
-  mailActionStatus(`Письмо перемещено в «${folderLabel(destination)}».`);
+  if(result?.folder!==currentFolder||result.uid!==row.uid||result.validity!==row.validity||result.moved!==true||typeof result.destination!=='string'||!result.destination||result.destination.length>1024||/[\x00-\x1f\x7f]/.test(result.destination)||result.destination===currentFolder||(kind==='folder'?result.destination!==destination:result.kind!==kind))throw new MailFault('BAD_RESPONSE');
+  const actual=result.destination as string;mailActionStatus(`Письмо перемещено в «${folderLabel(actual)}».`);
   if(folder===currentFolder&&selected?.uid===row.uid&&selected.validity===row.validity)resetReader();
-  if(folder===currentFolder||folder===destination)refresh=true;
+  if(folder===currentFolder||folder===actual)refresh=true;
  }catch(error){if(ticket===epoch){uncertainMail.add(key);mailActionStatus(failure(error)+' Перемещение не подтверждено. Проверьте обе папки; автоматического повтора нет.');if(folder===currentFolder&&selected?.uid===row.uid&&selected.validity===row.validity){text('reader-status','Перемещение не подтверждено. Обновите папку.');}}}
  finally{release();if(ticket===epoch){mailWriteWait=null;mailWritePending=false;movePending=false;mailActionControls();}}
  if(refresh&&ticket===epoch&&!listBusy)await loadPage(false,Boolean(selected));
@@ -151,7 +163,7 @@ search.addEventListener('input',()=>show('clear-search',search.value.length>0));
 $('search-form').addEventListener('submit',event=>{event.preventDefault();query=search.value.trim();void loadPage(false)});
 $('clear-search').addEventListener('click',()=>{search.value='';query='';show('clear-search',false);search.focus();void loadPage(false)});
 $('new-mail').addEventListener('click',()=>void composer.open());$('reply-mail').addEventListener('click',()=>{if(replyMail)void composer.open(replyMail)});
-$('logout').addEventListener('click',async()=>{if(!await mayLeaveMail())return;void composer.leave(()=>{void composer.reset();calendar.reset();contacts.reset();showMail();attachmentUI.reset();if(moveDialog.open)closeMove();mailActionStatus('');folderNames=[];movePending=false;epoch++;nativeEpoch=0;mailWritePending=false;mailWriteWait=null;uncertainMail.clear();connectLane.cancel();folderLane.cancel();listLane.cancel();bodyLane.cancel();connected=false;account='';rows=[];page=null;resetReader();folders.replaceChildren();text('account-name','');password.value='';hidePassword();search.value='';query='';show('clear-search',false);text('account-avatar','');text('folder-title','');show('workspace',false);show('login-screen',true);void client.start('disconnect').promise.catch(()=>{});user.focus()})});
+$('logout').addEventListener('click',async()=>{if(!await mayLeaveMail())return;void composer.leave(()=>{void composer.reset();calendar.reset();contacts.reset();showMail();attachmentUI.reset();if(moveDialog.open)closeMove();$<HTMLDetailsElement>('mail-quick-actions').open=false;mailActionStatus('');folderNames=[];movePending=false;epoch++;nativeEpoch=0;mailWritePending=false;mailWriteWait=null;uncertainMail.clear();connectLane.cancel();folderLane.cancel();listLane.cancel();bodyLane.cancel();connected=false;account='';rows=[];page=null;resetReader();folders.replaceChildren();text('account-name','');password.value='';hidePassword();search.value='';query='';show('clear-search',false);text('account-avatar','');text('folder-title','');show('workspace',false);show('login-screen',true);void client.start('disconnect').promise.catch(()=>{});user.focus()})});
 function showSection(section:'mail'|'calendar'|'contacts'){
  if(section!=='calendar')calendar.hide();if(section!=='contacts')contacts.hide();
  show('calendar-screen',section==='calendar');show('contacts-screen',section==='contacts');show('mailbox-panel',section==='mail');show('reader-panel',section==='mail');
